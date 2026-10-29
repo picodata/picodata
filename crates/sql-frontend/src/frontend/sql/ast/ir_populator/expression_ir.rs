@@ -169,12 +169,7 @@ impl ParseExpression {
                 plan.add_replaced_subquery(*plan_id, worker)?
             }
             ParseExpression::Index { child, indexes } => {
-                let child_plan_id = child.populate_plan(plan, worker)?;
-                let index_plan_ids = indexes
-                    .iter()
-                    .map(|idx| idx.populate_plan(plan, worker))
-                    .collect::<Result<Vec<_>, _>>()?;
-                plan.add_index(child_plan_id, index_plan_ids)?
+                Self::populate_index(child, indexes, plan, worker)?
             }
             ParseExpression::Cast { cast_type, child } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
@@ -184,209 +179,41 @@ impl ParseExpression {
                 search_expr,
                 when_blocks,
                 else_expr,
-            } => {
-                let search_expr_id = if let Some(search_expr) = search_expr {
-                    Some(search_expr.populate_plan(plan, worker)?)
-                } else {
-                    None
-                };
-                let when_block_ids = when_blocks
-                    .iter()
-                    .map(|(cond, res)| {
-                        Ok((
-                            cond.populate_plan(plan, worker)?,
-                            (res.populate_plan(plan, worker)?),
-                        ))
-                    })
-                    .collect::<Result<Vec<(NodeId, NodeId)>, SbroadError>>()?;
-                let else_expr_id = if let Some(else_expr) = else_expr {
-                    Some(else_expr.populate_plan(plan, worker)?)
-                } else {
-                    None
-                };
-                plan.add_case(search_expr_id, when_block_ids, else_expr_id)
-            }
+            } => Self::populate_case(
+                search_expr.as_deref(),
+                when_blocks,
+                else_expr.as_deref(),
+                plan,
+                worker,
+            )?,
             ParseExpression::Trim {
                 kind,
                 pattern,
                 target,
-            } => {
-                let pattern = match pattern {
-                    Some(p) => Some(p.populate_plan(plan, worker)?),
-                    None => None,
-                };
-                let trim_expr = Trim {
-                    kind: kind.clone(),
-                    pattern,
-                    target: target.populate_plan(plan, worker)?,
-                };
-                plan.nodes.push(trim_expr.into())
-            }
+            } => Self::populate_trim(kind.as_ref(), pattern.as_deref(), target, plan, worker)?,
             ParseExpression::Like {
                 left,
                 right,
                 escape,
                 is_ilike,
-            } => {
-                let mut plan_left_id = left.populate_plan(plan, worker)?;
-
-                let mut plan_right_id = right.populate_plan(plan, worker)?;
-
-                let plan_escape_id = if let Some(escape) = escape {
-                    let plan_escape_id = escape.populate_plan(plan, worker)?;
-                    Some(plan_escape_id)
-                } else {
-                    None
-                };
-                if *is_ilike {
-                    let lower_func = worker.metadata.function("lower")?;
-                    plan_left_id =
-                        plan.add_stable_function(lower_func, vec![plan_left_id], None)?;
-                    plan_right_id =
-                        plan.add_stable_function(lower_func, vec![plan_right_id], None)?;
-                }
-                plan.add_like(plan_left_id, plan_right_id, plan_escape_id)?
-            }
+            } => Self::populate_like(left, right, escape.as_deref(), *is_ilike, plan, worker)?,
             ParseExpression::Similar {
                 left,
                 right,
                 escape,
-            } => {
-                let plan_left_id = left.populate_plan(plan, worker)?;
-
-                let plan_right_id = right.populate_plan(plan, worker)?;
-
-                let plan_escape_id = if let Some(escape) = escape {
-                    let plan_escape_id = escape.populate_plan(plan, worker)?;
-                    Some(plan_escape_id)
-                } else {
-                    None
-                };
-                plan.add_like(plan_left_id, plan_right_id, plan_escape_id)?
-            }
+            } => Self::populate_like(left, right, escape.as_deref(), false, plan, worker)?,
             ParseExpression::FinalBetween {
                 is_not,
                 left,
                 center,
                 right,
-            } => {
-                let plan_left_id = left.populate_plan(plan, worker)?;
-                let plan_center_id = center.populate_plan(plan, worker)?;
-                let plan_right_id = right.populate_plan(plan, worker)?;
-
-                // XXX: We're going replace `Bool::Between` with `Bool::And` after typecheck!
-                // This is required for better type inference, e.g.
-                //   SELECT '2026-01-13' BETWEEN '2026-01-01' AND '2026-01-20'::datetime;
-                let greater_eq_id = plan.add_cond(plan_left_id, Bool::GtEq, plan_center_id)?;
-                let less_eq_id = plan.add_cond(plan_left_id, Bool::LtEq, plan_right_id)?;
-                let and_id = plan.add_cond(greater_eq_id, Bool::Between, less_eq_id)?;
-                let between_id = if *is_not {
-                    plan.add_unary(Unary::Not, and_id)?
-                } else {
-                    and_id
-                };
-
-                worker.betweens.push(and_id);
-
-                between_id
-            }
+            } => Self::populate_between(*is_not, left, center, right, plan, worker)?,
             ParseExpression::Infix {
                 op,
                 is_not,
                 left,
                 right,
-            } => {
-                let left_plan_id = left.populate_plan(plan, worker)?;
-
-                let right_plan_id = match op {
-                    ParseExpressionInfixOperator::InfixBool(op) => match op {
-                        Bool::In => {
-                            if let ParseExpression::SubQueryPlanId { plan_id } = &**right {
-                                plan.add_replaced_subquery(*plan_id, worker)?
-                            } else {
-                                right.populate_plan(plan, worker)?
-                            }
-                        }
-                        Bool::Eq | Bool::Gt | Bool::GtEq | Bool::Lt | Bool::LtEq | Bool::NotEq => {
-                            if let ParseExpression::SubQueryPlanId { plan_id } = &**right {
-                                plan.add_replaced_subquery(*plan_id, worker)?
-                            } else {
-                                right.populate_plan(plan, worker)?
-                            }
-                        }
-                        _ => right.populate_plan(plan, worker)?,
-                    },
-                    _ => right.populate_plan(plan, worker)?,
-                };
-
-                // In case:
-                // * `op` = AND (left = `left_plan_id`, right = `right_plan_id`)
-                // * `right_plan_id` = AND (left = expr_1, right = expr_2) (resulted from BETWEEN
-                //   transformation)
-                //                And
-                //  left_plan_id        And
-                //                expr_1    expr_2
-                //
-                // we'll end up in a situation when AND is a right child of another AND (We don't
-                // expect it later as soon as AND is a left-associative operator).
-                // We have to fix it the following way:
-                //                      And
-                //               And        expr_2
-                //  left_plan_id   expr_1
-                let right_plan_is_and = {
-                    let right_expr = plan.get_node(right_plan_id)?;
-                    matches!(
-                        right_expr,
-                        Node::Expression(Expression::Bool(BoolExpr { op: Bool::And, .. }))
-                    )
-                };
-                if matches!(op, ParseExpressionInfixOperator::InfixBool(Bool::And))
-                    && right_plan_is_and
-                {
-                    let right_expr = plan.get_expression_node(right_plan_id)?;
-                    let fixed_left_and_id = if let Expression::Bool(BoolExpr {
-                        op: Bool::And,
-                        left,
-                        ..
-                    }) = right_expr
-                    {
-                        plan.add_cond(left_plan_id, Bool::And, *left)?
-                    } else {
-                        panic!("Expected to see AND operator as right child.");
-                    };
-
-                    let right_expr_mut = plan.get_mut_expression_node(right_plan_id)?;
-                    if let MutExpression::Bool(BoolExpr {
-                        op: Bool::And,
-                        left,
-                        ..
-                    }) = right_expr_mut
-                    {
-                        *left = fixed_left_and_id;
-                        return Ok(right_plan_id);
-                    }
-                }
-
-                let op_plan_id = match op {
-                    ParseExpressionInfixOperator::Concat => {
-                        plan.add_concat(left_plan_id, right_plan_id)
-                    }
-                    ParseExpressionInfixOperator::InfixArithmetic(arith) => {
-                        plan.add_arithmetic_to_plan(left_plan_id, arith.clone(), right_plan_id)?
-                    }
-                    ParseExpressionInfixOperator::InfixBool(bool) => {
-                        plan.add_cond(left_plan_id, *bool, right_plan_id)?
-                    }
-                    ParseExpressionInfixOperator::Escape => {
-                        unreachable!("escape op is not added to AST")
-                    }
-                };
-                if *is_not {
-                    plan.add_unary(Unary::Not, op_plan_id)?
-                } else {
-                    op_plan_id
-                }
-            }
+            } => Self::populate_infix(op, *is_not, left, right, plan, worker)?,
             ParseExpression::Prefix { op, child } => {
                 let child_plan_id = child.populate_plan(plan, worker)?;
                 plan.add_unary(*op, child_plan_id)?
@@ -395,32 +222,7 @@ impl ParseExpression {
                 name,
                 args,
                 feature,
-            } => {
-                let is_distinct = matches!(feature, Some(FunctionFeature::Distinct));
-                let mut plan_arg_ids = Vec::new();
-                for arg in args {
-                    let arg_plan_id = arg.populate_plan(plan, worker)?;
-                    plan_arg_ids.push(arg_plan_id);
-                }
-                if let Some(kind) = AggregateKind::from_name(name) {
-                    plan.add_aggregate_function(kind, plan_arg_ids, is_distinct)?
-                } else if is_distinct {
-                    return Err(SbroadError::Invalid(
-                        Entity::Query,
-                        Some("DISTINCT modifier is allowed only for aggregate functions".into()),
-                    ));
-                } else {
-                    let func = worker.metadata.function(name)?;
-                    match func.volatility {
-                        VolatilityType::Stable => {
-                            plan.add_stable_function(func, plan_arg_ids, feature.clone())?
-                        }
-                        VolatilityType::Volatile => {
-                            plan.add_volatile_function(func, plan_arg_ids, feature.clone())?
-                        }
-                    }
-                }
-            }
+            } => Self::populate_function(name, args, feature.as_ref(), plan, worker)?,
             ParseExpression::Row { children } => {
                 let mut plan_children_ids = Vec::new();
                 for child in children {
@@ -453,20 +255,7 @@ impl ParseExpression {
                 is_not,
                 child,
                 value,
-            } => {
-                let child_plan_id = child.populate_plan(plan, worker)?;
-                let op = match value {
-                    None => Unary::IsNull,
-                    Some(true) => Unary::IsTrue,
-                    Some(false) => Unary::IsFalse,
-                };
-                let op_id = plan.add_unary(op, child_plan_id)?;
-                if *is_not {
-                    plan.add_unary(Unary::Not, op_id)?
-                } else {
-                    op_id
-                }
-            }
+            } => Self::populate_is(*is_not, child, *value, plan, worker)?,
             ParseExpression::InterimBetween { .. } => return Err(SbroadError::Invalid(
                 Entity::Expression,
                 Some(SmolStr::from(
@@ -475,6 +264,273 @@ impl ParseExpression {
             )),
         };
         Ok(plan_id)
+    }
+
+    fn populate_index<M: Metadata>(
+        child: &ParseExpression,
+        indexes: &[ParseExpression],
+        plan: &mut Plan,
+        worker: &mut ExpressionWalker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let child_plan_id = child.populate_plan(plan, worker)?;
+        let index_plan_ids = indexes
+            .iter()
+            .map(|idx| idx.populate_plan(plan, worker))
+            .collect::<Result<Vec<_>, _>>()?;
+        plan.add_index(child_plan_id, index_plan_ids)
+    }
+
+    fn populate_trim<M: Metadata>(
+        kind: Option<&TrimKind>,
+        pattern: Option<&ParseExpression>,
+        target: &ParseExpression,
+        plan: &mut Plan,
+        worker: &mut ExpressionWalker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let pattern = match pattern {
+            Some(p) => Some(p.populate_plan(plan, worker)?),
+            None => None,
+        };
+        let trim_expr = Trim {
+            kind: kind.cloned(),
+            pattern,
+            target: target.populate_plan(plan, worker)?,
+        };
+        Ok(plan.nodes.push(trim_expr.into()))
+    }
+
+    fn populate_is<M: Metadata>(
+        is_not: bool,
+        child: &ParseExpression,
+        value: Option<bool>,
+        plan: &mut Plan,
+        worker: &mut ExpressionWalker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let child_plan_id = child.populate_plan(plan, worker)?;
+        let op = match value {
+            None => Unary::IsNull,
+            Some(true) => Unary::IsTrue,
+            Some(false) => Unary::IsFalse,
+        };
+        let op_id = plan.add_unary(op, child_plan_id)?;
+        if is_not {
+            plan.add_unary(Unary::Not, op_id)
+        } else {
+            Ok(op_id)
+        }
+    }
+
+    fn populate_case<M: Metadata>(
+        search_expr: Option<&ParseExpression>,
+        when_blocks: &[(Box<ParseExpression>, Box<ParseExpression>)],
+        else_expr: Option<&ParseExpression>,
+        plan: &mut Plan,
+        worker: &mut ExpressionWalker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let search_expr_id = if let Some(search_expr) = search_expr {
+            Some(search_expr.populate_plan(plan, worker)?)
+        } else {
+            None
+        };
+        let when_block_ids = when_blocks
+            .iter()
+            .map(|(cond, res)| {
+                Ok((
+                    cond.populate_plan(plan, worker)?,
+                    (res.populate_plan(plan, worker)?),
+                ))
+            })
+            .collect::<Result<Vec<(NodeId, NodeId)>, SbroadError>>()?;
+        let else_expr_id = if let Some(else_expr) = else_expr {
+            Some(else_expr.populate_plan(plan, worker)?)
+        } else {
+            None
+        };
+        Ok(plan.add_case(search_expr_id, when_block_ids, else_expr_id))
+    }
+
+    fn populate_like<M: Metadata>(
+        left: &ParseExpression,
+        right: &ParseExpression,
+        escape: Option<&ParseExpression>,
+        is_ilike: bool,
+        plan: &mut Plan,
+        worker: &mut ExpressionWalker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let mut plan_left_id = left.populate_plan(plan, worker)?;
+
+        let mut plan_right_id = right.populate_plan(plan, worker)?;
+
+        let plan_escape_id = if let Some(escape) = escape {
+            let plan_escape_id = escape.populate_plan(plan, worker)?;
+            Some(plan_escape_id)
+        } else {
+            None
+        };
+        if is_ilike {
+            let lower_func = worker.metadata.function("lower")?;
+            plan_left_id = plan.add_stable_function(lower_func, vec![plan_left_id], None)?;
+            plan_right_id = plan.add_stable_function(lower_func, vec![plan_right_id], None)?;
+        }
+        plan.add_like(plan_left_id, plan_right_id, plan_escape_id)
+    }
+
+    fn populate_between<M: Metadata>(
+        is_not: bool,
+        left: &ParseExpression,
+        center: &ParseExpression,
+        right: &ParseExpression,
+        plan: &mut Plan,
+        worker: &mut ExpressionWalker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let plan_left_id = left.populate_plan(plan, worker)?;
+        let plan_center_id = center.populate_plan(plan, worker)?;
+        let plan_right_id = right.populate_plan(plan, worker)?;
+
+        // XXX: We're going replace `Bool::Between` with `Bool::And` after typecheck!
+        // This is required for better type inference, e.g.
+        //   SELECT '2026-01-13' BETWEEN '2026-01-01' AND '2026-01-20'::datetime;
+        let greater_eq_id = plan.add_cond(plan_left_id, Bool::GtEq, plan_center_id)?;
+        let less_eq_id = plan.add_cond(plan_left_id, Bool::LtEq, plan_right_id)?;
+        let and_id = plan.add_cond(greater_eq_id, Bool::Between, less_eq_id)?;
+        let between_id = if is_not {
+            plan.add_unary(Unary::Not, and_id)?
+        } else {
+            and_id
+        };
+
+        worker.betweens.push(and_id);
+
+        Ok(between_id)
+    }
+
+    fn populate_infix<M: Metadata>(
+        op: &ParseExpressionInfixOperator,
+        is_not: bool,
+        left: &ParseExpression,
+        right: &ParseExpression,
+        plan: &mut Plan,
+        worker: &mut ExpressionWalker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let left_plan_id = left.populate_plan(plan, worker)?;
+
+        let right_plan_id = match op {
+            ParseExpressionInfixOperator::InfixBool(op) => match op {
+                Bool::In => {
+                    if let ParseExpression::SubQueryPlanId { plan_id } = right {
+                        plan.add_replaced_subquery(*plan_id, worker)?
+                    } else {
+                        right.populate_plan(plan, worker)?
+                    }
+                }
+                Bool::Eq | Bool::Gt | Bool::GtEq | Bool::Lt | Bool::LtEq | Bool::NotEq => {
+                    if let ParseExpression::SubQueryPlanId { plan_id } = right {
+                        plan.add_replaced_subquery(*plan_id, worker)?
+                    } else {
+                        right.populate_plan(plan, worker)?
+                    }
+                }
+                _ => right.populate_plan(plan, worker)?,
+            },
+            _ => right.populate_plan(plan, worker)?,
+        };
+
+        // In case:
+        // * `op` = AND (left = `left_plan_id`, right = `right_plan_id`)
+        // * `right_plan_id` = AND (left = expr_1, right = expr_2) (resulted from BETWEEN
+        //   transformation)
+        //                And
+        //  left_plan_id        And
+        //                expr_1    expr_2
+        //
+        // we'll end up in a situation when AND is a right child of another AND (We don't
+        // expect it later as soon as AND is a left-associative operator).
+        // We have to fix it the following way:
+        //                      And
+        //               And        expr_2
+        //  left_plan_id   expr_1
+        let right_plan_is_and = {
+            let right_expr = plan.get_node(right_plan_id)?;
+            matches!(
+                right_expr,
+                Node::Expression(Expression::Bool(BoolExpr { op: Bool::And, .. }))
+            )
+        };
+        if matches!(op, ParseExpressionInfixOperator::InfixBool(Bool::And)) && right_plan_is_and {
+            let right_expr = plan.get_expression_node(right_plan_id)?;
+            let fixed_left_and_id = if let Expression::Bool(BoolExpr {
+                op: Bool::And,
+                left,
+                ..
+            }) = right_expr
+            {
+                plan.add_cond(left_plan_id, Bool::And, *left)?
+            } else {
+                panic!("Expected to see AND operator as right child.");
+            };
+
+            let right_expr_mut = plan.get_mut_expression_node(right_plan_id)?;
+            if let MutExpression::Bool(BoolExpr {
+                op: Bool::And,
+                left,
+                ..
+            }) = right_expr_mut
+            {
+                *left = fixed_left_and_id;
+                return Ok(right_plan_id);
+            }
+        }
+
+        let op_plan_id = match op {
+            ParseExpressionInfixOperator::Concat => plan.add_concat(left_plan_id, right_plan_id),
+            ParseExpressionInfixOperator::InfixArithmetic(arith) => {
+                plan.add_arithmetic_to_plan(left_plan_id, arith.clone(), right_plan_id)?
+            }
+            ParseExpressionInfixOperator::InfixBool(bool) => {
+                plan.add_cond(left_plan_id, *bool, right_plan_id)?
+            }
+            ParseExpressionInfixOperator::Escape => {
+                unreachable!("escape op is not added to AST")
+            }
+        };
+        if is_not {
+            plan.add_unary(Unary::Not, op_plan_id)
+        } else {
+            Ok(op_plan_id)
+        }
+    }
+
+    fn populate_function<M: Metadata>(
+        name: &SmolStr,
+        args: &[ParseExpression],
+        feature: Option<&FunctionFeature>,
+        plan: &mut Plan,
+        worker: &mut ExpressionWalker<M>,
+    ) -> Result<NodeId, SbroadError> {
+        let is_distinct = matches!(feature, Some(FunctionFeature::Distinct));
+        let mut plan_arg_ids = Vec::new();
+        for arg in args {
+            let arg_plan_id = arg.populate_plan(plan, worker)?;
+            plan_arg_ids.push(arg_plan_id);
+        }
+        if let Some(kind) = AggregateKind::from_name(name) {
+            plan.add_aggregate_function(kind, plan_arg_ids, is_distinct)
+        } else if is_distinct {
+            Err(SbroadError::Invalid(
+                Entity::Query,
+                Some("DISTINCT modifier is allowed only for aggregate functions".into()),
+            ))
+        } else {
+            let func = worker.metadata.function(name)?;
+            match func.volatility {
+                VolatilityType::Stable => {
+                    plan.add_stable_function(func, plan_arg_ids, feature.cloned())
+                }
+                VolatilityType::Volatile => {
+                    plan.add_volatile_function(func, plan_arg_ids, feature.cloned())
+                }
+            }
+        }
     }
 }
 

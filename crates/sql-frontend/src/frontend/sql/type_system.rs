@@ -8,7 +8,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
-use crate::ir::types::{DerivedType, UnrestrictedType as SbroadType};
+use crate::ir::types::{CastType, DerivedType, UnrestrictedType as SbroadType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use ahash::AHashMap;
@@ -115,6 +115,76 @@ pub fn to_type_expr(
     subquery_map: &AHashMap<NodeId, NodeId>,
 ) -> Result<TypeExpr, SbroadError> {
     match plan.get_expression_node(node_id)? {
+        Expression::Index(IndexExpr { child, indexes, .. }) => {
+            index_to_type_expr(node_id, *child, indexes, plan, subquery_map)
+        }
+        Expression::Cast(Cast { child, to }) => {
+            cast_to_type_expr(node_id, *child, to, plan, subquery_map)
+        }
+        Expression::Concat(Concat { left, right }) => {
+            operator_to_type_expr(node_id, "||", *left, *right, plan, subquery_map)
+        }
+        Expression::Arithmetic(ArithmeticExpr { op, left, right }) => {
+            operator_to_type_expr(node_id, op.as_str(), *left, *right, plan, subquery_map)
+        }
+        ref expr @ Expression::Bool(BoolExpr { op, left, right }) => match op {
+            Bool::Between => between_to_type_expr(node_id, expr, plan, subquery_map),
+            Bool::And | Bool::Or => {
+                operator_to_type_expr(node_id, op.as_str(), *left, *right, plan, subquery_map)
+            }
+            Bool::Eq | Bool::NotEq | Bool::Gt | Bool::GtEq | Bool::Lt | Bool::LtEq | Bool::In => {
+                comparison_to_type_expr(node_id, *op, *left, *right, plan, subquery_map)
+            }
+        },
+        Expression::Row(Row { list, .. }) => row_to_type_expr(node_id, list, plan, subquery_map),
+        Expression::ArrayLiteral(ArrayLiteral { list, .. }) => {
+            array_to_type_expr(node_id, list, plan, subquery_map)
+        }
+        Expression::ScalarFunction(ScalarFunction { name, children, .. }) => {
+            function_to_type_expr(node_id, name, children, plan, subquery_map)
+        }
+        Expression::Over(over) => over_to_type_expr(node_id, over, plan, subquery_map),
+        Expression::Window(window) => window_to_type_expr(node_id, window, plan, subquery_map),
+        Expression::Case(case) => case_to_type_expr(node_id, case, plan, subquery_map),
+        Expression::Unary(UnaryExpr { op, child }) => {
+            unary_to_type_expr(node_id, *op, *child, plan, subquery_map)
+        }
+        Expression::Like(Like {
+            left,
+            right,
+            escape,
+        }) => function_to_type_expr(
+            node_id,
+            "like",
+            &[*left, *right, *escape],
+            plan,
+            subquery_map,
+        ),
+        Expression::Trim(Trim {
+            pattern: Some(pattern),
+            target,
+            ..
+        }) => function_to_type_expr(node_id, "trim", &[*pattern, *target], plan, subquery_map),
+        Expression::Trim(Trim {
+            pattern: None,
+            target,
+            ..
+        }) => function_to_type_expr(node_id, "trim", &[*target], plan, subquery_map),
+        Expression::Alias(Alias { child, .. }) => to_type_expr(*child, plan, subquery_map),
+        leaf @ (Expression::Parameter(_)
+        | Expression::LetVarRef(_)
+        | Expression::Constant(_)
+        | Expression::Reference(_)
+        | Expression::SubQueryReference(_)
+        | Expression::Timestamp(_)
+        | Expression::CurrentUser(_)
+        | Expression::CountAsterisk(_)) => leaf_to_type_expr(node_id, &leaf),
+    }
+}
+
+/// The expressions without children.
+fn leaf_to_type_expr(node_id: NodeId, expr: &Expression) -> Result<TypeExpr, SbroadError> {
+    match expr {
         Expression::Parameter(Parameter { index, .. }) => {
             Ok(TypeExpr::new(node_id, TypeExprKind::Parameter(index - 1)))
         }
@@ -160,220 +230,6 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Reference(ty);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::Index(IndexExpr { child, indexes, .. }) => {
-            let source = Box::new(to_type_expr(*child, plan, subquery_map)?);
-            let keys = indexes
-                .iter()
-                .map(|idx| to_type_expr(*idx, plan, subquery_map))
-                .collect::<Result<Vec<_>, SbroadError>>()?;
-            let kind = TypeExprKind::IndexChain { source, keys };
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::Cast(Cast { child, to }) => {
-            let to = Type::from(to);
-            let child = to_type_expr(*child, plan, subquery_map)?;
-            let kind = TypeExprKind::Cast(Box::new(child), to);
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::Concat(Concat { left, right }) => {
-            let left = to_type_expr(*left, plan, subquery_map)?;
-            let right = to_type_expr(*right, plan, subquery_map)?;
-            let kind = TypeExprKind::Operator(String::from("||"), vec![left, right]);
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::Arithmetic(ArithmeticExpr { op, left, right }) => {
-            let left = to_type_expr(*left, plan, subquery_map)?;
-            let right = to_type_expr(*right, plan, subquery_map)?;
-            let kind = TypeExprKind::Operator(op.as_str().into(), vec![left, right]);
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        ref expr @ Expression::Bool(BoolExpr { op, left, right }) => match op {
-            Bool::Between => {
-                // Note: lhs: `A >= B`, rhs: `A <= C`.
-                let ((_, lhs), (_, rhs)) =
-                    crate::frontend::sql::ast::ir_populator::try_deconstruct_between_expr(
-                        plan, expr,
-                    )
-                    .expect("malformed BETWEEN");
-                // Unify types of A, B, C.
-                let kind = TypeExprKind::Between(vec![
-                    to_type_expr(lhs.left, plan, subquery_map)?,
-                    to_type_expr(lhs.right, plan, subquery_map)?,
-                    to_type_expr(rhs.right, plan, subquery_map)?,
-                ]);
-                Ok(TypeExpr::new(node_id, kind))
-            }
-            Bool::And | Bool::Or => {
-                let left = to_type_expr(*left, plan, subquery_map)?;
-                let right = to_type_expr(*right, plan, subquery_map)?;
-                let kind = TypeExprKind::Operator(op.as_str().into(), vec![left, right]);
-                Ok(TypeExpr::new(node_id, kind))
-            }
-            Bool::Eq | Bool::NotEq | Bool::Gt | Bool::GtEq | Bool::Lt | Bool::LtEq | Bool::In => {
-                let left = to_type_expr(*left, plan, subquery_map)?;
-                let right = to_type_expr(*right, plan, subquery_map)?;
-                let op = ComparisonOperator::from(*op);
-                let kind = TypeExprKind::Comparison(op, left.into(), right.into());
-                Ok(TypeExpr::new(node_id, kind))
-            }
-        },
-        Expression::Row(Row { list, .. }) => {
-            for (subquery_id, row_id) in subquery_map {
-                if *row_id == node_id {
-                    let mut types = Vec::with_capacity(list.len());
-                    for column in plan.columns_of(*subquery_id)? {
-                        if let Some(ty) = column?.r#type.get() {
-                            types.push(Type::from(*ty));
-                        } else {
-                            // Strictly speaking, NULL should have unknown type, but the type
-                            // system defaults it to text, so we map it to text.
-                            types.push(Type::Text);
-                        }
-                    }
-                    let kind = TypeExprKind::Subquery(types);
-                    return Ok(TypeExpr::new(node_id, kind));
-                }
-            }
-
-            let exprs = to_type_expr_many(list, plan, subquery_map)?;
-            let kind = TypeExprKind::Row(exprs);
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::ArrayLiteral(ArrayLiteral { list, .. }) => {
-            let exprs = to_type_expr_many(list, plan, subquery_map)?;
-            let kind = TypeExprKind::Array(exprs);
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::ScalarFunction(ScalarFunction { name, children, .. }) => match name.as_str() {
-            "coalesce" => {
-                let args = to_type_expr_many(children, plan, subquery_map)?;
-                let kind = TypeExprKind::Coalesce(args);
-                Ok(TypeExpr::new(node_id, kind))
-            }
-            "json_extract_path" => {
-                let args = to_type_expr_many(children, plan, subquery_map)?;
-                let kind = TypeExprKind::JsonExtractPath(args);
-                Ok(TypeExpr::new(node_id, kind))
-            }
-            "unnest" => {
-                let args = to_type_expr_many(children, plan, subquery_map)?;
-                let kind = TypeExprKind::Unnest(args);
-                Ok(TypeExpr::new(node_id, kind))
-            }
-            name => {
-                let args = to_type_expr_many(children, plan, subquery_map)?;
-                let kind = TypeExprKind::Function(name.to_string(), args);
-                Ok(TypeExpr::new(node_id, kind))
-            }
-        },
-        Expression::Over(Over {
-            stable_func,
-            filter,
-            window,
-        }) => {
-            let Expression::ScalarFunction(ScalarFunction { name, children, .. }) =
-                plan.get_expression_node(*stable_func)?
-            else {
-                panic!("Over should have stable func");
-            };
-            let args = to_type_expr_many(children, plan, subquery_map)?;
-            let filter = filter
-                .map(|f| to_type_expr(f, plan, subquery_map))
-                .transpose()?;
-            let over = to_type_expr(*window, plan, subquery_map)?;
-            let kind = TypeExprKind::WindowFunction {
-                name: name.to_string(),
-                args,
-                filter: filter.map(Box::new),
-                over: Box::new(over),
-            };
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::Window(Window {
-            ref partition,
-            ref ordering,
-            ref frame,
-            ..
-        }) => {
-            let partition = partition.as_deref().unwrap_or(&[]);
-            let partition_by = to_type_expr_many(partition, plan, subquery_map)?;
-            let ordering = ordering.as_deref().unwrap_or(&[]);
-            let order_by = order_by_to_type_expr(ordering, plan, subquery_map)?;
-            let frame = frame
-                .as_ref()
-                .map(|f| new_window_frame(f, plan, subquery_map).map(Box::new))
-                .transpose()?;
-            let kind = TypeExprKind::Window {
-                order_by,
-                partition_by,
-                frame,
-            };
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::Case(Case {
-            search_expr,
-            when_blocks,
-            else_expr,
-        }) => {
-            let mut when_exprs = Vec::with_capacity(when_blocks.len());
-            let mut result_exprs = Vec::with_capacity(when_blocks.len());
-
-            let search_expr = search_expr
-                .map(|search| to_type_expr(search, plan, subquery_map))
-                .transpose()?;
-
-            for (when, result) in when_blocks {
-                let when = to_type_expr(*when, plan, subquery_map)?;
-                let result = to_type_expr(*result, plan, subquery_map)?;
-                when_exprs.push(when);
-                result_exprs.push(result);
-            }
-
-            if let Some(els) = else_expr {
-                let els = to_type_expr(*els, plan, subquery_map)?;
-                result_exprs.push(els);
-            }
-
-            let kind = TypeExprKind::Case {
-                search_expr: search_expr.map(Box::new),
-                when_exprs,
-                result_exprs,
-            };
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::Unary(UnaryExpr { op, child }) => {
-            let op = match op {
-                Unary::Not => UnaryOperator::Not,
-                Unary::IsNull => UnaryOperator::IsNull,
-                Unary::IsTrue => UnaryOperator::IsTrue,
-                Unary::IsFalse => UnaryOperator::IsFalse,
-                Unary::Exists => UnaryOperator::Exists,
-            };
-            let child = to_type_expr(*child, plan, subquery_map)?;
-            let kind = TypeExprKind::Unary(op, child.into());
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::Like(Like {
-            left,
-            right,
-            escape,
-        }) => {
-            let args = to_type_expr_many(&[*left, *right, *escape], plan, subquery_map)?;
-            let kind = TypeExprKind::Function("like".into(), args);
-            Ok(TypeExpr::new(node_id, kind))
-        }
-        Expression::Trim(Trim {
-            pattern, target, ..
-        }) => {
-            let args = if let Some(pattern) = pattern {
-                to_type_expr_many(&[*pattern, *target], plan, subquery_map)?
-            } else {
-                to_type_expr_many(&[*target], plan, subquery_map)?
-            };
-
-            let kind = TypeExprKind::Function("trim".into(), args);
-            Ok(TypeExpr::new(node_id, kind))
-        }
         Expression::Timestamp(_) => {
             let kind = TypeExprKind::Literal(Type::Datetime);
             Ok(TypeExpr::new(node_id, kind))
@@ -391,8 +247,256 @@ pub fn to_type_expr(
             let kind = TypeExprKind::Function(String::from("count"), vec![one]);
             Ok(TypeExpr::new(node_id, kind))
         }
-        Expression::Alias(Alias { child, .. }) => to_type_expr(*child, plan, subquery_map),
+        _ => unreachable!("expression with children: {expr:?}"),
     }
+}
+
+fn cast_to_type_expr(
+    node_id: NodeId,
+    child: NodeId,
+    to: &CastType,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let to = Type::from(to);
+    let child = to_type_expr(child, plan, subquery_map)?;
+    let kind = TypeExprKind::Cast(Box::new(child), to);
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn array_to_type_expr(
+    node_id: NodeId,
+    list: &[NodeId],
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let exprs = to_type_expr_many(list, plan, subquery_map)?;
+    let kind = TypeExprKind::Array(exprs);
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn unary_to_type_expr(
+    node_id: NodeId,
+    op: Unary,
+    child: NodeId,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let op = match op {
+        Unary::Not => UnaryOperator::Not,
+        Unary::IsNull => UnaryOperator::IsNull,
+        Unary::IsTrue => UnaryOperator::IsTrue,
+        Unary::IsFalse => UnaryOperator::IsFalse,
+        Unary::Exists => UnaryOperator::Exists,
+    };
+    let child = to_type_expr(child, plan, subquery_map)?;
+    let kind = TypeExprKind::Unary(op, child.into());
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn index_to_type_expr(
+    node_id: NodeId,
+    child: NodeId,
+    indexes: &[NodeId],
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let source = Box::new(to_type_expr(child, plan, subquery_map)?);
+    let keys = indexes
+        .iter()
+        .map(|idx| to_type_expr(*idx, plan, subquery_map))
+        .collect::<Result<Vec<_>, SbroadError>>()?;
+    let kind = TypeExprKind::IndexChain { source, keys };
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn operator_to_type_expr(
+    node_id: NodeId,
+    op: &str,
+    left: NodeId,
+    right: NodeId,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let left = to_type_expr(left, plan, subquery_map)?;
+    let right = to_type_expr(right, plan, subquery_map)?;
+    let kind = TypeExprKind::Operator(op.into(), vec![left, right]);
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn comparison_to_type_expr(
+    node_id: NodeId,
+    op: Bool,
+    left: NodeId,
+    right: NodeId,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let left = to_type_expr(left, plan, subquery_map)?;
+    let right = to_type_expr(right, plan, subquery_map)?;
+    let op = ComparisonOperator::from(op);
+    let kind = TypeExprKind::Comparison(op, left.into(), right.into());
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn between_to_type_expr(
+    node_id: NodeId,
+    expr: &Expression,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    // Note: lhs: `A >= B`, rhs: `A <= C`.
+    let ((_, lhs), (_, rhs)) =
+        crate::frontend::sql::ast::ir_populator::try_deconstruct_between_expr(plan, expr)
+            .expect("malformed BETWEEN");
+    // Unify types of A, B, C.
+    let kind = TypeExprKind::Between(vec![
+        to_type_expr(lhs.left, plan, subquery_map)?,
+        to_type_expr(lhs.right, plan, subquery_map)?,
+        to_type_expr(rhs.right, plan, subquery_map)?,
+    ]);
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn row_to_type_expr(
+    node_id: NodeId,
+    list: &[NodeId],
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    for (subquery_id, row_id) in subquery_map {
+        if *row_id == node_id {
+            let mut types = Vec::with_capacity(list.len());
+            for column in plan.columns_of(*subquery_id)? {
+                if let Some(ty) = column?.r#type.get() {
+                    types.push(Type::from(*ty));
+                } else {
+                    // Strictly speaking, NULL should have unknown type, but the type
+                    // system defaults it to text, so we map it to text.
+                    types.push(Type::Text);
+                }
+            }
+            let kind = TypeExprKind::Subquery(types);
+            return Ok(TypeExpr::new(node_id, kind));
+        }
+    }
+
+    let exprs = to_type_expr_many(list, plan, subquery_map)?;
+    let kind = TypeExprKind::Row(exprs);
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn function_to_type_expr(
+    node_id: NodeId,
+    name: &str,
+    children: &[NodeId],
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let args = to_type_expr_many(children, plan, subquery_map)?;
+    let kind = match name {
+        "coalesce" => TypeExprKind::Coalesce(args),
+        "json_extract_path" => TypeExprKind::JsonExtractPath(args),
+        "unnest" => TypeExprKind::Unnest(args),
+        name => TypeExprKind::Function(name.to_string(), args),
+    };
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn over_to_type_expr(
+    node_id: NodeId,
+    over: &Over,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let Over {
+        stable_func,
+        filter,
+        window,
+    } = over;
+    let Expression::ScalarFunction(ScalarFunction { name, children, .. }) =
+        plan.get_expression_node(*stable_func)?
+    else {
+        panic!("Over should have stable func");
+    };
+    let args = to_type_expr_many(children, plan, subquery_map)?;
+    let filter = filter
+        .map(|f| to_type_expr(f, plan, subquery_map))
+        .transpose()?;
+    let over = to_type_expr(*window, plan, subquery_map)?;
+    let kind = TypeExprKind::WindowFunction {
+        name: name.to_string(),
+        args,
+        filter: filter.map(Box::new),
+        over: Box::new(over),
+    };
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn window_to_type_expr(
+    node_id: NodeId,
+    window: &Window,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let Window {
+        partition,
+        ordering,
+        frame,
+        ..
+    } = window;
+    let partition = partition.as_deref().unwrap_or(&[]);
+    let partition_by = to_type_expr_many(partition, plan, subquery_map)?;
+    let ordering = ordering.as_deref().unwrap_or(&[]);
+    let order_by = order_by_to_type_expr(ordering, plan, subquery_map)?;
+    let frame = frame
+        .as_ref()
+        .map(|f| new_window_frame(f, plan, subquery_map).map(Box::new))
+        .transpose()?;
+    let kind = TypeExprKind::Window {
+        order_by,
+        partition_by,
+        frame,
+    };
+    Ok(TypeExpr::new(node_id, kind))
+}
+
+fn case_to_type_expr(
+    node_id: NodeId,
+    case: &Case,
+    plan: &Plan,
+    subquery_map: &AHashMap<NodeId, NodeId>,
+) -> Result<TypeExpr, SbroadError> {
+    let Case {
+        search_expr,
+        when_blocks,
+        else_expr,
+    } = case;
+    let mut when_exprs = Vec::with_capacity(when_blocks.len());
+    let mut result_exprs = Vec::with_capacity(when_blocks.len());
+
+    let search_expr = search_expr
+        .map(|search| to_type_expr(search, plan, subquery_map))
+        .transpose()?;
+
+    for (when, result) in when_blocks {
+        let when = to_type_expr(*when, plan, subquery_map)?;
+        let result = to_type_expr(*result, plan, subquery_map)?;
+        when_exprs.push(when);
+        result_exprs.push(result);
+    }
+
+    if let Some(els) = else_expr {
+        let els = to_type_expr(*els, plan, subquery_map)?;
+        result_exprs.push(els);
+    }
+
+    let kind = TypeExprKind::Case {
+        search_expr: search_expr.map(Box::new),
+        when_exprs,
+        result_exprs,
+    };
+    Ok(TypeExpr::new(node_id, kind))
 }
 
 static TYPE_SYSTEM: LazyLock<TypeSystem> = LazyLock::new(default_type_system);

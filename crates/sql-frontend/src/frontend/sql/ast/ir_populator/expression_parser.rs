@@ -691,6 +691,541 @@ fn parse_substring<M: Metadata>(
     }
 }
 
+fn parse_identifier_with_continuation<M: Metadata>(
+    primary: Pair<Rule>,
+    param_types: &[DerivedType],
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+    safe_for_volatile_function: bool,
+) -> Result<ParseExpression, SbroadError> {
+    let mut inner_pairs = primary.into_inner();
+    let first_identifier = inner_pairs
+        .next()
+        .expect("Identifier expected under IdentifierWithOptionalContinuation")
+        .as_str();
+
+    let mut tbl_name = None;
+    let mut norm_ident = normalize_ident(first_identifier);
+
+    // simple id, without reference continuation or function invocation continuation
+    let is_simple_id = inner_pairs.is_empty();
+
+    if !is_simple_id {
+        let continuation = inner_pairs
+            .next()
+            .expect("Continuation expected after Identifier");
+        match continuation.as_rule() {
+            Rule::ReferenceContinuation => {
+                let col_name_pair = continuation
+                    .into_inner()
+                    .next()
+                    .expect("Reference continuation must contain an Identifier");
+
+                tbl_name = Some(std::mem::replace(
+                    &mut norm_ident,
+                    normalize_ident(col_name_pair.as_str()),
+                ));
+            }
+            Rule::FunctionInvocationContinuation => {
+                return parse_function_invocation(
+                    norm_ident,
+                    continuation,
+                    param_types,
+                    referred_relation_ids,
+                    worker,
+                    plan,
+                    safe_for_volatile_function,
+                );
+            }
+            rule => unreachable!(
+                "Expr::parse expected identifier continuation, found {:?}",
+                rule
+            ),
+        }
+    };
+
+    parse_reference(
+        first_identifier,
+        norm_ident,
+        tbl_name,
+        is_simple_id,
+        referred_relation_ids,
+        worker,
+        plan,
+    )
+}
+
+fn parse_reference<M: Metadata>(
+    first_identifier: &str,
+    norm_ident: SmolStr,
+    tbl_name: Option<SmolStr>,
+    is_simple_id: bool,
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+) -> Result<ParseExpression, SbroadError> {
+    // LET-variable resolution. Only applies to bare identifiers inside an anonymous block
+    // — qualified `t.x` always refers to a column. If the LET scope has the name we also
+    // probe the relation columns to detect ambiguity: a column with the same name shadowing
+    // a LET would be surprising, so we report the conflict instead of silently picking one.
+    let is_bare_ident = is_simple_id && tbl_name.is_none();
+    if is_bare_ident {
+        match worker.let_scope.resolve_by_name(&norm_ident) {
+            LetVarLookup::Live(decl) => {
+                let var_type = decl.ty;
+                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &norm_ident);
+                if is_column {
+                    return Err(SbroadError::Other(format_smolstr!(
+                        "column reference \"{norm_ident}\" is ambiguous: it could \
+                         refer to either a LET variable or a table column"
+                    )));
+                }
+                worker.let_scope.mark_as_used(&norm_ident);
+                let plan_id = plan.nodes.push(
+                    LetVarRef {
+                        name: norm_ident.clone(),
+                        var_type,
+                    }
+                    .into(),
+                );
+                worker.reference_to_name_map.insert(plan_id, norm_ident);
+                return Ok(ParseExpression::PlanId { plan_id });
+            }
+            LetVarLookup::OutOfScope => {
+                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &norm_ident);
+                if !is_column {
+                    return Err(LetVarScope::out_of_scope_error(&norm_ident));
+                }
+            }
+            LetVarLookup::Unknown => (),
+        }
+    }
+
+    if referred_relation_ids.is_empty() {
+        // Remove quotes to omit repetitions.
+        let unknown_identifier = first_identifier.trim_matches('"');
+        return Err(SbroadError::Other(format_smolstr!(
+            "could not resolve reference \"{unknown_identifier}\""
+        )));
+    }
+
+    let plan_left_id = referred_relation_ids.first().ok_or(SbroadError::Invalid(
+        Entity::Query,
+        Some("Reference must point to some relational node".into()),
+    ))?;
+
+    worker.build_columns_map(plan, *plan_left_id)?;
+
+    let left_child_col_position =
+        worker.columns_map_get_positions(*plan_left_id, &norm_ident, tbl_name.as_deref());
+
+    let plan_right_id = referred_relation_ids.get(1);
+    if let Some(plan_right_id) = plan_right_id {
+        // Referencing Join node.
+        worker.build_columns_map(plan, *plan_right_id)?;
+        let right_child_col_position =
+            worker.columns_map_get_positions(*plan_right_id, &norm_ident, tbl_name.as_deref());
+
+        let present_in_left = left_child_col_position.is_ok();
+        let present_in_right = right_child_col_position.is_ok();
+
+        let ref_id = if present_in_left && present_in_right {
+            return Err(SbroadError::Invalid(
+                Entity::Column,
+                Some(format_smolstr!(
+                    "column name '{norm_ident}' is present in both join children",
+                )),
+            ));
+        } else if present_in_left {
+            let col_with_scan = ColumnWithScan::new(&norm_ident, tbl_name.as_deref());
+            plan.add_ref_from_left_branch(*plan_left_id, *plan_right_id, col_with_scan)?
+        } else if present_in_right {
+            let col_with_scan = ColumnWithScan::new(&norm_ident, tbl_name.as_deref());
+            plan.add_ref_from_right_branch(*plan_left_id, *plan_right_id, col_with_scan)?
+        } else {
+            return Err(SbroadError::NotFound(
+                Entity::Column,
+                format_smolstr!("'{norm_ident}' in the join children",),
+            ));
+        };
+        worker.reference_to_name_map.insert(ref_id, norm_ident);
+        Ok(ParseExpression::PlanId { plan_id: ref_id })
+    } else {
+        // Referencing single node.
+        match left_child_col_position {
+            Ok(col_position) => {
+                let col_type = plan
+                    .column_at(RelColumn::new(*plan_left_id, col_position))
+                    .expect("column position is invalid")
+                    .r#type;
+                let ref_id = plan.nodes.add_ref(
+                    ReferenceTarget::Single(*plan_left_id),
+                    col_position,
+                    col_type,
+                    None,
+                    false,
+                );
+                worker.reference_to_name_map.insert(ref_id, norm_ident);
+                Ok(ParseExpression::PlanId { plan_id: ref_id })
+            }
+            Err(e) => {
+                if is_simple_id && worker.inside_grouping_expression {
+                    let ref_id = plan.nodes.add_ref(
+                        ReferenceTarget::Leaf,
+                        0,
+                        DerivedType::unknown(),
+                        None,
+                        false,
+                    );
+                    let alias_id = plan.nodes.add_alias(&norm_ident, ref_id)?;
+                    Ok(ParseExpression::PlanId { plan_id: alias_id })
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+}
+
+fn parse_function_invocation<M: Metadata>(
+    mut norm_fn_name: SmolStr,
+    continuation: Pair<Rule>,
+    param_types: &[DerivedType],
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+    safe_for_volatile_function: bool,
+) -> Result<ParseExpression, SbroadError> {
+    // Handle function invocation case.
+    let mut args_pairs = continuation.into_inner();
+    let mut feature = None;
+    let mut parse_exprs_args = Vec::new();
+    let function_args = args_pairs.next();
+    if let Some(function_args) = function_args {
+        match function_args.as_rule() {
+            Rule::CountAsterisk => {
+                if "count" != norm_fn_name.as_str() {
+                    return Err(SbroadError::Invalid(
+                        Entity::Query,
+                        Some(format_smolstr!(
+                            "\"*\" is allowed only inside \"count\" aggregate function. Got: {norm_fn_name}",
+                        ))
+                    ));
+                }
+                let count_asterisk_plan_id = plan.nodes.push(CountAsterisk {}.into());
+                parse_exprs_args.push(ParseExpression::PlanId {
+                    plan_id: count_asterisk_plan_id,
+                });
+            }
+            Rule::FunctionArgs => {
+                let mut args_inner = function_args.into_inner();
+                let mut arg_pairs_to_parse = Vec::new();
+                let mut volatile = false;
+
+                // Exposed by picodata scalar function name should be
+                // transformed to real name of representing it stored procedure.
+                if let Some(name) = get_real_function_name(&norm_fn_name) {
+                    norm_fn_name = SmolStr::new(name);
+                }
+
+                // We should not through an error here as while performing
+                // Pratt parsing, we inspect function volatility and may
+                // disallow a function based on the higher-level context
+                // (for example, volatile functions in filters). But if we
+                // error out early because the function is missing from
+                // metadata, we lose meaningful aggregate error diagnostics.
+                // Metadata will be checked again during full parsing,
+                // where a correct "function not found" error can be produced.
+                if let Ok(f) = worker.metadata.function(&norm_fn_name) {
+                    volatile = f.is_volatile();
+                }
+
+                if volatile && !safe_for_volatile_function {
+                    return Err(SbroadError::NotImplemented(
+                        Entity::VolatileFunction,
+                        "is not allowed in filter clause".to_smolstr(),
+                    ));
+                }
+
+                if let Some(first_arg_pair) = args_inner.next() {
+                    if let Rule::Distinct = first_arg_pair.as_rule() {
+                        if volatile {
+                            return Err(SbroadError::Invalid(
+                                Entity::Query,
+                                Some(format_smolstr!(
+                                    "\"distinct\" is not allowed inside VOLATILE function call",
+                                )),
+                            ));
+                        }
+
+                        feature = Some(FunctionFeature::Distinct);
+                    } else {
+                        arg_pairs_to_parse.push(first_arg_pair);
+                    }
+                }
+
+                for arg_pair in args_inner {
+                    arg_pairs_to_parse.push(arg_pair);
+                }
+
+                for arg in arg_pairs_to_parse {
+                    let arg_expr = parse_expr_pratt(
+                        arg.into_inner(),
+                        param_types,
+                        referred_relation_ids,
+                        worker,
+                        plan,
+                        safe_for_volatile_function,
+                    )?;
+                    parse_exprs_args.push(arg_expr);
+                }
+            }
+            rule => unreachable!(
+                "{}",
+                format!("Unexpected rule under FunctionInvocation: {rule:?}")
+            ),
+        }
+    }
+    Ok(ParseExpression::Function {
+        name: norm_fn_name,
+        args: parse_exprs_args,
+        feature,
+    })
+}
+
+fn parse_case<M: Metadata>(
+    primary: Pair<Rule>,
+    param_types: &[DerivedType],
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+    safe_for_volatile_function: bool,
+) -> Result<ParseExpression, SbroadError> {
+    type WhenBlocks = Vec<(Box<ParseExpression>, Box<ParseExpression>)>;
+
+    let mut inner_pairs = primary.into_inner();
+
+    let first_pair = inner_pairs
+        .next()
+        .expect("Case must have at least one child");
+    let mut when_block_pairs = Vec::new();
+    let search_expr = if let Rule::Expr = first_pair.as_rule() {
+        let expr = parse_expr_pratt(
+            first_pair.into_inner(),
+            param_types,
+            referred_relation_ids,
+            worker,
+            plan,
+            safe_for_volatile_function,
+        )?;
+        Some(Box::new(expr))
+    } else {
+        when_block_pairs.push(first_pair);
+        None
+    };
+
+    let mut else_expr = None;
+    for pair in inner_pairs {
+        if Rule::CaseElseBlock == pair.as_rule() {
+            let expr = parse_expr_pratt(
+                pair.into_inner(),
+                param_types,
+                referred_relation_ids,
+                worker,
+                plan,
+                safe_for_volatile_function,
+            )?;
+            else_expr = Some(Box::new(expr));
+        } else {
+            when_block_pairs.push(pair);
+        }
+    }
+
+    let when_blocks: Result<WhenBlocks, SbroadError> = when_block_pairs
+        .into_iter()
+        .map(|when_block_pair| {
+            let mut inner_pairs = when_block_pair.into_inner();
+            let condition_expr_pair = inner_pairs
+                .next()
+                .expect("When block must contain condition expression.");
+            let condition_expr = parse_expr_pratt(
+                condition_expr_pair.into_inner(),
+                param_types,
+                referred_relation_ids,
+                worker,
+                plan,
+                false,
+            )?;
+
+            let result_expr_pair = inner_pairs
+                .next()
+                .expect("When block must contain result expression.");
+            let result_expr = parse_expr_pratt(
+                result_expr_pair.into_inner(),
+                param_types,
+                referred_relation_ids,
+                worker,
+                plan,
+                safe_for_volatile_function,
+            )?;
+
+            Ok::<(Box<ParseExpression>, Box<ParseExpression>), SbroadError>((
+                Box::new(condition_expr),
+                Box::new(result_expr),
+            ))
+        })
+        .collect();
+
+    Ok(ParseExpression::Case {
+        search_expr,
+        when_blocks: when_blocks?,
+        else_expr,
+    })
+}
+
+/// Parses the expressions of a `Row` or an `ArrayLiteral`.
+fn parse_expr_list<M: Metadata>(
+    primary: Pair<Rule>,
+    param_types: &[DerivedType],
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+    safe_for_volatile_function: bool,
+) -> Result<Vec<ParseExpression>, SbroadError> {
+    let mut children = Vec::new();
+    for expr_pair in primary.into_inner() {
+        let child_parse_expr = parse_expr_pratt(
+            expr_pair.into_inner(),
+            param_types,
+            referred_relation_ids,
+            worker,
+            plan,
+            safe_for_volatile_function,
+        )?;
+        children.push(child_parse_expr);
+    }
+    Ok(children)
+}
+
+fn parse_exists<M: Metadata>(
+    primary: Pair<Rule>,
+    param_types: &[DerivedType],
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+    safe_for_volatile_function: bool,
+) -> Result<ParseExpression, SbroadError> {
+    let mut inner_pairs = primary.into_inner();
+    let first_pair = inner_pairs
+        .next()
+        .expect("No child found under Exists node");
+    let first_is_not = matches!(first_pair.as_rule(), Rule::NotFlag);
+    let expr_pair = if first_is_not {
+        inner_pairs
+            .next()
+            .expect("Expr expected next to NotFlag under Exists")
+    } else {
+        first_pair
+    };
+
+    let child_parse_expr = parse_expr_pratt(
+        Pairs::single(expr_pair),
+        param_types,
+        referred_relation_ids,
+        worker,
+        plan,
+        safe_for_volatile_function,
+    )?;
+    Ok(ParseExpression::Exists {
+        is_not: first_is_not,
+        child: Box::new(child_parse_expr),
+    })
+}
+
+fn parse_cast_op<M: Metadata>(
+    primary: Pair<Rule>,
+    param_types: &[DerivedType],
+    referred_relation_ids: &[NodeId],
+    worker: &mut ExpressionWalker<M>,
+    plan: &mut Plan,
+    safe_for_volatile_function: bool,
+) -> Result<ParseExpression, SbroadError> {
+    let mut inner_pairs = primary.into_inner();
+    let expr_pair = inner_pairs.next().expect("Cast has no expr child.");
+    let child_parse_expr = parse_expr_pratt(
+        expr_pair.into_inner(),
+        param_types,
+        referred_relation_ids,
+        worker,
+        plan,
+        safe_for_volatile_function,
+    )?;
+    let type_pair = inner_pairs.next().expect("CastOp has no type child");
+    let cast_type = cast_type_from_pair(type_pair)?;
+
+    Ok(ParseExpression::Cast {
+        cast_type,
+        child: Box::new(child_parse_expr),
+    })
+}
+
+/// `T 'str'` is a sugar for `CAST('str' AS T)`.
+fn parse_typed_literal(
+    primary: Pair<Rule>,
+    plan: &mut Plan,
+) -> Result<ParseExpression, SbroadError> {
+    let mut inner_pairs = primary.into_inner();
+    let type_pair = inner_pairs.next().expect("TypedLiteral has no type child");
+    let cast_type = cast_type_from_type_pair(type_pair)?;
+    let literal_pair = inner_pairs
+        .next()
+        .expect("TypedLiteral has no literal child");
+    let val = crate::frontend::sql::ir::value_from_node(&literal_pair)?;
+    let plan_id = plan.add_const(val);
+
+    Ok(ParseExpression::Cast {
+        cast_type,
+        child: Box::new(ParseExpression::PlanId { plan_id }),
+    })
+}
+
+fn parse_timestamp(primary: Pair<Rule>, plan: &mut Plan) -> Result<ParseExpression, SbroadError> {
+    let rule = primary.as_rule();
+    let precision = primary
+        .into_inner()
+        .next()
+        .map(|p| p.as_str().parse::<usize>().unwrap_or(usize::MAX).min(6))
+        .unwrap_or(6); // Default for Postgres is 6
+
+    let timestamp = match rule {
+        Rule::CurrentTime => {
+            return Err(SbroadError::NotImplemented(
+                Entity::SQLFunction,
+                "`CURRENT_TIME`".to_smolstr(),
+            ));
+        }
+        Rule::CurrentTimestamp => Timestamp::DateTime(TimeParameters {
+            precision,
+            include_timezone: true,
+        }),
+        Rule::LocalTime => {
+            return Err(SbroadError::NotImplemented(
+                Entity::SQLFunction,
+                "`LOCALTIME`".to_smolstr(),
+            ));
+        }
+        Rule::LocalTimestamp => Timestamp::DateTime(TimeParameters {
+            precision,
+            include_timezone: false,
+        }),
+        _ => unreachable!(),
+    };
+
+    let plan_id = plan.nodes.push(timestamp.into());
+    Ok(ParseExpression::PlanId { plan_id })
+}
+
 /// Function responsible for parsing expressions using Pratt parser.
 ///
 /// Parameters:
@@ -713,8 +1248,6 @@ fn parse_expr_pratt<M>(
 where
     M: Metadata,
 {
-    type WhenBlocks = Vec<(Box<ParseExpression>, Box<ParseExpression>)>;
-
     let worker = RefCell::new(worker);
     let plan = RefCell::new(plan);
 
@@ -725,10 +1258,15 @@ where
             let mut plan = plan.borrow_mut();
             let plan = &mut **plan;
 
-            let parse_expr = match primary.as_rule() {
-                Rule::Expr | Rule::Literal => {
-                    parse_expr_pratt(primary.into_inner(), param_types, referred_relation_ids, worker, plan, safe_for_volatile_function)?
-                }
+            match primary.as_rule() {
+                Rule::Expr | Rule::Literal => parse_expr_pratt(
+                    primary.into_inner(),
+                    param_types,
+                    referred_relation_ids,
+                    worker,
+                    plan,
+                    safe_for_volatile_function,
+                ),
                 Rule::ExpressionInParentheses => {
                     let mut inner_pairs = primary.into_inner();
                     let child_expr_pair = inner_pairs
@@ -741,295 +1279,48 @@ where
                         worker,
                         plan,
                         safe_for_volatile_function,
-                    )?
+                    )
                 }
-                Rule::Parameter => {
-                    let plan_id = parse_param(primary, param_types, worker, plan)?;
-                    ParseExpression::PlanId { plan_id }
-                }
+                Rule::Parameter => parse_param(primary, param_types, worker, plan)
+                    .map(|plan_id| ParseExpression::PlanId { plan_id }),
                 Rule::Over => {
-                    let plan_id = parse_window_func(primary, param_types, referred_relation_ids, worker, plan)?;
-                    ParseExpression::PlanId { plan_id }
+                    parse_window_func(primary, param_types, referred_relation_ids, worker, plan)
+                        .map(|plan_id| ParseExpression::PlanId { plan_id })
                 }
-                Rule::IdentifierWithOptionalContinuation => {
-                    let mut inner_pairs = primary.into_inner();
-                    let first_identifier = inner_pairs.next().expect(
-                        "Identifier expected under IdentifierWithOptionalContinuation"
-                    ).as_str();
-
-                    let mut tbl_name = None;
-                    let mut norm_ident = normalize_ident(first_identifier);
-
-					// simple id, without reference continuation or function invocation continuation
-					let is_simple_id = inner_pairs.is_empty();
-
-                    if !is_simple_id {
-                        let continuation = inner_pairs.next().expect("Continuation expected after Identifier");
-                        match continuation.as_rule() {
-                            Rule::ReferenceContinuation => {
-                                let col_name_pair = continuation.into_inner()
-                                    .next().expect("Reference continuation must contain an Identifier");
-
-                                tbl_name = Some(std::mem::replace(&mut norm_ident, normalize_ident(col_name_pair.as_str())));
-                            }
-                            Rule::FunctionInvocationContinuation => {
-                                // Handle function invocation case.
-                                let mut norm_fn_name = norm_ident;
-                                let mut args_pairs = continuation.into_inner();
-                                let mut feature = None;
-                                let mut parse_exprs_args = Vec::new();
-                                let function_args = args_pairs.next();
-                                if let Some(function_args) = function_args {
-                                    match function_args.as_rule() {
-                                        Rule::CountAsterisk => {
-                                            if "count" != norm_fn_name.as_str() {
-                                                return Err(SbroadError::Invalid(
-                                                    Entity::Query,
-                                                    Some(format_smolstr!(
-                                                        "\"*\" is allowed only inside \"count\" aggregate function. Got: {norm_fn_name}",
-                                                    ))
-                                                ));
-                                            }
-                                            let count_asterisk_plan_id = plan.nodes.push(CountAsterisk{}.into());
-                                            parse_exprs_args.push(ParseExpression::PlanId { plan_id: count_asterisk_plan_id });
-                                        }
-                                        Rule::FunctionArgs => {
-                                            let mut args_inner = function_args.into_inner();
-                                            let mut arg_pairs_to_parse = Vec::new();
-                                            let mut volatile = false;
-
-                                            // Exposed by picodata scalar function name should be
-                                            // transformed to real name of representing it stored procedure.
-                                            if let Some(name) = get_real_function_name(&norm_fn_name) {
-                                                norm_fn_name = SmolStr::new(name);
-                                            }
-
-                                            // We should not through an error here as while performing
-                                            // Pratt parsing, we inspect function volatility and may
-                                            // disallow a function based on the higher-level context
-                                            // (for example, volatile functions in filters). But if we
-                                            // error out early because the function is missing from
-                                            // metadata, we lose meaningful aggregate error diagnostics.
-                                            // Metadata will be checked again during full parsing,
-                                            // where a correct "function not found" error can be produced.
-                                            if let Ok(f) = worker.metadata.function(&norm_fn_name) {
-                                                volatile = f.is_volatile();
-                                            }
-
-                                            if volatile && !safe_for_volatile_function {
-                                                return Err(SbroadError::NotImplemented(
-                                                    Entity::VolatileFunction, "is not allowed in filter clause".to_smolstr(),
-                                                    )
-                                                );
-                                            }
-
-                                            if let Some(first_arg_pair) = args_inner.next() {
-                                                if let Rule::Distinct = first_arg_pair.as_rule() {
-                                                    if volatile {
-                                                        return Err(SbroadError::Invalid(
-                                                            Entity::Query,
-                                                            Some(format_smolstr!(
-                                                                "\"distinct\" is not allowed inside VOLATILE function call",
-                                                            ))
-                                                        ));
-                                                    }
-
-                                                    feature = Some(FunctionFeature::Distinct);
-                                                } else {
-                                                    arg_pairs_to_parse.push(first_arg_pair);
-                                                }
-                                            }
-
-                                            for arg_pair in args_inner {
-                                                arg_pairs_to_parse.push(arg_pair);
-                                            }
-
-                                            for arg in arg_pairs_to_parse {
-                                                let arg_expr = parse_expr_pratt(
-                                                    arg.into_inner(),
-                                                    param_types,
-                                                    referred_relation_ids,
-                                                    worker,
-                                                    plan,
-                                                   safe_for_volatile_function,
-                                                )?;
-                                                parse_exprs_args.push(arg_expr);
-                                            }
-                                        }
-                                        rule => unreachable!("{}", format!("Unexpected rule under FunctionInvocation: {rule:?}"))
-                                    }
-                                }
-                                return Ok(ParseExpression::Function {
-                                    name: norm_fn_name,
-                                    args: parse_exprs_args,
-                                    feature,
-                                })
-                            }
-                            rule => unreachable!("Expr::parse expected identifier continuation, found {:?}", rule)
-                        }
-                    };
-
-                    // LET-variable resolution. Only applies to bare identifiers inside an anonymous block
-                    // — qualified `t.x` always refers to a column. If the LET scope has the name we also
-                    // probe the relation columns to detect ambiguity: a column with the same name shadowing
-                    // a LET would be surprising, so we report the conflict instead of silently picking one.
-                    let is_bare_ident = is_simple_id && tbl_name.is_none();
-                    if is_bare_ident {
-                        match worker.let_scope.resolve_by_name(&norm_ident) {
-                            LetVarLookup::Live(decl) => {
-                                let var_type = decl.ty;
-                                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &norm_ident);
-                                if is_column {
-                                    return Err(SbroadError::Other(format_smolstr!(
-                                        "column reference \"{norm_ident}\" is ambiguous: it could \
-                                         refer to either a LET variable or a table column"
-                                    )));
-                                }
-                                worker.let_scope.mark_as_used(&norm_ident);
-                                let plan_id = plan.nodes.push(
-                                    LetVarRef {
-                                        name: norm_ident.clone(),
-                                        var_type,
-                                    }
-                                    .into(),
-                                );
-                                worker.reference_to_name_map.insert(plan_id, norm_ident);
-                                return Ok(ParseExpression::PlanId { plan_id });
-                            }
-                            LetVarLookup::OutOfScope => {
-                                let is_column = worker.resolves_to_column(plan, referred_relation_ids, &norm_ident);
-                                if !is_column {
-                                    return Err(LetVarScope::out_of_scope_error(&norm_ident));
-                                }
-                            },
-                            LetVarLookup::Unknown => (),
-                        }
-                    }
-
-                    if referred_relation_ids.is_empty() {
-                        // Remove quotes to omit repetitions.
-                        let unknown_identifier = first_identifier.trim_matches('"');
-                        return Err(SbroadError::Other(format_smolstr!("could not resolve reference \"{unknown_identifier}\"")));
-                    }
-
-                    let plan_left_id = referred_relation_ids
-                        .first()
-                        .ok_or(SbroadError::Invalid(
-                            Entity::Query,
-                            Some("Reference must point to some relational node".into())
-                        ))?;
-
-                    worker.build_columns_map(plan, *plan_left_id)?;
-
-                    let left_child_col_position = worker.columns_map_get_positions(*plan_left_id, &norm_ident, tbl_name.as_deref());
-
-                    let plan_right_id = referred_relation_ids.get(1);
-                    if let Some(plan_right_id) = plan_right_id {
-                        // Referencing Join node.
-                        worker.build_columns_map(plan, *plan_right_id)?;
-                        let right_child_col_position = worker.columns_map_get_positions(*plan_right_id, &norm_ident, tbl_name.as_deref());
-
-                        let present_in_left = left_child_col_position.is_ok();
-                        let present_in_right = right_child_col_position.is_ok();
-
-                        let ref_id = if present_in_left && present_in_right {
-                            return Err(SbroadError::Invalid(
-                                Entity::Column,
-                                Some(format_smolstr!(
-                                    "column name '{norm_ident}' is present in both join children",
-                                )),
-                            ));
-                        } else if present_in_left {
-                            let col_with_scan = ColumnWithScan::new(&norm_ident, tbl_name.as_deref());
-                            plan.add_ref_from_left_branch(
-                                *plan_left_id,
-                                *plan_right_id,
-                                col_with_scan,
-                            )?
-                        } else if present_in_right {
-                            let col_with_scan = ColumnWithScan::new(&norm_ident, tbl_name.as_deref());
-                            plan.add_ref_from_right_branch(
-                                *plan_left_id,
-                                *plan_right_id,
-                                col_with_scan,
-                            )?
-                        } else {
-                            return Err(SbroadError::NotFound(
-                                Entity::Column,
-                                format_smolstr!("'{norm_ident}' in the join children",),
-                            ));
-                        };
-                        worker.reference_to_name_map.insert(ref_id, norm_ident);
-						ParseExpression::PlanId { plan_id: ref_id }
-                    } else {
-                        // Referencing single node.
-                        match left_child_col_position {
-                            Ok(col_position) => {
-								let col_type = plan
-									.column_at(RelColumn::new(*plan_left_id, col_position))
-									.expect("column position is invalid")
-									.r#type;
-								let ref_id = plan.nodes.add_ref(
-									ReferenceTarget::Single(*plan_left_id),
-									col_position,
-									col_type,
-									None,
-									false);
-								worker.reference_to_name_map.insert(ref_id, norm_ident);
-								ParseExpression::PlanId { plan_id: ref_id }
-							}
-                            Err(e) => {
-								if is_simple_id && worker.inside_grouping_expression {
-									let ref_id = plan.nodes.add_ref(ReferenceTarget::Leaf, 0, DerivedType::unknown(), None, false);
-									let alias_id = plan.nodes.add_alias(&norm_ident, ref_id)?;
-									ParseExpression::PlanId { plan_id: alias_id }
-								} else {
-									return Err(e);
-								}
-							}
-                        }
-                    }
-                }
+                Rule::IdentifierWithOptionalContinuation => parse_identifier_with_continuation(
+                    primary,
+                    param_types,
+                    referred_relation_ids,
+                    worker,
+                    plan,
+                    safe_for_volatile_function,
+                ),
                 Rule::SubQuery => {
                     let sq_ast_id: &usize = worker
                         .sq_pair_to_ast_ids
-                        .get(&primary).expect("SQ ast_id must exist for pest pair");
-                    let plan_id = worker
-                        .sq_ast_to_plan_id
-                        .get(*sq_ast_id)?;
-                    ParseExpression::SubQueryPlanId { plan_id }
+                        .get(&primary)
+                        .expect("SQ ast_id must exist for pest pair");
+                    let plan_id = worker.sq_ast_to_plan_id.get(*sq_ast_id)?;
+                    Ok(ParseExpression::SubQueryPlanId { plan_id })
                 }
-                Rule::Row => {
-                    let mut children = Vec::new();
-
-                    for expr_pair in primary.into_inner() {
-                        let child_parse_expr = parse_expr_pratt(
-                            expr_pair.into_inner(),
-                            param_types,
-                            referred_relation_ids,
-                            worker,
-                            plan,
-                            safe_for_volatile_function,
-                        )?;
-                        children.push(child_parse_expr);
-                    }
-                    ParseExpression::Row { children }
-                }
-                Rule::ArrayLiteral => {
-                    let mut children = Vec::new();
-                    for expr_pair in primary.into_inner() {
-                        let child_parse_expr = parse_expr_pratt(
-                            expr_pair.into_inner(),
-                            param_types,
-                            referred_relation_ids,
-                            worker,
-                            plan,
-                            safe_for_volatile_function,
-                        )?;
-                        children.push(child_parse_expr);
-                    }
-                    ParseExpression::ArrayLiteral { children }
-                }
+                Rule::Row => parse_expr_list(
+                    primary,
+                    param_types,
+                    referred_relation_ids,
+                    worker,
+                    plan,
+                    safe_for_volatile_function,
+                )
+                .map(|children| ParseExpression::Row { children }),
+                Rule::ArrayLiteral => parse_expr_list(
+                    primary,
+                    param_types,
+                    referred_relation_ids,
+                    worker,
+                    plan,
+                    safe_for_volatile_function,
+                )
+                .map(|children| ParseExpression::ArrayLiteral { children }),
                 Rule::Decimal
                 | Rule::Double
                 | Rule::Unsigned
@@ -1040,188 +1331,55 @@ where
                 | Rule::False => {
                     let val = crate::frontend::sql::ir::value_from_node(&primary)?;
                     let plan_id = plan.add_const(val);
-                    ParseExpression::PlanId { plan_id }
+                    Ok(ParseExpression::PlanId { plan_id })
                 }
-                Rule::Exists => {
-                    let mut inner_pairs = primary.into_inner();
-                    let first_pair = inner_pairs.next()
-                        .expect("No child found under Exists node");
-                    let first_is_not = matches!(first_pair.as_rule(), Rule::NotFlag);
-                    let expr_pair = if first_is_not {
-                        inner_pairs.next()
-                            .expect("Expr expected next to NotFlag under Exists")
-                    } else {
-                        first_pair
-                    };
-
-                    let child_parse_expr = parse_expr_pratt(
-                        Pairs::single(expr_pair),
-                        param_types,
-                        referred_relation_ids,
-                        worker,
-                        plan,
-                      safe_for_volatile_function
-                    )?;
-                    ParseExpression::Exists { is_not: first_is_not, child: Box::new(child_parse_expr)}
+                Rule::Exists => parse_exists(
+                    primary,
+                    param_types,
+                    referred_relation_ids,
+                    worker,
+                    plan,
+                    safe_for_volatile_function,
+                ),
+                Rule::Trim => parse_trim(primary, param_types, referred_relation_ids, worker, plan),
+                Rule::Substring => {
+                    parse_substring(primary, param_types, referred_relation_ids, worker, plan)
                 }
-                Rule::Trim => parse_trim(primary, param_types, referred_relation_ids, worker, plan)?,
-                Rule::Substring => parse_substring(primary, param_types, referred_relation_ids, worker, plan)?,
-                Rule::CastOp => {
-                    let mut inner_pairs = primary.into_inner();
-                    let expr_pair = inner_pairs.next().expect("Cast has no expr child.");
-                    let child_parse_expr = parse_expr_pratt(
-                        expr_pair.into_inner(),
-                        param_types,
-                        referred_relation_ids,
-                        worker,
-                        plan,
-                       safe_for_volatile_function,
-                    )?;
-                    let type_pair = inner_pairs.next().expect("CastOp has no type child");
-                    let cast_type = cast_type_from_pair(type_pair)?;
-
-                    ParseExpression::Cast { cast_type, child: Box::new(child_parse_expr) }
-                }
-                Rule::TypedLiteral => {
-                    // `T 'str'` is a sugar for `CAST('str' AS T)`.
-                    let mut inner_pairs = primary.into_inner();
-                    let type_pair = inner_pairs.next().expect("TypedLiteral has no type child");
-                    let cast_type = cast_type_from_type_pair(type_pair)?;
-                    let literal_pair = inner_pairs.next().expect("TypedLiteral has no literal child");
-                    let val = crate::frontend::sql::ir::value_from_node(&literal_pair)?;
-                    let plan_id = plan.add_const(val);
-
-                    ParseExpression::Cast { cast_type, child: Box::new(ParseExpression::PlanId { plan_id }) }
-                }
-                Rule::Case => {
-                    let mut inner_pairs = primary.into_inner();
-
-                    let first_pair = inner_pairs.next().expect("Case must have at least one child");
-                    let mut when_block_pairs = Vec::new();
-                    let search_expr = if let Rule::Expr = first_pair.as_rule() {
-                        let expr = parse_expr_pratt(
-                            first_pair.into_inner(),
-                            param_types,
-                            referred_relation_ids,
-                            worker,
-                            plan,
-                            safe_for_volatile_function,
-                        )?;
-                        Some(Box::new(expr))
-                    } else {
-                        when_block_pairs.push(first_pair);
-                        None
-                    };
-
-                    let mut else_expr = None;
-                    for pair in inner_pairs {
-                        if Rule::CaseElseBlock == pair.as_rule() {
-                            let expr = parse_expr_pratt(
-                                pair.into_inner(),
-                                param_types,
-                                referred_relation_ids,
-                                worker,
-                                plan,
-                                safe_for_volatile_function,
-                            )?;
-                            else_expr = Some(Box::new(expr));
-                        } else {
-                            when_block_pairs.push(pair);
-                        }
-                    }
-
-                    let when_blocks: Result<WhenBlocks, SbroadError> = when_block_pairs
-                        .into_iter()
-                        .map(|when_block_pair| {
-                            let mut inner_pairs = when_block_pair.into_inner();
-                            let condition_expr_pair = inner_pairs.next().expect("When block must contain condition expression.");
-                            let condition_expr = parse_expr_pratt(
-                                condition_expr_pair.into_inner(),
-                                param_types,
-                                referred_relation_ids,
-                                worker,
-                                plan,
-                               false,
-                            )?;
-
-                            let result_expr_pair = inner_pairs.next().expect("When block must contain result expression.");
-                            let result_expr = parse_expr_pratt(
-                                result_expr_pair.into_inner(),
-                                param_types,
-                                referred_relation_ids,
-                                worker,
-                                plan,
-                               safe_for_volatile_function,
-                            )?;
-
-                            Ok::<(Box<ParseExpression>, Box<ParseExpression>), SbroadError>((
-                                Box::new(condition_expr),
-                                Box::new(result_expr)
-                            ))
-
-                        })
-                        .collect();
-
-                    ParseExpression::Case {
-                        search_expr,
-                        when_blocks: when_blocks?,
-                        else_expr,
-                    }
-                }
+                Rule::CastOp => parse_cast_op(
+                    primary,
+                    param_types,
+                    referred_relation_ids,
+                    worker,
+                    plan,
+                    safe_for_volatile_function,
+                ),
+                Rule::TypedLiteral => parse_typed_literal(primary, plan),
+                Rule::Case => parse_case(
+                    primary,
+                    param_types,
+                    referred_relation_ids,
+                    worker,
+                    plan,
+                    safe_for_volatile_function,
+                ),
                 Rule::CurrentDate => {
                     let plan_id = plan.nodes.push(Timestamp::Date.into());
-                    ParseExpression::PlanId { plan_id }
+                    Ok(ParseExpression::PlanId { plan_id })
                 }
                 Rule::CurrentUser => {
                     let plan_id = plan.nodes.push(CurrentUser {}.into());
-                    ParseExpression::PlanId { plan_id }
+                    Ok(ParseExpression::PlanId { plan_id })
                 }
-                rule @ (Rule::CurrentTime |
-                Rule::CurrentTimestamp |
-                Rule::LocalTime |
-                Rule::LocalTimestamp) => {
-                    let precision = primary.into_inner().next()
-                        .map(|p| p.as_str().parse::<usize>().unwrap_or(usize::MAX).min(6))
-                        .unwrap_or(6); // Default for Postgres is 6
-
-                    let timestamp = match rule {
-                        Rule::CurrentTime => {
-                            return Err(SbroadError::NotImplemented(
-                                Entity::SQLFunction,
-                                "`CURRENT_TIME`".to_smolstr())
-                            );
-                        }
-                        Rule::CurrentTimestamp => {
-                            Timestamp::DateTime(TimeParameters {
-                                precision,
-                                include_timezone: true,
-                            })
-                        }
-                        Rule::LocalTime => {
-                            return Err(SbroadError::NotImplemented(
-                                Entity::SQLFunction,
-                                "`LOCALTIME`".to_smolstr())
-                            );
-                        }
-                        Rule::LocalTimestamp => {
-                            Timestamp::DateTime(TimeParameters {
-                                precision,
-                                include_timezone: false,
-                            })
-                        }
-                        _ => unreachable!()
-                    };
-
-                    let plan_id = plan.nodes.push(timestamp.into());
-                    ParseExpression::PlanId { plan_id }
-                }
+                Rule::CurrentTime
+                | Rule::CurrentTimestamp
+                | Rule::LocalTime
+                | Rule::LocalTimestamp => parse_timestamp(primary, plan),
                 Rule::CountAsterisk => {
-                    let plan_id = plan.nodes.push(CountAsterisk{}.into());
-                    ParseExpression::PlanId { plan_id }
+                    let plan_id = plan.nodes.push(CountAsterisk {}.into());
+                    Ok(ParseExpression::PlanId { plan_id })
                 }
-                rule      => unreachable!("Expr::parse expected atomic rule, found {:?}", rule),
-            };
-            Ok(parse_expr)
+                rule => unreachable!("Expr::parse expected atomic rule, found {:?}", rule),
+            }
         })
         .map_infix(|lhs, op, rhs| {
             let mut lhs = lhs?;
@@ -1236,16 +1394,16 @@ where
                         left: Box::new(lhs),
                         right: Box::new(rhs),
                         escape: None,
-                        is_ilike
-                    })
-                },
+                        is_ilike,
+                    });
+                }
                 Rule::Similar => {
                     return Ok(ParseExpression::Similar {
                         left: Box::new(lhs),
                         right: Box::new(rhs),
                         escape: None,
                     })
-                },
+                }
                 Rule::Between => {
                     let mut op_inner = op.into_inner();
                     is_not = op_inner.next().is_some();
@@ -1253,8 +1411,8 @@ where
                         is_not,
                         left: Box::new(lhs),
                         right: Box::new(rhs),
-                    })
-                },
+                    });
+                }
                 Rule::Escape => ParseExpressionInfixOperator::Escape,
                 Rule::Eq => ParseExpressionInfixOperator::InfixBool(Bool::Eq),
                 Rule::NotEq => ParseExpressionInfixOperator::InfixBool(Bool::NotEq),
@@ -1263,29 +1421,45 @@ where
                 Rule::Gt => ParseExpressionInfixOperator::InfixBool(Bool::Gt),
                 Rule::GtEq => ParseExpressionInfixOperator::InfixBool(Bool::GtEq),
                 Rule::In => {
-                    if !matches!(rhs, ParseExpression::Row{..}|ParseExpression::SubQueryPlanId{..}) {
+                    if !matches!(
+                        rhs,
+                        ParseExpression::Row { .. } | ParseExpression::SubQueryPlanId { .. }
+                    ) {
                         return Err(SbroadError::Invalid(
                             Entity::Expression,
-                            Some(format_smolstr!("In expression must have query or a list of values as right child"))
+                            Some(format_smolstr!(
+                                "In expression must have query or a list of values as right child"
+                            )),
                         ));
                     }
                     let mut op_inner = op.into_inner();
-                    is_not = op_inner.next().is_some_and(|i| matches!(i.as_rule(), Rule::NotFlag));
+                    is_not = op_inner
+                        .next()
+                        .is_some_and(|i| matches!(i.as_rule(), Rule::NotFlag));
                     ParseExpressionInfixOperator::InfixBool(Bool::In)
                 }
-                Rule::Subtract      => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Subtract),
-                Rule::Divide        => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Divide),
-                Rule::Modulo        => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Modulo),
-                Rule::Multiply      => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Multiply),
-                Rule::Add        => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Add),
+                Rule::Subtract => {
+                    ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Subtract)
+                }
+                Rule::Divide => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Divide),
+                Rule::Modulo => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Modulo),
+                Rule::Multiply => {
+                    ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Multiply)
+                }
+                Rule::Add => ParseExpressionInfixOperator::InfixArithmetic(Arithmetic::Add),
                 Rule::ConcatInfixOp => ParseExpressionInfixOperator::Concat,
-                rule           => unreachable!("Expr::parse expected infix operation, found {:?}", rule),
+                rule => unreachable!("Expr::parse expected infix operation, found {:?}", rule),
             };
 
             // HACK: InterimBetween(e1, e2) AND e3 => FinalBetween(e1, e2, e3).
             if matches!(op, ParseExpressionInfixOperator::InfixBool(Bool::And)) {
                 if let Some((expr, is_exact_match)) = find_interim_between(&mut lhs) {
-                    let ParseExpression::InterimBetween { is_not, left, right } = expr else {
+                    let ParseExpression::InterimBetween {
+                        is_not,
+                        left,
+                        right,
+                    } = expr
+                    else {
                         panic!("expected ParseExpression::InterimBetween");
                     };
 
@@ -1304,7 +1478,7 @@ where
                 }
             }
             if matches!(op, ParseExpressionInfixOperator::Escape) {
-                return connect_escape_to_like_node(lhs, rhs)
+                return connect_escape_to_like_node(lhs, rhs);
             }
 
             Ok(ParseExpression::Infix {
@@ -1319,7 +1493,10 @@ where
                 Rule::UnaryNot => Unary::Not,
                 rule => unreachable!("Expr::parse expected prefix operator, found {:?}", rule),
             };
-            Ok(ParseExpression::Prefix { op, child: Box::new(child?)})
+            Ok(ParseExpression::Prefix {
+                op,
+                child: Box::new(child?),
+            })
         })
         .map_postfix(|child, op| {
             let mut worker = worker.borrow_mut();
@@ -1330,7 +1507,9 @@ where
             let child = child?;
             match op.as_rule() {
                 Rule::IndexPostfix => {
-                    let expr_pair = op.into_inner().next()
+                    let expr_pair = op
+                        .into_inner()
+                        .next()
                         .expect("Expected Expr under IndexPostfix.");
                     let which = parse_expr_pratt(
                         expr_pair.into_inner(),
@@ -1338,7 +1517,7 @@ where
                         referred_relation_ids,
                         worker,
                         plan,
-                        true
+                        true,
                     )?;
                     // Fold consecutive subscripts into a single index-chain node.
                     match child {
@@ -1353,17 +1532,22 @@ where
                     }
                 }
                 Rule::CastPostfix => {
-                    let ty_pair = op.into_inner().next()
+                    let ty_pair = op
+                        .into_inner()
+                        .next()
                         .expect("Expected CastTarget under CastPostfix.");
                     let cast_type = cast_type_from_pair(ty_pair)?;
-                    Ok(ParseExpression::Cast { child: Box::new(child), cast_type })
+                    Ok(ParseExpression::Cast {
+                        child: Box::new(child),
+                        cast_type,
+                    })
                 }
                 Rule::IsPostfix => {
                     let mut inner = op.into_inner();
                     let (is_not, value_index) = match inner.len() {
                         2 => (true, 1),
                         1 => (false, 0),
-                        _ => unreachable!("Is must have 1 or 2 children")
+                        _ => unreachable!("Is must have 1 or 2 children"),
                     };
                     let value_rule = inner
                         .nth(value_index)
@@ -1373,9 +1557,13 @@ where
                         Rule::True => Some(true),
                         Rule::False => Some(false),
                         Rule::Unknown | Rule::Null => None,
-                        _ => unreachable!("Is value must be TRUE, FALSE, NULL or UNKNOWN")
+                        _ => unreachable!("Is value must be TRUE, FALSE, NULL or UNKNOWN"),
                     };
-                    Ok(ParseExpression::Is { is_not, child: Box::new(child), value })
+                    Ok(ParseExpression::Is {
+                        is_not,
+                        child: Box::new(child),
+                        value,
+                    })
                 }
                 rule => unreachable!("Expr::parse expected postfix operator, found {:?}", rule),
             }
