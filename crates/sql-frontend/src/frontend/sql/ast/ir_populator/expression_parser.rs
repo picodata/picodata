@@ -21,7 +21,7 @@ use crate::ir::types::{CastType, DerivedType, NestedType, UnrestrictedType};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::utils::normalize_ident;
-use sql_type_system::error::Error as TypeSystemError;
+use sql_type_system::error::ErrorKind as TypeSystemErrorKind;
 use sql_type_system::expr::Type;
 
 use super::{
@@ -1471,7 +1471,7 @@ where
 
     let ty = type_analyzer.get_report().get_type(&expr_id);
     if ty != Type::Boolean {
-        return Err(TypeSystemError::UnexpectedBooleanArgumentType(context, ty).into());
+        return Err(TypeSystemErrorKind::UnexpectedBooleanArgumentType(context, ty).into());
     }
 
     Ok(expr_id)

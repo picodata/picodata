@@ -13,7 +13,7 @@ use crate::ir::value::Value;
 use crate::ir::Plan;
 use ahash::AHashMap;
 use smol_str::format_smolstr;
-use sql_type_system::error::Error as TypeSystemError;
+use sql_type_system::error::ErrorKind as TypeSystemErrorKind;
 use sql_type_system::expr::{
     ComparisonOperator, Expr as GenericExpr, ExprKind as GenericExprKind, FrameKind, Type,
     UnaryOperator, WindowFrame as GenericWindowFrame,
@@ -817,12 +817,12 @@ fn analyze_homogeneous_rows(
     let ncolumns = rows.first().map(|r| r.len()).unwrap_or(0);
     for row in rows {
         if row.len() != ncolumns {
-            return Err(TypeSystemError::ListsMustAllBeTheSameLentgh(ctx).into());
+            return Err(TypeSystemErrorKind::ListsMustAllBeTheSameLentgh(ctx).into());
         }
     }
 
     if !desired_types.is_empty() && desired_types.len() != ncolumns {
-        return Err(TypeSystemError::DesiredTypesCannotBeMatchedWithExprs(
+        return Err(TypeSystemErrorKind::DesiredTypesCannotBeMatchedWithExprs(
             desired_types.len(),
             ncolumns,
         )

@@ -3,7 +3,7 @@ use crate::ir::types::UnrestrictedType;
 use rmp_serde::encode::Error as EncodeError;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql_protocol::error::ProtocolError;
-use sql_type_system::error::Error as TypeSystemError;
+use sql_type_system::error::{Error as TypeSystemError, ErrorKind as TypeSystemErrorKind};
 use std::fmt;
 use tarantool::error::Error;
 use tarantool::transaction::TransactionError;
@@ -540,6 +540,12 @@ impl From<TypeError> for SbroadError {
 impl From<TypeSystemError> for SbroadError {
     fn from(error: TypeSystemError) -> Self {
         SbroadError::TypeSystemError(error)
+    }
+}
+
+impl From<TypeSystemErrorKind> for SbroadError {
+    fn from(kind: TypeSystemErrorKind) -> Self {
+        TypeSystemError::from(kind).into()
     }
 }
 

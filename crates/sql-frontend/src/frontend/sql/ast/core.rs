@@ -52,7 +52,7 @@ use crate::ir::types::{ColumnDefType, DomainType};
 use crate::ir::value::Value;
 use crate::ir::{node::plugin, Plan};
 use crate::warn;
-use sql_type_system::error::Error as TypeSystemError;
+use sql_type_system::error::ErrorKind as TypeSystemErrorKind;
 use tarantool::decimal::Decimal;
 use tarantool::space::SpaceEngineType;
 use type_system::TypeAnalyzer;
@@ -4407,16 +4407,20 @@ pub(in crate::frontend::sql) fn parse_insert_source<M: Metadata>(
                 worker,
                 plan,
             )
-            .map_err(|err| match err.kind() {
-                SbroadErrorInner::TypeSystemError(
-                    TypeSystemError::DesiredTypesCannotBeMatchedWithExprs(types, exprs),
-                ) => SbroadError::Invalid(
-                    Entity::Query,
-                    Some(format_smolstr!(
-                        "INSERT expects {types} columns, got {exprs}"
-                    )),
-                ),
-                _ => err,
+            .map_err(|err| {
+                if let SbroadErrorInner::TypeSystemError(e) = err.kind() {
+                    if let TypeSystemErrorKind::DesiredTypesCannotBeMatchedWithExprs(types, exprs) =
+                        e.kind()
+                    {
+                        return SbroadError::Invalid(
+                            Entity::Query,
+                            Some(format_smolstr!(
+                                "INSERT expects {types} columns, got {exprs}"
+                            )),
+                        );
+                    }
+                }
+                err
             })?;
 
             let values_id = plan.add_values(values_rows_ids)?;

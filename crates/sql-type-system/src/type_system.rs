@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::{Error, ErrorKind};
 use crate::expr::{
     ComparisonOperator, Expr, ExprKind, FrameKind, NestedType, Type, UnaryOperator, WindowFrame,
 };
@@ -332,11 +332,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                         _else => (*new_type, old_type),
                     };
 
-                    return Err(Error::InconsistentParameterTypesDeduced {
+                    return Err(ErrorKind::InconsistentParameterTypesDeduced {
                         idx: *idx,
                         preferred,
                         another,
-                    });
+                    }
+                    .into());
                 }
                 _ => (),
             }
@@ -361,8 +362,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         // Any and Array(Any) as a desired type are prohibit, see the comment to `Type::Any`
         // for more details.
         match desired_type {
-            Type::Any => return Err(Error::UnexpectedExpressionOfTypeAny),
-            Type::Array(NestedType::Any) => return Err(Error::UnexpectedExpressionOfTypeArrayAny),
+            Type::Any => return Err(ErrorKind::UnexpectedExpressionOfTypeAny.into()),
+            Type::Array(NestedType::Any) => {
+                return Err(ErrorKind::UnexpectedExpressionOfTypeArrayAny.into())
+            }
             _ => {}
         }
 
@@ -413,7 +416,9 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             match offset_type {
                 Type::Integer => {}
                 Type::Numeric | Type::Double if castable => report.cast(&offset.id, Type::Integer),
-                _else => return Err(Error::IncorrectFrameArgumentType(kind, offset_type)),
+                _else => {
+                    return Err(ErrorKind::IncorrectFrameArgumentType(kind, offset_type).into())
+                }
             }
         }
         Ok(report)
@@ -436,7 +441,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             // PostgreSQL pairs a datetime column with `interval`
             // offsets, a type we do not have.
             Type::Datetime => (Type::Integer, &[]),
-            _else => return Err(Error::RangeFrameUnsupportedColumnType(col_type)),
+            _else => return Err(ErrorKind::RangeFrameUnsupportedColumnType(col_type).into()),
         };
 
         for offset in offsets {
@@ -457,10 +462,9 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             report.extend(offset_report);
 
             if !accepted.contains(&offset_type) {
-                return Err(Error::RangeFrameUnsupportedOffsetType(
-                    col_type,
-                    offset_type,
-                ));
+                return Err(
+                    ErrorKind::RangeFrameUnsupportedOffsetType(col_type, offset_type).into(),
+                );
             }
             // The offset is added to the column value, so it is
             // used as the column type.
@@ -481,7 +485,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         let report = self.analyze(expr, Type::Boolean)?;
         let ty = report.get_type(&expr.id);
         if ty != Type::Boolean {
-            return Err(Error::UnexpectedBooleanArgumentType(context, ty));
+            return Err(ErrorKind::UnexpectedBooleanArgumentType(context, ty).into());
         }
         Ok(report)
     }
@@ -726,9 +730,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                             // TODO: analyze subquery
                             TypeReport::new()
                         } else {
-                            return Err(Error::Other(
+                            return Err(ErrorKind::Other(
                                 "EXISTS can only be applied to subquery".into(),
-                            ));
+                            )
+                            .into());
                         }
                     }
                 };
@@ -742,14 +747,14 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                     return Ok(report);
                 }
 
-                Err(Error::SubqueryMustReturnOnlyOneColumn)
+                Err(ErrorKind::SubqueryMustReturnOnlyOneColumn.into())
             }
             ExprKind::Row(_) => {
                 // Rows cannot be analyzed as the system does not support tuples, so we cannot
                 // return a reasonable type. However, in some contexts we explicitly check children
                 // and perform special measures.
                 // See comparison operations for an example of how rows values are handled.
-                Err(Error::RowValueMisused)
+                Err(ErrorKind::RowValueMisused.into())
             }
             ExprKind::Array(args) => self.analyze_array_literal(&expr.id, args, desired_type),
         }
@@ -767,7 +772,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         // (`SQL_MAX_FUNCTION_ARG`) and would reject the call on a storage.
         const MAX_ARGS: usize = 127;
         if args.len() > MAX_ARGS {
-            return Err(Error::TooManyArguments("unnest", MAX_ARGS, args.len()));
+            return Err(ErrorKind::TooManyArguments("unnest", MAX_ARGS, args.len()).into());
         }
 
         let mut report = TypeReport::new();
@@ -847,7 +852,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         let result_type = match source_type {
             Type::Any | Type::Map => Type::Any,
             Type::Array(nested) => Type::from(nested),
-            other => return Err(Error::CannotIndexExpressionOfType(other)),
+            other => return Err(ErrorKind::CannotIndexExpressionOfType(other).into()),
         };
 
         // We've made patches to Tarantool for arrays to support TEXT indexes.
@@ -900,7 +905,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         let (elem_ty, mut report) = self.analyze_homogeneous_exprs("ARRAY", args, homo_target)?;
 
         let nested = match elem_ty {
-            Type::Array(_) => return Err(Error::NestedArraysAreNotSupported),
+            Type::Array(_) => return Err(ErrorKind::NestedArraysAreNotSupported.into()),
             other => NestedType::try_from(other).expect("non-array types are valid nested types"),
         };
         report.report(expr_id, Type::Array(nested));
@@ -974,10 +979,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     ) -> Result<Option<(Type, TypeReport<Id>)>, Error> {
         // First, select overloads with the given name.
         let Some(overloads) = self.type_system.functions.get(name) else {
-            return Err(Error::FunctionDoesNotExist {
+            return Err(ErrorKind::FunctionDoesNotExist {
                 name: name.to_string(),
                 kind,
-            });
+            }
+            .into());
         };
 
         // Filter overloads with same number of arguments as it was passed and required kind.
@@ -1091,7 +1097,9 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         // Handle `a IN (1,2)` first.
         if let (ComparisonOperator::In, ExprKind::Row(right_row)) = (op, &right.kind) {
             if let ExprKind::Row(_) = left.kind {
-                return Err(Error::Other("IN operator for rows is not supported".into()));
+                return Err(
+                    ErrorKind::Other("IN operator for rows is not supported".into()).into(),
+                );
             }
             let mut exprs = vec![left];
             exprs.append(&mut right_row.iter().collect::<Vec<_>>());
@@ -1108,10 +1116,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             (ExprKind::Row(left_row), ExprKind::Row(right_row)) => {
                 // Example: `(a,b) = (1,2)`
                 if left_row.len() != right_row.len() {
-                    return Err(Error::UnequalNumberOfEntriesInRowExpression(
+                    return Err(ErrorKind::UnequalNumberOfEntriesInRowExpression(
                         left_row.len(),
                         right_row.len(),
-                    ));
+                    )
+                    .into());
                 }
 
                 let mut report = TypeReport::new();
@@ -1127,10 +1136,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             | (ExprKind::Subquery(sq_types), ExprKind::Row(row)) => {
                 // Example: `(1, 2) = (select 1, 2)`
                 if row.len() != sq_types.len() {
-                    return Err(Error::SubqueryReturnsUnexpectedNumberOfColumns(
+                    return Err(ErrorKind::SubqueryReturnsUnexpectedNumberOfColumns(
                         sq_types.len(),
                         row.len(),
-                    ));
+                    )
+                    .into());
                 }
 
                 // TODO: It'd be better to infer row types first and then use these types
@@ -1157,10 +1167,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             (ExprKind::Subquery(left_types), ExprKind::Subquery(right_types)) => {
                 // Example: `(select 1, 2) = (values (1, 2))`
                 if left_types.len() != right_types.len() {
-                    return Err(Error::SubqueryReturnsUnexpectedNumberOfColumns(
+                    return Err(ErrorKind::SubqueryReturnsUnexpectedNumberOfColumns(
                         left_types.len(),
                         right_types.len(),
-                    ));
+                    )
+                    .into());
                 }
 
                 for (l, r) in zip(left_types, right_types) {
@@ -1308,10 +1319,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         exprs: &[impl Borrow<Expr<Id>>],
     ) -> Error {
         let types = self.analyze_exprs_types_no_error(exprs);
-        Error::TypesCannotBeMatched {
+        ErrorKind::TypesCannotBeMatched {
             context: context.to_string(),
             types,
         }
+        .into()
     }
 
     fn analyze_many(

@@ -84,7 +84,7 @@ pub use type_system::{Function, TypeReport, TypeSystem};
 #[cfg(test)]
 mod tests {
     use crate::{
-        error::Error,
+        error::{Error, ErrorKind},
         expr::{Expr as GenericExpr, ExprKind as GenericExprKind, NestedType, Type},
         type_system::{Function, FunctionKind, TypeAnalyzer as GenericTypeAnalyzer, TypeSystem},
     };
@@ -705,11 +705,12 @@ mod tests {
         let err = analyzer.analyze(&expr, None).unwrap_err();
         assert_eq!(
             err,
-            Error::CouldNotResolveOverload {
+            ErrorKind::CouldNotResolveOverload {
                 kind: FunctionKind::Operator,
                 name: "=".into(),
                 argtypes: vec![Some(Integer), Some(Boolean)],
             }
+            .into()
         );
 
         // ensure that expression is resolved to parameter type
@@ -777,11 +778,12 @@ mod tests {
         let err = analyzer.analyze(&expr, None).unwrap_err();
         assert_eq!(
             err,
-            Error::InconsistentParameterTypesDeduced {
+            ErrorKind::InconsistentParameterTypesDeduced {
                 idx: 0,
                 preferred: Integer,
                 another: Double
             }
+            .into()
         );
     }
 
@@ -910,7 +912,7 @@ mod tests {
         let mut analyzer = TypeAnalyzer::new(&type_system);
         let err = analyzer.analyze(&e, None).unwrap_err();
         assert!(
-            matches!(err, Error::TypesCannotBeMatched { ref context, .. } if context.as_str() == "ARRAY"),
+            matches!(err.kind(), ErrorKind::TypesCannotBeMatched { context, .. } if context.as_str() == "ARRAY"),
             "unexpected error: {err:?}"
         );
     }
@@ -984,7 +986,7 @@ mod tests {
         let err = analyzer
             .analyze(&e, Some(arr(NestedType::Any)))
             .unwrap_err();
-        assert_eq!(err, Error::UnexpectedExpressionOfTypeArrayAny);
+        assert_eq!(err.kind(), &ErrorKind::UnexpectedExpressionOfTypeArrayAny);
 
         // Empty array literal.
         let e = array(vec![]);
@@ -992,7 +994,7 @@ mod tests {
         let err = analyzer
             .analyze(&e, Some(arr(NestedType::Any)))
             .unwrap_err();
-        assert_eq!(err, Error::UnexpectedExpressionOfTypeArrayAny);
+        assert_eq!(err.kind(), &ErrorKind::UnexpectedExpressionOfTypeArrayAny);
 
         // A plain literal is rejected the same way.
         let e = lit(Integer);
@@ -1000,7 +1002,7 @@ mod tests {
         let err = analyzer
             .analyze(&e, Some(arr(NestedType::Any)))
             .unwrap_err();
-        assert_eq!(err, Error::UnexpectedExpressionOfTypeArrayAny);
+        assert_eq!(err.kind(), &ErrorKind::UnexpectedExpressionOfTypeArrayAny);
     }
 
     #[test]
@@ -1010,7 +1012,7 @@ mod tests {
         let outer = array(vec![inner]);
         let mut analyzer = TypeAnalyzer::new(&type_system);
         let err = analyzer.analyze(&outer, None).unwrap_err();
-        assert_eq!(err, Error::NestedArraysAreNotSupported);
+        assert_eq!(err.kind(), &ErrorKind::NestedArraysAreNotSupported);
     }
 
     #[test]
@@ -1215,7 +1217,7 @@ mod tests {
         let err = TypeAnalyzer::new(&type_system)
             .analyze(&e, None)
             .unwrap_err();
-        assert_eq!(err, Error::TooManyArguments("unnest", 127, 128));
+        assert_eq!(err.kind(), &ErrorKind::TooManyArguments("unnest", 127, 128));
         assert_eq!(
             err.to_string(),
             "unnest takes at most 127 arguments, got 128"

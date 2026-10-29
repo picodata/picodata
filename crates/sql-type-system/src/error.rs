@@ -28,7 +28,7 @@ fn format_types_with_and(types: &[Option<Type>]) -> String {
 }
 
 #[derive(Debug, Error, PartialEq)]
-pub enum Error {
+pub enum ErrorKind {
     #[error(
         "could not resolve {} overload for {}({})",
         kind,
@@ -119,16 +119,38 @@ pub enum Error {
     Other(String),
 }
 
+/// The type analysis error.
+///
+/// The kind is on the heap to keep the results of the recursive analysis
+/// small: in debug builds each `?` keeps several copies of the result on
+/// the stack.
+#[derive(Debug, Error, PartialEq)]
+#[error(transparent)]
+pub struct Error(Box<ErrorKind>);
+
+const _: () = assert!(std::mem::size_of::<Error>() == 8);
+
 impl Error {
+    pub fn kind(&self) -> &ErrorKind {
+        &self.0
+    }
+
     pub fn could_not_resolve_overload(
         kind: FunctionKind,
         name: impl Into<String>,
         argtypes: impl Into<Vec<Option<Type>>>,
     ) -> Self {
-        Self::CouldNotResolveOverload {
+        ErrorKind::CouldNotResolveOverload {
             kind,
             name: name.into(),
             argtypes: argtypes.into(),
         }
+        .into()
+    }
+}
+
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Self {
+        Self(Box::new(kind))
     }
 }
