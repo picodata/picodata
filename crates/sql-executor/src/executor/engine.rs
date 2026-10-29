@@ -457,7 +457,8 @@ pub enum BlockRuntimeHook {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlockExecData {
-    pub statements: Vec<BlockStatement<BlockQuery>>,
+    /// Shared with the router cache of block patterns.
+    pub statements: Rc<Vec<BlockStatement<BlockQuery>>>,
     /// Per-query parameters in `BlockStatement::iter()` order.
     pub params: Vec<Vec<Value>>,
     pub table_versions: VersionMap,

@@ -1287,7 +1287,7 @@ pub fn dispatch_impl<'p>(
         };
 
         let mut params: Vec<Vec<Value>> = Vec::new();
-        let statements: Vec<BlockStatement<BlockQuery>> =
+        let statements: Rc<Vec<BlockStatement<BlockQuery>>> =
             if let Some((_, cached)) = &cached_patterns {
                 for entry in BlockEntries::new(&block.statements) {
                     entry.with(|id| {
@@ -1296,7 +1296,7 @@ pub fn dispatch_impl<'p>(
                         Ok(())
                     })?
                 }
-                (**cached).clone()
+                Rc::clone(cached)
             } else {
                 let mut statements = Vec::with_capacity(block.statements.len());
                 // FIXME: add error location tracing,
@@ -1310,10 +1310,10 @@ pub fn dispatch_impl<'p>(
                     })?;
                     statements.push(mapped);
                 }
+                let statements = Rc::new(statements);
                 if let Some(key) = cache_key {
-                    let cached = Rc::new(statements.clone());
                     BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
-                        c.borrow_mut().put(key, cached)?;
+                        c.borrow_mut().put(key, Rc::clone(&statements))?;
                         Ok(())
                     })?;
                     fire_block_pattern_cache_hook(|h| h.on_added);
