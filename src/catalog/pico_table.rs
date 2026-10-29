@@ -243,28 +243,6 @@ impl PicoTable {
         }
     }
 
-    /// Returns the schema version of the table with the given id, or `None`
-    /// if there is no such table. Unlike [`Self::by_id`], this reads only
-    /// one field and does not decode the whole row.
-    #[inline]
-    pub fn schema_version(&self, id: SpaceId) -> tarantool::Result<Option<u64>> {
-        let Some(tuple) = self.index_id.get(&[id])? else {
-            return Ok(None);
-        };
-        tuple.field(TableDef::FIELD_SCHEMA_VERSION as u32)
-    }
-
-    /// Returns the "operable" flag of the table with the given id, or `None`
-    /// if there is no such table. Unlike [`Self::by_id`], this reads only
-    /// one field and does not decode the whole row.
-    #[inline]
-    pub fn is_operable(&self, id: SpaceId) -> tarantool::Result<Option<bool>> {
-        let Some(tuple) = self.index_id.get(&[id])? else {
-            return Ok(None);
-        };
-        tuple.field(TableDef::FIELD_OPERABLE as u32)
-    }
-
     pub fn by_owner_id(
         &self,
         owner_id: UserId,

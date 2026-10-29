@@ -3221,14 +3221,11 @@ fn create_dml_ops(
     let table = plan.dml_node_table(top)?;
     let table_name = &table.name;
     let childen = plan.children(top);
-    let table_id = (node::global()?
-        .catalog_cache
-        .get()
-        .table_by_name(table_name))
-    .map(|table| table.id)
-    .ok_or_else(|| Error::other(format!("failed to find table with name: {table_name}")))?;
-    // SAFETY: a table in the catalog is a tarantool space with the same id.
-    let space = unsafe { Space::from_id_unchecked(table_id) };
+    // SAFETY: `Space` only holds the id, and the box API looks the space up
+    // by it on every call, failing if it's gone. The planner took the id from
+    // the catalog cache. A retry of global DML may come after the table was
+    // dropped, but the CaS leader checks the table again before proposing.
+    let space = unsafe { Space::from_id_unchecked(table.id) };
     if childen.is_empty() {
         // If children are empty, there's delete without filter and
         // there's no need to generate tuples.

@@ -104,7 +104,9 @@ impl TableCache {
         Ok(tables)
     }
 
-    /// Returns a description of the first difference from `actual`.
+    /// Compares the cache with `actual`, the definitions freshly loaded from
+    /// `_pico_table`, for `CatalogCache::find_mismatch`. Used to ensure that
+    /// cache is consistent with storage.
     pub(crate) fn diff(&self, actual: &Self) -> Option<String> {
         let table = PicoTable::TABLE_NAME;
         first_diff(table, &self.by_id, &actual.by_id)
@@ -160,7 +162,7 @@ impl IndexCache {
         Ok(indexes)
     }
 
-    /// Returns a description of the first difference from `actual`.
+    /// Same as [`TableCache::diff`] for `_pico_index`.
     pub(crate) fn diff(&self, actual: &Self) -> Option<String> {
         let table = Indexes::TABLE_NAME;
         first_diff(table, &self.by_key, &actual.by_key)
@@ -168,6 +170,9 @@ impl IndexCache {
     }
 }
 
+/// Returns a message with the smallest key whose value differs between
+/// `cached` and `actual`, including a key present in only one of them. The
+/// values aren't printed, so they don't need to be `Debug`.
 fn first_diff<'a, K, V>(
     table: &str,
     cached: impl IntoIterator<Item = (&'a K, &'a V)>,
@@ -192,9 +197,8 @@ where
 
 fn decode_table(tuple: &Tuple) -> TableDef {
     tarantool::msgpack::decode(&tuple.to_vec()).unwrap_or_else(|e| {
-        let id = table_key(tuple);
         panic!(
-            "failed to decode {} row with id {id}: {e}",
+            "failed to decode {} row {tuple:?}: {e}",
             PicoTable::TABLE_NAME
         )
     })
@@ -202,18 +206,19 @@ fn decode_table(tuple: &Tuple) -> TableDef {
 
 fn decode_index(tuple: &Tuple) -> IndexDef {
     tuple.decode().unwrap_or_else(|e| {
-        let key = index_key(tuple);
         panic!(
-            "failed to decode {} row with key {key:?}: {e}",
+            "failed to decode {} row {tuple:?}: {e}",
             Indexes::TABLE_NAME
         )
     })
 }
 
-/// What DML into `_pico_table` did: the definition with the returned id is now
-/// the returned one. `new` is the row tarantool returned, `old` the row before
-/// the DML. `None` if nothing changed: an update of a missing key, an insert
-/// skipped on conflict.
+/// Turns a DML into `_pico_table` into a change of the cache. `old` is the row
+/// before the DML, `new` is the row tarantool returned from storage `replace`.
+///
+/// Returns the table id with its new definition, which is `None` if the row
+/// was deleted. Returns `None` if the DML changed nothing, e.g. an update of a
+/// missing key or an insert skipped on conflict.
 pub(crate) fn table_change(
     old: Option<&Tuple>,
     new: Option<&Tuple>,

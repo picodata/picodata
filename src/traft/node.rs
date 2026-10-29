@@ -1114,7 +1114,9 @@ impl NodeImpl {
                 Ok(())
             })?;
 
-            if check_catalog_cache {
+            // An entry may be retried many times, e.g. on a replica awaiting
+            // DDL results from master, so check once it's applied.
+            if check_catalog_cache && matches!(apply_entry_result, EntryApplied(_)) {
                 self.catalog_cache.assert_consistent(&self.storage);
             }
 
@@ -4112,7 +4114,8 @@ mod tests {
         let res = catch_unwind(AssertUnwindSafe(|| node_impl.handle_dml_entry(&dml)));
         let panic = res.unwrap_err();
         let msg = panic.downcast_ref::<String>().unwrap();
-        assert!(msg.contains("_pico_table row with id 901003"), "{msg}");
+        assert!(msg.contains("failed to decode _pico_table row"), "{msg}");
+        assert!(msg.contains("catalog_cache_undecodable"), "{msg}");
     }
 
     #[::tarantool::test]

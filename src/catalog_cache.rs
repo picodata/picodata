@@ -92,7 +92,7 @@ pub struct CatalogCache {
 
 impl CatalogCache {
     /// Initializes the cache by loading all of the contents from _pico_instance,
-    /// _pico_replicaset, _pico_table, _pico_index and other system tables.
+    /// underlying system tables (_pico_*).
     pub fn load(
         storage: &Catalog,
         my_raft_id: RaftId,
@@ -175,9 +175,9 @@ impl CatalogCache {
     pub fn truncate(&self, space_id: SpaceId) {
         let mut inner = self.inner.borrow_mut();
         if space_id == PicoTable::TABLE_ID {
-            inner.table = Default::default();
+            inner.table = TableCache::default();
         } else if space_id == Indexes::TABLE_ID {
-            inner.index = Default::default();
+            inner.index = IndexCache::default();
         }
     }
 

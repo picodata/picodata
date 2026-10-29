@@ -182,7 +182,9 @@ def test_unparsable_pico_index_row_crashes_on_start(instance: Instance):
     # otherwise the debug check would crash the instance with another message.
     instance.eval("box.space._pico_index:insert({20000, 0, 'bad_index', 'bogus', {}, {}, true, 0})")
     instance.terminate()
-    instance.fail_to_start(expected_log="failed to decode _pico_index row with key (20000, 0)")
+    lc = log_crawler(instance, "failed to decode _pico_index row .*bad_index", use_regex=True)
+    instance.fail_to_start()
+    assert lc.matched
 
 
 def test_change_visible_before_wal(instance: Instance):
