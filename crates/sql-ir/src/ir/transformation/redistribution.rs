@@ -14,7 +14,7 @@ use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, RelOwned, Relational};
-use crate::ir::operator::{Bool, JoinKind, OrderByEntity, Unary, UpdateStrategy};
+use crate::ir::operator::{Bool, JoinKind, OrderByElement, OrderByEntity, Unary, UpdateStrategy};
 use crate::ir::subtree_cloner::SubtreeCloner;
 // Planner tests access `Stage` through `redistribution::*`.
 pub use crate::ir::transformation::Stage;
@@ -2800,35 +2800,7 @@ impl Plan {
                     panic!("IR mustn't contain Motion nodes at the stage of redistribution.")
                 }
                 RelOwned::Limit(Limit { limit, .. }) => {
-                    let rel_child_id = self.get_first_rel_child(id)?;
-                    let child_dist = self.rel_distr_ref(rel_child_id)?.clone();
-
-                    match child_dist {
-                        Distribution::Single | Distribution::Global => {
-                            self.set_rel_distr(id, child_dist)?;
-                            self.pushdown_limit(id)?;
-                        }
-                        Distribution::Any | Distribution::Segment { .. }
-                            if self.is_single_node_subtree(rel_child_id, &mut cache)? =>
-                        {
-                            // All data is on a single shard, no motion needed.
-                            self.set_rel_distr(id, child_dist)?;
-                        }
-                        Distribution::Any | Distribution::Segment { .. } => {
-                            // Rows are distributed, so motion needed with full policy to
-                            // bring them on a single node.
-
-                            // We don't need more than limit rows, so we can add a limit for the
-                            // queries sent during the map stage.
-                            let limit_id = self.add_limit(id, limit)?;
-                            self.set_rel_distr(limit_id, Distribution::Single)?;
-                            old_new.insert(id, limit_id);
-                            let mut strategy = Strategy::new(limit_id);
-                            strategy.upsert_child(id, MotionPolicy::Full, Program::default());
-                            self.insert_motion_nodes(strategy)?;
-                            self.set_rel_distr(id, child_dist)?;
-                        }
-                    }
+                    self.add_motions_for_limit(id, limit, &mut old_new, &mut cache)?;
                 }
                 RelOwned::ScanRelation(ScanRelation { .. })
                 | RelOwned::ScanSubQuery(ScanSubQuery { .. })
@@ -2880,47 +2852,12 @@ impl Plan {
                 }
                 RelOwned::OrderBy(OrderBy {
                     order_by_elements, ..
-                }) => {
-                    let rel_child_id = self.get_first_rel_child(id)?;
-
-                    let colocated =
-                        self.colocated_subqueries(id, &gathered_by_windows, &mut cache)?;
-                    let mut correct_rel_ids = colocated.clone();
-                    for order_by_el in order_by_elements {
-                        if let OrderByEntity::Expression { expr_id } = order_by_el.entity {
-                            let mut strategy = self.resolve_sq_conflicts(id, expr_id)?;
-                            strategy.keep_in_place(&colocated);
-                            correct_rel_ids.extend(strategy.get_rel_ids());
-                            self.insert_motion_nodes(strategy)?;
-                        }
-                    }
-                    self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
-
-                    let child_dist = self.rel_distr_ref(rel_child_id)?;
-                    match child_dist {
-                        Distribution::Single | Distribution::Global => {
-                            self.set_rel_distr(id, Distribution::Single)?
-                        }
-                        Distribution::Any | Distribution::Segment { .. }
-                            if self.is_single_node_subtree(rel_child_id, &mut cache)? =>
-                        {
-                            // We don't need any motion, since all data is located in a single shard.
-                            self.set_rel_distr(id, child_dist.clone())?;
-                        }
-                        _ => {
-                            // We must execute OrderBy on a single node containing all the rows
-                            // that child relational node outputs.
-                            let mut strategy = Strategy::new(id);
-                            strategy.upsert_child(
-                                rel_child_id,
-                                MotionPolicy::Full,
-                                Program::default(),
-                            );
-                            self.insert_motion_nodes(strategy)?;
-                            self.set_rel_distr(id, Distribution::Single)?
-                        }
-                    }
-                }
+                }) => self.add_motions_for_order_by(
+                    id,
+                    &order_by_elements,
+                    &gathered_by_windows,
+                    &mut cache,
+                )?,
                 RelOwned::Projection(Projection {
                     output,
                     windows,
@@ -2928,101 +2865,17 @@ impl Plan {
                     having,
                     ..
                 }) => {
-                    // Picodata for distributed SQL `DISTINCT` operator logic uses GroupBy
-                    // For now GroupBy inside Projection (if it is) is USER defined
-                    if let Some(group_by_id) = group_by {
-                        self.adopt_groupby_sq_motions(id, group_by_id)?;
-                    }
-                    let colocated =
-                        self.colocated_subqueries(id, &gathered_by_windows, &mut cache)?;
-                    let mut strategy = self.resolve_sq_conflicts(id, output)?;
-                    strategy.keep_in_place(&colocated);
-                    let correct_rel_ids = strategy.get_rel_ids();
-                    self.insert_motion_nodes(strategy)?;
-                    self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
-
-                    let target_dist_node = match (group_by, having) {
-                        (_, Some(having_id)) => having_id,
-                        (Some(groupby_id), _) => groupby_id,
-                        (None, None) => self.get_first_rel_child(id)?,
-                    };
-                    let target_dist = self.rel_distr_ref(target_dist_node)?;
-
-                    if matches!(target_dist, Distribution::Single | Distribution::Global) {
-                        // The data is already on the current node, let's just set the
-                        // distribution.
-                        if let Some(dist) = self.dist_from_subqueries(id)? {
-                            self.set_rel_distr(id, dist)?;
-                        } else {
-                            self.set_rel_distr(id, target_dist.clone())?;
-                        }
-                        if let Some(group_by_id) = group_by {
-                            self.share_groupby_subqueries(id, group_by_id)?;
-                        }
+                    if !self.add_motions_for_projection(
+                        id,
+                        output,
+                        &windows,
+                        group_by,
+                        having,
+                        &gathered_by_windows,
+                        &mut cache,
+                    )? {
                         continue;
                     }
-
-                    let windows_in_place =
-                        !windows.is_empty() && !gathered_by_windows.contains(&id);
-                    // Windows and aggregates over one node run there in one stage.
-                    let single_node_group_by = match group_by {
-                        Some(group_by_id) if windows_in_place => {
-                            self.is_single_node_subtree(group_by_id, &mut cache)?
-                        }
-                        _ => false,
-                    };
-                    if group_by.is_some() && !windows.is_empty() && !single_node_group_by {
-                        let Some(group_by_id) = group_by else {
-                            unreachable!();
-                        };
-                        // It is a complicated case. We should add a full motion under the
-                        // group by node and do not mess with two stage aggregation logic.
-                        let mut gb_strategy = Strategy::new(group_by_id);
-                        let group_by_child_id = self.get_first_rel_child(group_by_id)?;
-                        gb_strategy.upsert_child(
-                            group_by_child_id,
-                            MotionPolicy::Full,
-                            Program::default(),
-                        );
-                        self.add_proj_for_strategy(
-                            &mut gb_strategy,
-                            group_by_id,
-                            group_by_child_id,
-                        )?;
-                        self.insert_motion_nodes(gb_strategy)?;
-                        self.set_rel_distr(group_by_id, Distribution::Single)?;
-                        self.set_rel_distr(id, Distribution::Single)?;
-
-                        if let Some(having_id) = having {
-                            self.set_rel_distr(having_id, Distribution::Single)?;
-                        }
-                        self.share_groupby_subqueries(id, group_by_id)?;
-                        // Nothing else to do here.
-                        continue;
-                    }
-
-                    if windows.is_empty()
-                        && !self.is_single_node_subtree(target_dist_node, &mut cache)?
-                        && self.add_two_stage_aggregation(id)?
-                    {
-                        // We have successfully added two stage aggregation.
-                        continue;
-                    }
-
-                    if !windows.is_empty() {
-                        // If we have window functions without aggregates, lets deal with them.
-                        let strategy =
-                            self.resolve_window_conflicts(id, windows_in_place, &mut cache)?;
-                        self.insert_motion_nodes(strategy)?;
-                    }
-
-                    // A GroupBy gets here only when it runs on a single node.
-                    if let Some(group_by_id) = group_by {
-                        self.share_groupby_subqueries(id, group_by_id)?;
-                    }
-
-                    // Just take distribution from projection's child.
-                    self.set_projection_distribution(id)?;
                 }
                 RelOwned::ScanFunction(ScanFunction { function, .. }) => {
                     // Every instance must compute the same rows, so the
@@ -3111,37 +2964,13 @@ impl Plan {
                     self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::ScanCte(ScanCte { child, .. }) => {
-                    // Possible, current CTE subtree has already been resolved and we
-                    // can just copy the corresponding motion node.
-                    if let Some(motion_id) = cte_motions.get(&child) {
-                        self.set_relational_children(id, vec![*motion_id]);
-                    } else {
-                        // Check the current child, not `child`: the UNION body
-                        // of a reused CTE got its motion through `old_new`
-                        // after `node` was copied. `child` stays the key of
-                        // `cte_ref_counts` and `cte_motions`.
-                        let body_id = self.get_first_rel_child(id)?;
-                        let is_single_node = self.is_single_node_subtree(body_id, &mut cache)?;
-                        let is_reused = cte_ref_counts.get(&child).copied().unwrap_or(0) > 1;
-                        // Global CTEs still need VALUES and reuse materialization checks.
-                        if !is_single_node
-                            || matches!(self.rel_distr_ref(body_id)?, Distribution::Global)
-                        {
-                            let strategy = self.resolve_cte_conflicts(id, is_reused)?;
-                            self.insert_motion_nodes(strategy)?;
-                            let new_child_id = self.get_first_rel_child(id)?;
-                            let new_child_node = self.get_relation_node(new_child_id)?;
-                            if let Relational::Motion { .. } = new_child_node {
-                                cte_motions.insert(child, new_child_id);
-                            }
-                        }
-                    }
-                    // The CTE scan preserves the distribution of its child (for a
-                    // single-node subtree it lets bucket_discovery route the query
-                    // to the correct shard).
-                    let child_id = self.get_first_rel_child(id)?;
-                    let child_dist = self.rel_distr_ref(child_id)?.clone();
-                    self.set_rel_distr(id, child_dist)?;
+                    self.add_motions_for_scan_cte(
+                        id,
+                        child,
+                        &mut cte_motions,
+                        &cte_ref_counts,
+                        &mut cache,
+                    )?;
                 }
             }
 
@@ -3161,6 +2990,228 @@ impl Plan {
         let slices = self.calculate_slices(top_id)?;
         self.slices = slices.into();
         Ok(self)
+    }
+
+    fn add_motions_for_limit(
+        &mut self,
+        id: NodeId,
+        limit: u64,
+        old_new: &mut AHashMap<NodeId, NodeId>,
+        cache: &mut MotionsCache,
+    ) -> Result<(), SbroadError> {
+        let rel_child_id = self.get_first_rel_child(id)?;
+        let child_dist = self.rel_distr_ref(rel_child_id)?.clone();
+
+        match child_dist {
+            Distribution::Single | Distribution::Global => {
+                self.set_rel_distr(id, child_dist)?;
+                self.pushdown_limit(id)?;
+            }
+            Distribution::Any | Distribution::Segment { .. }
+                if self.is_single_node_subtree(rel_child_id, cache)? =>
+            {
+                // All data is on a single shard, no motion needed.
+                self.set_rel_distr(id, child_dist)?;
+            }
+            Distribution::Any | Distribution::Segment { .. } => {
+                // Rows are distributed, so motion needed with full policy to
+                // bring them on a single node.
+
+                // We don't need more than limit rows, so we can add a limit for the
+                // queries sent during the map stage.
+                let limit_id = self.add_limit(id, limit)?;
+                self.set_rel_distr(limit_id, Distribution::Single)?;
+                old_new.insert(id, limit_id);
+                let mut strategy = Strategy::new(limit_id);
+                strategy.upsert_child(id, MotionPolicy::Full, Program::default());
+                self.insert_motion_nodes(strategy)?;
+                self.set_rel_distr(id, child_dist)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn add_motions_for_order_by(
+        &mut self,
+        id: NodeId,
+        order_by_elements: &[OrderByElement],
+        gathered_by_windows: &AHashSet<NodeId>,
+        cache: &mut MotionsCache,
+    ) -> Result<(), SbroadError> {
+        let rel_child_id = self.get_first_rel_child(id)?;
+
+        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
+        let mut correct_rel_ids = colocated.clone();
+        for order_by_el in order_by_elements {
+            if let OrderByEntity::Expression { expr_id } = order_by_el.entity {
+                let mut strategy = self.resolve_sq_conflicts(id, expr_id)?;
+                strategy.keep_in_place(&colocated);
+                correct_rel_ids.extend(strategy.get_rel_ids());
+                self.insert_motion_nodes(strategy)?;
+            }
+        }
+        self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+
+        let child_dist = self.rel_distr_ref(rel_child_id)?;
+        match child_dist {
+            Distribution::Single | Distribution::Global => {
+                self.set_rel_distr(id, Distribution::Single)?
+            }
+            Distribution::Any | Distribution::Segment { .. }
+                if self.is_single_node_subtree(rel_child_id, cache)? =>
+            {
+                // We don't need any motion, since all data is located in a single shard.
+                self.set_rel_distr(id, child_dist.clone())?;
+            }
+            _ => {
+                // We must execute OrderBy on a single node containing all the rows
+                // that child relational node outputs.
+                let mut strategy = Strategy::new(id);
+                strategy.upsert_child(rel_child_id, MotionPolicy::Full, Program::default());
+                self.insert_motion_nodes(strategy)?;
+                self.set_rel_distr(id, Distribution::Single)?
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns `false` if the projection must not be marked as visited.
+    #[allow(clippy::too_many_arguments)]
+    fn add_motions_for_projection(
+        &mut self,
+        id: NodeId,
+        output: NodeId,
+        windows: &[NodeId],
+        group_by: Option<NodeId>,
+        having: Option<NodeId>,
+        gathered_by_windows: &AHashSet<NodeId>,
+        cache: &mut MotionsCache,
+    ) -> Result<bool, SbroadError> {
+        // Picodata for distributed SQL `DISTINCT` operator logic uses GroupBy
+        // For now GroupBy inside Projection (if it is) is USER defined
+        if let Some(group_by_id) = group_by {
+            self.adopt_groupby_sq_motions(id, group_by_id)?;
+        }
+        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
+        let mut strategy = self.resolve_sq_conflicts(id, output)?;
+        strategy.keep_in_place(&colocated);
+        let correct_rel_ids = strategy.get_rel_ids();
+        self.insert_motion_nodes(strategy)?;
+        self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+
+        let target_dist_node = match (group_by, having) {
+            (_, Some(having_id)) => having_id,
+            (Some(groupby_id), _) => groupby_id,
+            (None, None) => self.get_first_rel_child(id)?,
+        };
+        let target_dist = self.rel_distr_ref(target_dist_node)?;
+
+        if matches!(target_dist, Distribution::Single | Distribution::Global) {
+            // The data is already on the current node, let's just set the
+            // distribution.
+            if let Some(dist) = self.dist_from_subqueries(id)? {
+                self.set_rel_distr(id, dist)?;
+            } else {
+                self.set_rel_distr(id, target_dist.clone())?;
+            }
+            if let Some(group_by_id) = group_by {
+                self.share_groupby_subqueries(id, group_by_id)?;
+            }
+            return Ok(false);
+        }
+
+        let windows_in_place = !windows.is_empty() && !gathered_by_windows.contains(&id);
+        // Windows and aggregates over one node run there in one stage.
+        let single_node_group_by = match group_by {
+            Some(group_by_id) if windows_in_place => {
+                self.is_single_node_subtree(group_by_id, cache)?
+            }
+            _ => false,
+        };
+        if group_by.is_some() && !windows.is_empty() && !single_node_group_by {
+            let Some(group_by_id) = group_by else {
+                unreachable!();
+            };
+            // It is a complicated case. We should add a full motion under the
+            // group by node and do not mess with two stage aggregation logic.
+            let mut gb_strategy = Strategy::new(group_by_id);
+            let group_by_child_id = self.get_first_rel_child(group_by_id)?;
+            gb_strategy.upsert_child(group_by_child_id, MotionPolicy::Full, Program::default());
+            self.add_proj_for_strategy(&mut gb_strategy, group_by_id, group_by_child_id)?;
+            self.insert_motion_nodes(gb_strategy)?;
+            self.set_rel_distr(group_by_id, Distribution::Single)?;
+            self.set_rel_distr(id, Distribution::Single)?;
+
+            if let Some(having_id) = having {
+                self.set_rel_distr(having_id, Distribution::Single)?;
+            }
+            self.share_groupby_subqueries(id, group_by_id)?;
+            // Nothing else to do here.
+            return Ok(false);
+        }
+
+        if windows.is_empty()
+            && !self.is_single_node_subtree(target_dist_node, cache)?
+            && self.add_two_stage_aggregation(id)?
+        {
+            // We have successfully added two stage aggregation.
+            return Ok(false);
+        }
+
+        if !windows.is_empty() {
+            // If we have window functions without aggregates, lets deal with them.
+            let strategy = self.resolve_window_conflicts(id, windows_in_place, cache)?;
+            self.insert_motion_nodes(strategy)?;
+        }
+
+        // A GroupBy gets here only when it runs on a single node.
+        if let Some(group_by_id) = group_by {
+            self.share_groupby_subqueries(id, group_by_id)?;
+        }
+
+        // Just take distribution from projection's child.
+        self.set_projection_distribution(id)?;
+        Ok(true)
+    }
+
+    fn add_motions_for_scan_cte(
+        &mut self,
+        id: NodeId,
+        child: NodeId,
+        cte_motions: &mut AHashMap<ChildId, ChildId>,
+        cte_ref_counts: &AHashMap<ChildId, usize>,
+        cache: &mut MotionsCache,
+    ) -> Result<(), SbroadError> {
+        // Possible, current CTE subtree has already been resolved and we
+        // can just copy the corresponding motion node.
+        if let Some(motion_id) = cte_motions.get(&child) {
+            self.set_relational_children(id, vec![*motion_id]);
+        } else {
+            // Check the current child, not `child`: the UNION body
+            // of a reused CTE got its motion through `old_new`
+            // after `node` was copied. `child` stays the key of
+            // `cte_ref_counts` and `cte_motions`.
+            let body_id = self.get_first_rel_child(id)?;
+            let is_single_node = self.is_single_node_subtree(body_id, cache)?;
+            let is_reused = cte_ref_counts.get(&child).copied().unwrap_or(0) > 1;
+            // Global CTEs still need VALUES and reuse materialization checks.
+            if !is_single_node || matches!(self.rel_distr_ref(body_id)?, Distribution::Global) {
+                let strategy = self.resolve_cte_conflicts(id, is_reused)?;
+                self.insert_motion_nodes(strategy)?;
+                let new_child_id = self.get_first_rel_child(id)?;
+                let new_child_node = self.get_relation_node(new_child_id)?;
+                if let Relational::Motion { .. } = new_child_node {
+                    cte_motions.insert(child, new_child_id);
+                }
+            }
+        }
+        // The CTE scan preserves the distribution of its child (for a
+        // single-node subtree it lets bucket_discovery route the query
+        // to the correct shard).
+        let child_id = self.get_first_rel_child(id)?;
+        let child_dist = self.rel_distr_ref(child_id)?.clone();
+        self.set_rel_distr(id, child_dist)?;
+        Ok(())
     }
 
     /// Calculate slices for given subtree
