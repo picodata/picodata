@@ -24,7 +24,7 @@ use crate::ir::node::{
     Alias, Motion, Node, NodeId, Projection, Reference, SubQueryReference, Update,
 };
 use crate::ir::operator::UpdateStrategy;
-use crate::ir::relation::SpaceEngine;
+use crate::ir::relation::{SpaceEngine, Table};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
@@ -477,6 +477,15 @@ fn bucket_filter_calculate(
     }
 
     let plan = exec_plan.get_ir_plan();
+    // Most tables do not start the primary key with `bucket_id`, so skip the walk.
+    if !plan
+        .relations
+        .tables
+        .values()
+        .any(Table::has_bucket_id_primary_key_prefix)
+    {
+        return Ok(None);
+    }
     let mut relation_name: Option<&SmolStr> = None;
     let mut targets = AHashMap::new();
     let subtree = PostOrder::new_by_node(
