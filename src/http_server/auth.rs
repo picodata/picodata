@@ -339,6 +339,7 @@ where
 /// (if anything) an anonymous caller is allowed to see. When auth is disabled
 /// cluster-wide, behavior matches `auth_middleware`: the handler is called
 /// with a default (fully privileged) `AuthContext`.
+#[cfg(feature = "webui")]
 pub(super) fn auth_middleware_optional<F, T, E>(auth_header: String, handler: F) -> ApiResult<T>
 where
     F: FnOnce(Option<AuthContext>) -> Result<T, E>,
