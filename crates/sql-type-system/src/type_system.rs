@@ -304,6 +304,20 @@ fn report_type<Id: Hash + Eq + Clone>(
     report
 }
 
+/// Tarantool passes at most this many arguments to a function
+/// (`SQL_MAX_FUNCTION_ARG`).
+const MAX_FUNCTION_ARGS: usize = 127;
+
+/// Checks that the function `name`, which takes any number of arguments, has
+/// at most [`MAX_FUNCTION_ARGS`] of them. Tarantool rejects a call with more
+/// arguments on a storage, so the call fails at planning.
+fn check_argument_count<T>(name: &'static str, args: &[T]) -> Result<(), Error> {
+    if args.len() > MAX_FUNCTION_ARGS {
+        return Err(ErrorKind::TooManyArguments(name, MAX_FUNCTION_ARGS, args.len()).into());
+    }
+    Ok(())
+}
+
 impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     pub fn new(type_system: &'a TypeSystem) -> Self {
         Self {
@@ -566,9 +580,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                     .map(|(ty, report)| report_type(report, &expr.id, ty))
             }
             ExprKind::Unnest(ref args) => self.analyze_unnest(expr, args, desired_type),
-            ExprKind::Coalesce(ref args) => self
-                .analyze_homogeneous_exprs("COALESCE", args, desired_type)
-                .map(|(ty, report)| report_type(report, &expr.id, ty)),
+            ExprKind::Coalesce(ref args) => {
+                check_argument_count("coalesce", args)?;
+                self.analyze_homogeneous_exprs("COALESCE", args, desired_type)
+                    .map(|(ty, report)| report_type(report, &expr.id, ty))
+            }
             ExprKind::JsonExtractPath(ref args) => self.analyze_json_extract_path(expr, args),
             ExprKind::Comparison(op, left, right) => self
                 .analyze_comparison_operation(*op, left, right)
@@ -736,6 +752,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 args,
             ));
         };
+        check_argument_count("json_extract_path", args)?;
 
         let mut report = TypeReport::new();
         let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
@@ -828,12 +845,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         args: &[Expr<Id>],
         desired_type: Type,
     ) -> Result<TypeReport<Id>, Error> {
-        // Tarantool passes at most this many arguments to a function
-        // (`SQL_MAX_FUNCTION_ARG`) and would reject the call on a storage.
-        const MAX_ARGS: usize = 127;
-        if args.len() > MAX_ARGS {
-            return Err(ErrorKind::TooManyArguments("unnest", MAX_ARGS, args.len()).into());
-        }
+        check_argument_count("unnest", args)?;
 
         let mut report = TypeReport::new();
         let mut nested_types = vec![None; args.len()];

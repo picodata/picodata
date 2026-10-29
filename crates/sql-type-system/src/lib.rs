@@ -1224,6 +1224,32 @@ mod tests {
         );
     }
 
+    // Tarantool takes at most 127 arguments of a function, so the other
+    // functions with any number of arguments fail at planning too.
+    #[test]
+    fn variadic_functions_with_too_many_arguments() {
+        // The arguments are text, except the first one.
+        fn check(name: &'static str, first: Type, call: impl Fn(Vec<Expr>) -> ExprKind) {
+            let type_system = default_type_system();
+            let args = |count| {
+                let rest = (1..count).map(|_| lit(Text));
+                std::iter::once(lit(first)).chain(rest).collect()
+            };
+
+            let e = expr(call(args(127)));
+            TypeAnalyzer::new(&type_system).analyze(&e, None).unwrap();
+
+            let e = expr(call(args(128)));
+            let err = TypeAnalyzer::new(&type_system)
+                .analyze(&e, None)
+                .unwrap_err();
+            assert_eq!(err.kind(), &ErrorKind::TooManyArguments(name, 127, 128));
+        }
+
+        check("coalesce", Text, ExprKind::Coalesce);
+        check("json_extract_path", Map, ExprKind::JsonExtractPath);
+    }
+
     // unnest of a value that is not an array is an error.
     #[test]
     fn unnest_of_a_non_array() {
