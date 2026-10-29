@@ -281,14 +281,14 @@ impl Plan {
         Ok(new_top_id)
     }
 
-    pub fn set_dnf(self) -> Result<Self, SbroadError> {
+    pub fn set_dnf(&mut self) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
         self.set_dnf_in_subtree(top_id)
     }
 
     /// Convert an expression tree of trivalent nodes to a conjunctive
     /// normal form (CNF) for the whole plan.
-    pub fn set_dnf_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+    pub fn set_dnf_in_subtree(&mut self, top_id: NodeId) -> Result<&mut Self, SbroadError> {
         self.transform_expr_trees(top_id, &call_expr_tree_to_dnf)
             .map(|_| self)
     }

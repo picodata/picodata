@@ -223,8 +223,8 @@ impl Plan {
         Ok(referenced)
     }
 
-    pub fn fold_boolean_tree(mut self) -> Result<Self, SbroadError> {
-        let node_ids = collect_join_and_selection_nodes(&self);
+    pub fn fold_boolean_tree(&mut self) -> Result<&mut Self, SbroadError> {
+        let node_ids = collect_join_and_selection_nodes(self);
 
         // Early return, there is no relational nodes with filters that benefit from folding.
         if node_ids.is_empty() {

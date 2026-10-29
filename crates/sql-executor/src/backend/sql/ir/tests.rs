@@ -18,10 +18,10 @@ fn check_sql_with_snapshot(
     params: Vec<Value>,
     snapshot: Snapshot,
 ) -> PatternWithParams {
-    let plan = sql_to_ir(query, params);
+    let mut plan = sql_to_ir(query, params);
     let top_id = plan.get_top().unwrap();
     // Render the plan as it stands just before motion planning.
-    let plan = plan.optimize_before(top_id, Stage::AddMotions).unwrap();
+    plan.optimize_before(top_id, Stage::AddMotions).unwrap();
     let ex_plan = ExecutionPlan::new(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 

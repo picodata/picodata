@@ -5,8 +5,8 @@ use sql::ir::operator::Bool;
 use sql::ir::value::Value;
 use sql::ir::Plan;
 
-pub fn set_dnf(plan: Plan) -> Plan {
-    plan.set_dnf().unwrap()
+pub fn set_dnf(plan: &mut Plan) {
+    plan.set_dnf().unwrap();
 }
 
 /// Build a single two-way OR group `(true OR true)`.

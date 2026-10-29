@@ -615,7 +615,7 @@ impl Plan {
         Ok(expr_id)
     }
 
-    pub fn merge_tuples(self) -> Result<Self, SbroadError> {
+    pub fn merge_tuples(&mut self) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
         self.merge_tuples_in_subtree(top_id)
     }
@@ -625,7 +625,7 @@ impl Plan {
     ///
     /// # Errors
     /// - If the plan tree is invalid (doesn't contain correct nodes where we expect it to).
-    pub fn merge_tuples_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+    pub fn merge_tuples_in_subtree(&mut self, top_id: NodeId) -> Result<&mut Self, SbroadError> {
         self.transform_expr_trees(top_id, &call_expr_tree_merge_tuples)
             .map(|_| self)
     }

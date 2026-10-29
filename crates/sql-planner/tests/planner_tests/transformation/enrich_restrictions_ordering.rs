@@ -94,13 +94,11 @@ fn ordering_probe() {
     ];
     for (query, values) in cases {
         let types: Vec<_> = values.iter().map(Value::get_type).collect();
-        let plan = transform_into_plan(query, &types, &catalog)
-            .unwrap()
-            .optimize()
-            .unwrap();
+        let mut plan = transform_into_plan(query, &types, &catalog).unwrap();
+        plan.optimize().unwrap();
         let top = plan.get_top().unwrap();
         let explain = LogicalExplain::new(&plan, top).unwrap().to_string();
-        let plan = plan.bind_statement(values, Options::default()).unwrap();
+        plan.bind_statement(values, Options::default()).unwrap();
         let ex_plan = ExecutionPlan::new(plan);
         let top = ex_plan.get_ir_plan().get_top().unwrap();
         let plan_id = ex_plan.calculate_plan_id(top).unwrap();

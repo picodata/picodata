@@ -1320,11 +1320,11 @@ fn unbound_motion_input_buckets(sql: &str) -> Vec<Buckets> {
     use sql_frontend::frontend::sql::transform_into_plan;
 
     let coordinator = RouterRuntimeMock::new();
-    let plan = {
+    let mut plan = {
         let metadata = coordinator.metadata().lock();
         transform_into_plan(sql, &[], &*metadata).unwrap()
     };
-    let plan = plan.optimize_statement().unwrap();
+    plan.optimize_statement().unwrap();
     motion_input_buckets_of(ExecutingQuery::from_plan(&coordinator, plan).unwrap())
 }
 

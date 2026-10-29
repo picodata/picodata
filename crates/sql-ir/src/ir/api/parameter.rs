@@ -158,7 +158,7 @@ impl Plan {
     ///
     /// Example:
     /// For `SELECT $1 + $1, $2`, all $1 nodes are non-unique and the only node for $2 is unique.
-    pub fn mark_unique_parameters(mut self) -> Result<Self, SbroadError> {
+    pub fn mark_unique_parameters(&mut self) -> Result<&mut Self, SbroadError> {
         let mut mem = AHashMap::new();
 
         for node in self.nodes.iter32_mut() {
@@ -179,7 +179,7 @@ impl Plan {
     }
 
     /// Replaces the timestamp functions with corresponding constants
-    pub fn update_timestamps(mut self) -> Result<Self, SbroadError> {
+    pub fn update_timestamps(&mut self) -> Result<&mut Self, SbroadError> {
         // we use `time` crate to represent time, but it has trouble determining UTC offset on linux
         // because it relies on libc and libc API is unsound in presence of more than one thread (fun™ :/)
         // so we utilize `chrono` to get the actual local time and then convert it to `time::OffsetDateTime`
@@ -210,9 +210,9 @@ impl Plan {
     /// It is called only if the plan contains `CURRENT_USER`,
     /// so that the queries without it do not pay for the lookup.
     pub fn update_current_user(
-        mut self,
+        &mut self,
         get_user_name: impl Fn() -> Result<String, SbroadError>,
-    ) -> Result<Self, SbroadError> {
+    ) -> Result<&mut Self, SbroadError> {
         let mut user_name: Option<String> = None;
 
         for node in self.nodes.arena32.iter_mut() {
@@ -230,11 +230,11 @@ impl Plan {
         Ok(self)
     }
 
-    pub fn update_substring(self) -> Result<Self, SbroadError> {
+    pub fn update_substring(&mut self) -> Result<&mut Self, SbroadError> {
         self.try_transform_to_substr()?.check_parameter_types()
     }
 
-    fn try_transform_to_substr(mut self) -> Result<Self, SbroadError> {
+    fn try_transform_to_substr(&mut self) -> Result<&mut Self, SbroadError> {
         // Change new_names to store an owned SmolStr instead of a reference.
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
@@ -297,7 +297,7 @@ impl Plan {
         Ok(self)
     }
 
-    fn check_parameter_types(mut self) -> Result<Self, SbroadError> {
+    fn check_parameter_types(&mut self) -> Result<&mut Self, SbroadError> {
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
         for (node_id, node) in self.nodes.iter96_with_ids() {
@@ -367,7 +367,7 @@ impl Plan {
                         // if parameters with numbers
                         if name == "substr" {
                             // Check if length is negative
-                            if is_negative_number(&self, children[2])? {
+                            if is_negative_number(self, children[2])? {
                                 return Err(SbroadError::Invalid(
                                     Entity::Expression,
                                     Some(
@@ -397,7 +397,7 @@ impl Plan {
                         }
 
                         // Check if length is negative
-                        if is_negative_number(&self, children[2])? {
+                        if is_negative_number(self, children[2])? {
                             return Err(SbroadError::Invalid(
                                 Entity::Expression,
                                 Some("Length parameter in substring cannot be negative.".into()),

@@ -2378,7 +2378,7 @@ impl Plan {
         Ok(())
     }
 
-    pub fn add_motions(self) -> Result<Self, SbroadError> {
+    pub fn add_motions(&mut self) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
         self.add_motions_to_subtree(top_id)
     }
@@ -2389,7 +2389,7 @@ impl Plan {
     /// - failed to get relational nodes (plan is invalid?)
     /// - failed to resolve distribution conflicts
     /// - failed to set distribution
-    pub fn add_motions_to_subtree(mut self, mut top_id: NodeId) -> Result<Self, SbroadError> {
+    pub fn add_motions_to_subtree(&mut self, mut top_id: NodeId) -> Result<&mut Self, SbroadError> {
         type CteChildId = ChildId;
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);

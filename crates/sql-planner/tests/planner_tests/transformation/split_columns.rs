@@ -5,8 +5,8 @@ use sql::helpers::check_transformation;
 use sql::ir::value::Value;
 use sql::ir::Plan;
 
-fn split_columns(plan: Plan) -> Plan {
-    plan.split_columns().unwrap()
+fn split_columns(plan: &mut Plan) {
+    plan.split_columns().unwrap();
 }
 
 #[test]

@@ -187,7 +187,10 @@ impl Plan {
     ///
     /// # Errors
     /// - Building a predicate, reading a column, or splicing a filter fails.
-    pub fn enrich_restrictions_from_facts(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+    pub fn enrich_restrictions_from_facts(
+        &mut self,
+        top_id: NodeId,
+    ) -> Result<&mut Self, SbroadError> {
         // Anchors name nodes of this subtree; facts from another would misplace.
         debug_assert!(
             self.facts

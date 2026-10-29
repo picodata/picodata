@@ -22,7 +22,7 @@ use std::collections::HashMap;
 
 fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
     let metadata = &RouterConfigurationMock::new();
-    let plan = transform_into_plan(query, &[], metadata).unwrap();
+    let mut plan = transform_into_plan(query, &[], metadata).unwrap();
     let top_id = plan.get_top().unwrap();
     // Everything up to motion planning succeeds; the error we assert on is
     // produced by `add_motions` itself.
@@ -1349,7 +1349,7 @@ fn front_sql_groupby_invalid() {
     let input = r#"select "b", "a" from "t" group by "b""#;
 
     let metadata = &RouterConfigurationMock::new();
-    let plan = transform_into_plan(input, &[], metadata).unwrap();
+    let mut plan = transform_into_plan(input, &[], metadata).unwrap();
     let res = plan.optimize();
 
     assert_eq!(true, res.is_err());
@@ -1373,7 +1373,7 @@ fn front_sql_groupby_not_scalar() {
              cast it to the actual type",
         ),
     ] {
-        let plan = transform_into_plan(input, &params, metadata).unwrap();
+        let mut plan = transform_into_plan(input, &params, metadata).unwrap();
         assert_eq!(plan.optimize().unwrap_err().to_string(), err, "{input}");
     }
 }

@@ -15,7 +15,9 @@ use sql::ir::Plan;
 use sql::ir::Slices;
 
 fn prepared_optimized_ir(query: &str, params: &[DerivedType]) -> Plan {
-    sql_to_ir_without_bind(query, params).optimize().unwrap()
+    let mut plan = sql_to_ir_without_bind(query, params);
+    plan.optimize().unwrap();
+    plan
 }
 
 /// Build the input `add_motions` sees in production (via `optimize_before`),
@@ -23,12 +25,13 @@ fn prepared_optimized_ir(query: &str, params: &[DerivedType]) -> Plan {
 /// Replaces the ad-hoc per-test pass chains that each hand-picked a subset of
 /// passes.
 fn optimized_to_motions(query: &str) -> Plan {
-    let plan = sql_to_ir(query, vec![]);
+    let mut plan = sql_to_ir(query, vec![]);
     let top = plan.get_top().unwrap();
     plan.optimize_before(top, Stage::AddMotions)
         .unwrap()
         .add_motions()
-        .unwrap()
+        .unwrap();
+    plan
 }
 
 fn has_full_motion(plan: &Plan) -> bool {
@@ -307,7 +310,8 @@ fn join_inner_safe_subquery_filters_remove_motion_via_equality_facts() {
           AND "sq"."right_id" = 1
           AND "sq"."right_pc" = '111'"#;
 
-    let plan = sql_to_ir(query, vec![]).optimize().unwrap();
+    let mut plan = sql_to_ir(query, vec![]);
+    plan.optimize().unwrap();
     assert_eq!(Slices::empty(), *plan.slices());
 }
 
@@ -1163,8 +1167,8 @@ fn static_bucket_proofs_do_not_assume_parameters_stay_equal() {
         &[DerivedType::unknown(); 2],
     );
     for values in [vec![1, 1], vec![1, 2]] {
-        let bound = prepared
-            .clone()
+        let mut bound = prepared.clone();
+        bound
             .bind_statement(
                 values.into_iter().map(Value::from).collect(),
                 Options::default(),

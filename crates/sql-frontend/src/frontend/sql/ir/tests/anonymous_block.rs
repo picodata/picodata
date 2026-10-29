@@ -275,7 +275,7 @@ fn block_query_has_motions_errors() {
     ];
 
     for (block, locator) in test_cases {
-        let plan = sql_to_ir_without_bind(block, &[]);
+        let mut plan = sql_to_ir_without_bind(block, &[]);
         let error = plan.optimize_block().unwrap_err();
         assert_eq!(error.to_string(), format!("{locator}: {tail}"));
     }
@@ -291,7 +291,7 @@ fn block_query_union_all_false_branch_has_no_motions() {
         format!("SELECT a FROM ({union}) ORDER BY a"),
         format!("SELECT a FROM ({union}) LIMIT 1"),
     ] {
-        let plan =
+        let mut plan =
             sql_to_ir_without_bind(&format!("DO $$ BEGIN RETURN QUERY {query}; END $$"), &[]);
         plan.optimize_block().unwrap();
     }
@@ -326,7 +326,7 @@ fn delete_in_block_optimize() {
 
     for query in ok_cases {
         eprintln!("{query}");
-        let plan = sql_to_ir_without_bind(query, &[]);
+        let mut plan = sql_to_ir_without_bind(query, &[]);
         plan.optimize_block().unwrap();
     }
 }

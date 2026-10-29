@@ -17,10 +17,9 @@ use sql::ir::Plan;
 ///
 /// Parameters are left unbound so a clause over one still prints as `$n`.
 fn run_enrich(query: &str, params: &[DerivedType]) -> Plan {
-    let plan = sql_to_ir_without_bind(query, params);
+    let mut plan = sql_to_ir_without_bind(query, params);
     let top_id = plan.get_top().unwrap();
-    let plan = plan
-        .optimize_before(top_id, Stage::EnrichRestrictions)
+    plan.optimize_before(top_id, Stage::EnrichRestrictions)
         .unwrap()
         .enrich_restrictions_from_facts(top_id)
         .unwrap();
@@ -36,10 +35,8 @@ fn assert_restrictions_match_ir(plan: &Plan, top_id: NodeId, context: &str) {
     let stored = plan.restrictions.clone();
     let mut fresh = plan.clone();
     fresh.restrictions = None;
-    let fresh = fresh
-        .analyze_restrictions_in_subtree(top_id)
-        .unwrap()
-        .restrictions;
+    fresh.analyze_restrictions_in_subtree(top_id).unwrap();
+    let fresh = fresh.restrictions;
     assert_eq!(stored, fresh, "{context}");
     assert!(
         plan.facts
@@ -1415,7 +1412,7 @@ fn a_carrier_survives_a_motion_spliced_above_its_landing_scan() {
            JOIN t t2 ON t1.a = t2.b
            WHERE t1.a = 1"#;
 
-    let plan = sql_to_ir_without_bind(query, &[]);
+    let mut plan = sql_to_ir_without_bind(query, &[]);
     let top_id = plan.get_top().unwrap();
     let plan = plan.optimize_before(top_id, Stage::End).unwrap();
 
@@ -1478,7 +1475,7 @@ fn wide_carriers_allocate_only_one_output_per_operand() {
             .collect();
         let mut catalog = MockCatalog::new();
         catalog.add_sharded("wide", &columns, &["c0"], &["c0"]);
-        let plan = transform_into_plan(
+        let mut plan = transform_into_plan(
             "SELECT l.c0 FROM wide l JOIN wide r ON l.c0 = r.c0 WHERE l.c0 = 1",
             &[],
             &catalog,
@@ -1616,7 +1613,9 @@ fn optimized_join_sql(query: &str) -> String {
 }
 
 fn optimized_join_plan(query: &str, sharded: bool) -> Plan {
-    join_plan(query, sharded).optimize().unwrap()
+    let mut plan = join_plan(query, sharded);
+    plan.optimize().unwrap();
+    plan
 }
 
 fn join_plan(query: &str, sharded: bool) -> Plan {
@@ -1776,9 +1775,9 @@ fn duplicate_names_carry_only_when_the_filter_column_is_unique() {
     let mut rendered = String::new();
     for (input, key) in inputs {
         let query = format!("SELECT * FROM {input} JOIN t3 ON {key} = t3.b AND t3.b = 1");
-        let original = join_plan(&query, false);
-        let expected = top_column_names(&original);
-        let plan = original.optimize().unwrap();
+        let mut plan = join_plan(&query, false);
+        let expected = top_column_names(&plan);
+        plan.optimize().unwrap();
         // Neither a carrier nor an ON fold renames, so the wildcard schema is kept.
         assert_eq!(top_column_names(&plan), expected, "{query}");
         assert!(!top_column_names(&plan).iter().any(|n| n.ends_with("_1")));
@@ -1833,7 +1832,7 @@ fn a_sharded_join_bucket_id_clash_folds_into_the_inner_on() {
     // inner join's ON. x and y are unique, so nothing else is disturbed.
     let query = "SELECT l.*, r.* FROM u l LEFT JOIN v r ON l.x = r.y \
                  JOIN t3 ON r.y = t3.a AND t3.a = 1";
-    let plan = join_plan(query, true);
+    let mut plan = join_plan(query, true);
     let top = plan.get_top().unwrap();
     let plan = plan
         .optimize_before(top, Stage::EnrichRestrictions)
@@ -2033,7 +2032,7 @@ fn a_param_gate_never_builds_a_carrier_over_a_join() {
     // The column predicates l.a = 1 and r.b = 1 reach their respective scans.
     let query =
         "SELECT r.a, count(*) FROM t l JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1 GROUP BY r.a";
-    let plan = join_plan(query, false);
+    let mut plan = join_plan(query, false);
     let top = plan.get_top().unwrap();
     let plan = plan
         .optimize_before(top, Stage::EnrichRestrictions)
@@ -2084,7 +2083,7 @@ fn a_param_gate_stays_inside_its_domain() {
         SELECT r.a AS k, count(*) AS x, count(*) AS x \
         FROM t l JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1 GROUP BY r.a\
     ) s ON o.a = s.k";
-    let plan = join_plan(query, false);
+    let mut plan = join_plan(query, false);
     let top = plan.get_top().unwrap();
     let plan = plan
         .optimize_before(top, Stage::EnrichRestrictions)
@@ -2162,10 +2161,11 @@ fn a_parameter_only_class_at_a_left_join_anchor_lands_in_the_source_join_on() {
 
 /// Enrichment's input: `query` optimized up to, but not including, the pass.
 fn before_enrich(query: &str, params: &[DerivedType]) -> Plan {
-    let plan = sql_to_ir_without_bind(query, params);
+    let mut plan = sql_to_ir_without_bind(query, params);
     let top_id = plan.get_top().unwrap();
     plan.optimize_before(top_id, Stage::EnrichRestrictions)
-        .unwrap()
+        .unwrap();
+    plan
 }
 
 #[test]
@@ -2617,7 +2617,7 @@ fn enrich_of_a_subtree_keeps_restrictions_outside_it() {
     // body. The body is refreshed, the outer filter's entry stays as it was,
     // and the whole cache still matches a full rebuild.
     let query = "SELECT a FROM t WHERE b IN (SELECT e FROM t2 WHERE e = f AND f = 1) AND a = c";
-    let plan = before_enrich(query, &[]);
+    let mut plan = before_enrich(query, &[]);
     let top_id = plan.get_top().unwrap();
     let Relational::Projection(sql::ir::node::Projection {
         child: Some(selection),
@@ -2675,7 +2675,7 @@ fn enrich_is_idempotent_on_a_reanalyzed_plan() {
         "SELECT l.a FROM t l LEFT JOIN t r ON l.a = r.a LEFT JOIN t o ON l.a = o.a \
          WHERE l.b = r.b AND r.b = o.b",
     ] {
-        let once = run_enrich(query, &[DerivedType::new(UnrestrictedType::Integer); 2]);
+        let mut once = run_enrich(query, &[DerivedType::new(UnrestrictedType::Integer); 2]);
         let top_id = once.get_top().unwrap();
         let expected = logical(&once);
         let twice = once
@@ -2738,9 +2738,10 @@ fn replaced_join_equalities_keep_the_motions() {
 /// Optimize through motion planning with unbound integer parameters.
 fn optimized_with_int_params(query: &str, params: usize) -> Plan {
     let types = vec![DerivedType::new(UnrestrictedType::Integer); params];
-    let plan = sql_to_ir_without_bind(query, &types);
+    let mut plan = sql_to_ir_without_bind(query, &types);
     let top_id = plan.get_top().unwrap();
-    plan.optimize_before(top_id, Stage::End).unwrap()
+    plan.optimize_before(top_id, Stage::End).unwrap();
+    plan
 }
 
 #[test]
@@ -2947,7 +2948,7 @@ fn a_consumer_check_never_enters_a_shared_cte() {
 
 #[test]
 fn domain_checks_are_planning_only() {
-    let plan = sql_to_ir_without_bind(
+    let mut plan = sql_to_ir_without_bind(
         r#"SELECT * FROM t JOIN (SELECT a, b FROM t3) s ON t.a = s.b WHERE $1 = 1"#,
         &[DerivedType::new(UnrestrictedType::Integer)],
     );
@@ -3054,7 +3055,7 @@ fn false_replaces_param_checks_on_every_motion_input() {
     // Before motions: the parameter check would land in the emptied top
     // filter, which collapses to a bare `false`; the domain records only
     // its `false` for redistribution.
-    let plan = sql_to_ir_without_bind(&empty, &[DerivedType::new(UnrestrictedType::Integer)]);
+    let mut plan = sql_to_ir_without_bind(&empty, &[DerivedType::new(UnrestrictedType::Integer)]);
     let top_id = plan.get_top().unwrap();
     let plan = plan.optimize_before(top_id, Stage::AddMotions).unwrap();
     assert!(

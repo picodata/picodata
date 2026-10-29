@@ -2432,14 +2432,14 @@ impl LocalFacts {
 
 impl Plan {
     pub fn analyze_equality_facts_in_subtree(
-        mut self,
+        &mut self,
         top_id: NodeId,
-    ) -> Result<Self, SbroadError> {
-        self.facts = EqualityAnalysis::get_equality_facts(&self, top_id).map(Some)?;
+    ) -> Result<&mut Self, SbroadError> {
+        self.facts = EqualityAnalysis::get_equality_facts(self, top_id).map(Some)?;
         Ok(self)
     }
 
-    pub fn analyze_equality_facts(self) -> Result<Self, SbroadError> {
+    pub fn analyze_equality_facts(&mut self) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
         self.analyze_equality_facts_in_subtree(top_id)
     }

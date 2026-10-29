@@ -3,8 +3,8 @@ use sql::helpers::check_transformation;
 use sql::ir::value::Value;
 use sql::ir::Plan;
 
-fn replace_in_operator(plan: Plan) -> Plan {
-    plan.replace_in_operator().unwrap()
+fn replace_in_operator(plan: &mut Plan) {
+    plan.replace_in_operator().unwrap();
 }
 
 #[test]

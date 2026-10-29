@@ -7,14 +7,15 @@ use sql::ir::Plan;
 
 fn optimized_to_equality_facts(query: &str, params: Vec<Value>) -> Plan {
     let params_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
-    let plan = sql_to_ir_without_bind(query, &params_types);
+    let mut plan = sql_to_ir_without_bind(query, &params_types);
     let top_id = plan.get_top().unwrap();
     // Build the input the equality-facts pass sees in production, then run the
     // pass itself so it is explicit in the test.
     plan.optimize_before(top_id, Stage::EqualityFacts)
         .unwrap()
         .analyze_equality_facts_in_subtree(top_id)
-        .unwrap()
+        .unwrap();
+    plan
 }
 
 #[test]

@@ -29,15 +29,16 @@ use sql_frontend::frontend::sql::transform_into_plan;
 #[must_use]
 #[allow(clippy::missing_panics_doc)]
 pub fn sql_to_optimized_ir(query: &str, params: Vec<Value>) -> Plan {
-    sql_to_ir(query, params)
-        .optimize()
+    let mut plan = sql_to_ir(query, params);
+    plan.optimize()
         .unwrap()
         .update_timestamps()
         .unwrap()
         .update_current_user(RouterRuntimeMock::get_user_name)
         .unwrap()
         .cast_constants()
-        .unwrap()
+        .unwrap();
+    plan
 }
 
 /// Compiles an SQL query to IR plan.
@@ -71,10 +72,10 @@ pub fn expect_sql_to_ir_error(query: &str, params_types: &[DerivedType]) -> Sbro
 pub fn check_transformation(
     query: &str,
     params: Vec<Value>,
-    f_transform: &dyn Fn(Plan) -> Plan,
+    f_transform: &dyn Fn(&mut Plan),
 ) -> PatternWithParams {
     let mut plan = sql_to_ir(query, params);
-    plan = f_transform(plan);
+    f_transform(&mut plan);
     let ex_plan = ExecutionPlan::new(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 
@@ -144,13 +145,12 @@ where
     ) -> Result<Self, SbroadError> {
         let param_types: Vec<_> = params.iter().map(|v| v.get_type()).collect();
 
-        let plan = {
+        let mut plan = {
             let metadata = coordinator.metadata().lock();
             transform_into_plan(query_text, &param_types, &*metadata)?
         };
 
-        let plan = plan
-            .optimize_statement()?
+        plan.optimize_statement()?
             .bind_statement(params, Options::default())?;
 
         ExecutingQuery::from_plan(coordinator, plan)

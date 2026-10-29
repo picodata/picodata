@@ -14,7 +14,8 @@ fn not_in1() {
     let query = r#"SELECT 1 FROM "hash_testing" AS "t" WHERE "product_code" NOT IN (
         SELECT "product_code" FROM "hash_testing_hist")"#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let mut plan = sql_to_ir(query, vec![]);
+    plan.add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -29,7 +30,8 @@ fn not_in2() {
     let query = r#"SELECT 1 FROM "hash_testing" AS "t" WHERE ("identification_number", "product_code") NOT IN (
         SELECT "identification_number", "product_code" FROM "hash_testing_hist" AS "t")"#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let mut plan = sql_to_ir(query, vec![]);
+    plan.add_motions().unwrap();
     assert_eq!(
         Slices::from(vec![Slice {
             slice: vec![NodeId {
@@ -46,7 +48,8 @@ fn not_in3() {
     let query = r#"SELECT 1 FROM "hash_testing2" AS "t" WHERE ("identification_number", "product_code") NOT IN (
         SELECT "product_code", 42 FROM "hash_testing_hist2")"#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let mut plan = sql_to_ir(query, vec![]);
+    plan.add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -61,7 +64,8 @@ fn not_in4() {
     let query = r#"SELECT 1 FROM "hash_testing" AS "t" WHERE ("product_code", "identification_number") NOT IN (
         SELECT "product_code", 42 FROM "hash_testing_hist")"#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let mut plan = sql_to_ir(query, vec![]);
+    plan.add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -76,7 +80,8 @@ fn not_in5() {
     let query = r#"SELECT 1 FROM "hash_testing2" AS "t" WHERE ("identification_number", "product_code") NOT IN (
         SELECT 42, 666 FROM "hash_testing_hist2" AS "t")"#;
 
-    let plan = sql_to_ir(query, vec![]).add_motions().unwrap();
+    let mut plan = sql_to_ir(query, vec![]);
+    plan.add_motions().unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {

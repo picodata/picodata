@@ -36,7 +36,8 @@ struct Prepared {
 }
 
 fn prepare(sql: &str, metadata: &impl Metadata) -> Result<Prepared, SbroadError> {
-    let ir = transform_into_plan(sql, &[], metadata)?.optimize()?;
+    let mut ir = transform_into_plan(sql, &[], metadata)?;
+    ir.optimize()?;
     let top = ir.get_top()?;
     let motions: Vec<_> = ir
         .slices()

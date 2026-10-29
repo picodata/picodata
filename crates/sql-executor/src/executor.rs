@@ -141,8 +141,8 @@ where
     ///
     /// # Errors
     /// - The user name can't be determined.
-    pub fn from_plan(runtime: &'a C, plan: Plan) -> Result<Self, SbroadError> {
-        let plan = plan.update_current_user(C::get_user_name)?;
+    pub fn from_plan(runtime: &'a C, mut plan: Plan) -> Result<Self, SbroadError> {
+        plan.update_current_user(C::get_user_name)?;
         Ok(Self {
             exec_plan: ExecutionPlan::new(plan),
             coordinator: runtime,

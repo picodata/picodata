@@ -63,7 +63,10 @@ fn run(
                     transform_into_plan(sql, &[], metadata)
                         .unwrap_or_else(|err| panic!("case `{name}` should bind: {err}"))
                 },
-                |ir| black_box(ir.optimize().unwrap()),
+                |mut ir| {
+                    ir.optimize().unwrap();
+                    black_box(ir)
+                },
                 BatchSize::PerIteration,
             );
         });

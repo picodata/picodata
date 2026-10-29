@@ -237,8 +237,11 @@ impl Plan {
     ///
     /// # Errors
     /// - Malformed plan node encountered while walking the expression trees.
-    pub fn analyze_restrictions_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
-        self.restrictions = RestrictionBuilder::build(&self, top_id).map(Some)?;
+    pub fn analyze_restrictions_in_subtree(
+        &mut self,
+        top_id: NodeId,
+    ) -> Result<&mut Self, SbroadError> {
+        self.restrictions = RestrictionBuilder::build(self, top_id).map(Some)?;
         Ok(self)
     }
 

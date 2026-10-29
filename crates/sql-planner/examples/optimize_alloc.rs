@@ -56,9 +56,10 @@ fn profile_optimize(
     Some(measure(
         recorder,
         || plan,
-        |plan| {
+        |mut plan| {
             plan.optimize()
-                .unwrap_or_else(|err| panic!("case `{name}` does not optimize: {err}"))
+                .unwrap_or_else(|err| panic!("case `{name}` does not optimize: {err}"));
+            plan
         },
     ))
 }

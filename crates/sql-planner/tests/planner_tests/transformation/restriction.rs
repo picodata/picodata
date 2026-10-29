@@ -11,10 +11,9 @@ use sql::ir::Plan;
 /// via [`Plan::optimize_before`], then run the restriction pass itself and
 /// return the restrictions it stored on the plan.
 fn restrictions(query: &str) -> (Plan, Restrictions) {
-    let plan = sql_to_ir_without_bind(query, &[]);
+    let mut plan = sql_to_ir_without_bind(query, &[]);
     let top = plan.get_top().unwrap();
-    let plan = plan
-        .optimize_before(top, Stage::Restrictions)
+    plan.optimize_before(top, Stage::Restrictions)
         .unwrap()
         .analyze_restrictions_in_subtree(top)
         .unwrap();
@@ -272,8 +271,7 @@ fn cleared_after_optimize() {
     //  Parity guard: after a full optimize the field is cleared, proving step 1
     //     changes nothing downstream.
     use sql::helpers::sql_to_ir;
-    let plan = sql_to_ir(r#"SELECT "a" FROM "t" WHERE "b" = 1"#, vec![])
-        .optimize()
-        .unwrap();
+    let mut plan = sql_to_ir(r#"SELECT "a" FROM "t" WHERE "b" = 1"#, vec![]);
+    plan.optimize().unwrap();
     assert!(plan.restrictions.is_none());
 }

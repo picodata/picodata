@@ -116,7 +116,7 @@ impl Plan {
     ///
     /// # Errors
     /// - Reading a node, copying a clause or splicing a filter fails.
-    pub fn push_down_restrictions(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+    pub fn push_down_restrictions(&mut self, top_id: NodeId) -> Result<&mut Self, SbroadError> {
         let PushDown { plans, moves } = self.plan_push_down(top_id)?;
         if moves.is_empty() {
             return Ok(self);

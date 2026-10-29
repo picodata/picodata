@@ -123,8 +123,7 @@ fn prepared_with(
     let mut plan = transform_into_plan(sql, &[], metadata).unwrap();
     edit(&mut plan);
     let top = plan.get_top().unwrap();
-    let plan = plan
-        .optimize_before(top, Stage::PushDownRestrictions)
+    plan.optimize_before(top, Stage::PushDownRestrictions)
         .unwrap();
     (plan, top)
 }
@@ -141,7 +140,10 @@ fn bench_shape(
         group.bench_with_input(BenchmarkId::from_parameter(n), &plan, |b, plan| {
             b.iter_batched(
                 || plan.clone(),
-                |plan| black_box(plan.push_down_restrictions(top).unwrap()),
+                |mut plan| {
+                    plan.push_down_restrictions(top).unwrap();
+                    black_box(plan)
+                },
                 BatchSize::LargeInput,
             );
         });
@@ -204,7 +206,8 @@ fn check_shape(plan: &Plan, top: NodeId, conjuncts: usize, slots: usize, bodies:
     let listed = plan.get_relation_node(owner).unwrap().subqueries().len();
     assert_eq!(listed, bodies);
 
-    let moved = plan.clone().push_down_restrictions(top).unwrap();
+    let mut moved = plan.clone();
+    moved.push_down_restrictions(top).unwrap();
     assert!(moved
         .get_relation_node(owner)
         .unwrap()
@@ -274,7 +277,10 @@ fn bench_wide(c: &mut Criterion, group_name: &'static str, many_bodies: bool) {
         group.bench_with_input(BenchmarkId::from_parameter(n), &plan, |b, plan| {
             b.iter_batched(
                 || plan.clone(),
-                |plan| black_box(plan.push_down_restrictions(top).unwrap()),
+                |mut plan| {
+                    plan.push_down_restrictions(top).unwrap();
+                    black_box(plan)
+                },
                 BatchSize::LargeInput,
             );
         });

@@ -3,8 +3,8 @@ use sql::helpers::check_transformation;
 use sql::ir::value::Value;
 use sql::ir::Plan;
 
-fn merge_tuples(plan: Plan) -> Plan {
-    plan.merge_tuples().unwrap()
+fn merge_tuples(plan: &mut Plan) {
+    plan.merge_tuples().unwrap();
 }
 
 #[test]

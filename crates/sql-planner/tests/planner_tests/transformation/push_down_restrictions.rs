@@ -17,10 +17,9 @@ use sql::ir::Plan;
 /// Run every pass before the push-down over `plan`, then the push-down
 /// itself, stopping after push-down. Checks the result is
 /// consistent and a second run changes nothing.
-fn push_down(plan: Plan) -> Plan {
+fn push_down(mut plan: Plan) -> Plan {
     let top = plan.get_top().unwrap();
-    let plan = plan
-        .optimize_before(top, Stage::PushDownRestrictions)
+    plan.optimize_before(top, Stage::PushDownRestrictions)
         .unwrap()
         .push_down_restrictions(top)
         .unwrap();
@@ -41,10 +40,8 @@ fn run_push_down(query: &str) -> Plan {
 fn assert_restrictions_are_fresh(plan: &Plan, top: NodeId) {
     let mut fresh = plan.clone();
     fresh.restrictions = None;
-    let fresh = fresh
-        .analyze_restrictions_in_subtree(top)
-        .unwrap()
-        .restrictions;
+    fresh.analyze_restrictions_in_subtree(top).unwrap();
+    let fresh = fresh.restrictions;
     assert_eq!(plan.restrictions, fresh, "stale restrictions");
 }
 
@@ -104,7 +101,8 @@ fn assert_subquery_lists_match_conditions(plan: &Plan, top: NodeId) {
 /// A second push-down moves no clause and leaves the restrictions as they are.
 #[track_caller]
 fn assert_rerun_changes_nothing(plan: &Plan, top: NodeId) {
-    let again = plan.clone().push_down_restrictions(top).unwrap();
+    let mut again = plan.clone();
+    again.push_down_restrictions(top).unwrap();
     assert_eq!(logical(&again), logical(plan), "rerun moved a clause");
     assert_eq!(
         again.restrictions, plan.restrictions,
@@ -717,13 +715,12 @@ fn the_old_owner_keeps_only_the_subqueries_it_still_references() {
 fn a_moved_subquery_gets_its_motion_at_the_new_owner() {
     // The full pipeline: the body is covered by a motion under the filter
     // it moved to.
-    let plan = sql_to_ir_without_bind(
+    let mut plan = sql_to_ir_without_bind(
         r#"SELECT * FROM "t" JOIN "t2" ON "t"."a" = "t2"."e"
            WHERE "t"."b" IN (SELECT "e" FROM "t2" AS "x") OR "t"."c" = 1"#,
         &[],
-    )
-    .optimize()
-    .unwrap();
+    );
+    plan.optimize().unwrap();
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
       selection (true::bool)
@@ -961,13 +958,12 @@ fn components_and_independent_conjuncts_keep_their_order_at_a_common_place() {
 
 #[test]
 fn a_shared_body_moved_into_the_on_gets_its_motion_there() {
-    let plan = sql_to_ir_without_bind(
+    let mut plan = sql_to_ir_without_bind(
         r#"SELECT * FROM "t" JOIN "t2" ON true
            WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "t"."a" AND "t2"."f""#,
         &[],
-    )
-    .optimize()
-    .unwrap();
+    );
+    plan.optimize().unwrap();
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
       selection (true::bool)

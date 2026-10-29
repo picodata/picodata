@@ -300,7 +300,7 @@ impl Plan {
     ///
     /// # Errors
     /// - Failed to optimize the plan.
-    pub fn optimize(self) -> Result<Self, SbroadError> {
+    pub fn optimize(&mut self) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
         self.optimize_subtree(top_id)
     }
@@ -315,14 +315,14 @@ impl Plan {
     ///
     /// # Errors
     /// - Invalid options or a failed optimizer pass.
-    pub fn optimize_statement(mut self) -> Result<Self, SbroadError> {
+    pub fn optimize_statement(&mut self) -> Result<&mut Self, SbroadError> {
         if self.top_is(PlanKind::DQL | PlanKind::DML)? {
             self.check_raw_options()?;
-            self = self.optimize()?;
+            self.optimize()?;
         } else if self.top_is(PlanKind::BLOCK)? {
             self.check_raw_options()?;
             if self.top_is(PlanKind::TXN_BLOCK)? {
-                self = self.optimize_block()?;
+                self.optimize_block()?;
             }
         }
 
@@ -339,10 +339,10 @@ impl Plan {
     /// # Errors
     /// - Parameter binding or a post-bind pass failed.
     pub fn bind_statement(
-        mut self,
+        &mut self,
         params: Vec<Value>,
         default_options: Options,
-    ) -> Result<Self, SbroadError> {
+    ) -> Result<&mut Self, SbroadError> {
         // Replace parser default timeouts with system defaults
         // from ALTER SYSTEM settings. Must be done before bind_params
         // which consumes default_options.
@@ -352,8 +352,7 @@ impl Plan {
             // Empty query, do nothing
         } else if self.top_is(PlanKind::DQL | PlanKind::DML)? {
             self.bind_params(params, default_options)?;
-            self = self
-                .update_timestamps()?
+            self.update_timestamps()?
                 .cast_constants()?
                 .fold_boolean_tree()?;
         } else if self.top_is(PlanKind::BLOCK)? {
@@ -362,7 +361,7 @@ impl Plan {
             // shapes and the pattern hash of the first one. `fold_boolean_tree`
             // re-points filters depending on the bound values, which resets
             // them, so for blocks it runs at parse time only (`optimize_block`).
-            self = self.update_timestamps()?.cast_constants()?;
+            self.update_timestamps()?.cast_constants()?;
         }
 
         Ok(self)
@@ -381,19 +380,22 @@ impl Plan {
     // Production (`optimize_subtree`) passes `Stage::End`, which no pass matches,
     // so the whole chain runs; the per-pass stop check is a trivial enum compare.
     // (Tests live in downstream crates now, so the check can't be `cfg(test)`.)
-    pub fn optimize_before(self, top_id: NodeId, stop: Stage) -> Result<Self, SbroadError> {
-        let mut plan = self;
+    pub fn optimize_before(
+        &mut self,
+        top_id: NodeId,
+        stop: Stage,
+    ) -> Result<&mut Self, SbroadError> {
         // Each `stage!` returns the current plan right before its pass would run
         // if that pass is the stop point. The order of these lines *is* the
-        // pipeline order. `plan` is threaded through as an ident arg so the
-        // assignment target and the `$call` both bind to this function's `plan`
-        // (macro hygiene).
+        // pipeline order. `plan` is passed as an ident arg so the return value
+        // and the `$call` both bind to this function's `plan` (macro hygiene).
+        let plan = self;
         macro_rules! stage {
             ($plan:ident, $s:expr, $call:expr) => {
                 if stop == $s {
                     return Ok($plan);
                 }
-                $plan = $call;
+                $call;
             };
         }
 
@@ -465,8 +467,8 @@ impl Plan {
         Ok(plan)
     }
 
-    pub fn optimize_subtree(self, top_id: NodeId) -> Result<Self, SbroadError> {
-        let mut plan = self.optimize_before(top_id, Stage::End)?;
+    pub fn optimize_subtree(&mut self, top_id: NodeId) -> Result<&mut Self, SbroadError> {
+        let plan = self.optimize_before(top_id, Stage::End)?;
 
         // Facts are only used during planning. Afterward they're dead state. Drop them
         // so they don't bloat the plan clones made on the execution/dispatch path.
@@ -478,7 +480,7 @@ impl Plan {
         Ok(plan)
     }
 
-    pub fn optimize_block(self) -> Result<Self, SbroadError> {
+    pub fn optimize_block(&mut self) -> Result<&mut Self, SbroadError> {
         // Eliminate motions from the plan so it can be executed locally within a block.
         fn eliminate_motions_in_subtree(
             plan: &mut Plan,
@@ -617,10 +619,10 @@ impl Plan {
             panic!("can't opmitize {block:?} as block");
         };
 
-        fn optimize_block_subtree(mut plan: Plan, query: &mut NodeId) -> Result<Plan, SbroadError> {
+        fn optimize_block_subtree(plan: &mut Plan, query: &mut NodeId) -> Result<(), SbroadError> {
             plan.set_top(*query).expect("top node can't be missed");
-            plan = plan.optimize_subtree(*query)?;
-            eliminate_motions_in_subtree(&mut plan, *query)?;
+            plan.optimize_subtree(*query)?;
+            eliminate_motions_in_subtree(plan, *query)?;
             let new_top = plan.get_top().expect("just set");
             *query = new_top;
             if plan.subtree_has_motions(new_top)? {
@@ -630,12 +632,12 @@ impl Plan {
                      or move it outside the block"
                 )));
             }
-            Ok(plan)
+            Ok(())
         }
 
-        let mut plan = self;
+        let plan = self;
         for entry in BlockEntriesMut::new(&mut statements) {
-            plan = entry.with_state(plan, optimize_block_subtree)?;
+            entry.with(|query| optimize_block_subtree(plan, query))?;
         }
 
         // Set block as the top node back.

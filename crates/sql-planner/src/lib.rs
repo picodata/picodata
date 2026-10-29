@@ -100,7 +100,8 @@ impl PreparedStatement {
                 plan.index_version_map = index_version_map;
             }
 
-            plan.optimize_statement()
+            plan.optimize_statement()?;
+            Ok(plan)
         })??;
 
         let new_plan = Rc::new(new_plan);
@@ -167,11 +168,8 @@ impl PreparedStatement {
             None
         };
 
-        let plan = self
-            .plan
-            .as_ref()
-            .clone()
-            .bind_statement(params, default_options)?;
+        let mut plan = self.plan.as_ref().clone();
+        plan.bind_statement(params, default_options)?;
 
         Ok(BoundStatement {
             plan: Box::new(plan),

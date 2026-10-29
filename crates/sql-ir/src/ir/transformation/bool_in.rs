@@ -79,13 +79,16 @@ impl Plan {
         Ok(top_id)
     }
 
-    pub fn replace_in_operator(self) -> Result<Self, SbroadError> {
+    pub fn replace_in_operator(&mut self) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
         self.replace_in_operator_in_subtree(top_id)
     }
 
     /// Replace all IN operators with the OR-ed chain of equalities.
-    pub fn replace_in_operator_in_subtree(mut self, top_id: NodeId) -> Result<Self, SbroadError> {
+    pub fn replace_in_operator_in_subtree(
+        &mut self,
+        top_id: NodeId,
+    ) -> Result<&mut Self, SbroadError> {
         self.transform_expr_trees(top_id, &call_expr_tree_replace_in)?;
         Ok(self)
     }
