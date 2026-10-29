@@ -585,6 +585,24 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 self.analyze_homogeneous_exprs("COALESCE", args, desired_type)
                     .map(|(ty, report)| report_type(report, &expr.id, ty))
             }
+            ExprKind::Format(ref args) => {
+                check_argument_count("format", args)?;
+                // The format string and the values are text. A value of
+                // unknown type, as `$1` or `NULL`, is text too.
+                let mut report = self.analyze_many(args, &vec![Type::Text; args.len()])?;
+                let all_text = args
+                    .iter()
+                    .all(|arg| report.get_type(&arg.id) == Type::Text);
+                if args.is_empty() || !all_text {
+                    return Err(self.could_not_resolve_function_overload_error(
+                        FunctionKind::Scalar,
+                        "format",
+                        args,
+                    ));
+                }
+                report.report(&expr.id, Type::Text);
+                Ok(report)
+            }
             ExprKind::JsonExtractPath(ref args) => self.analyze_json_extract_path(expr, args),
             ExprKind::Comparison(op, left, right) => self
                 .analyze_comparison_operation(*op, left, right)

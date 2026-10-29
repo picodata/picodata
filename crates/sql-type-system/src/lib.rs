@@ -1248,6 +1248,7 @@ mod tests {
 
         check("coalesce", Text, ExprKind::Coalesce);
         check("json_extract_path", Map, ExprKind::JsonExtractPath);
+        check("format", Text, ExprKind::Format);
     }
 
     // unnest of a value that is not an array is an error.

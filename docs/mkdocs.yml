@@ -147,6 +147,7 @@ nav:
                   - reference/sql/pico_num_pretty.md
                   - reference/sql/pico_size_pretty.md
               - Строковые:
+                  - reference/sql/format.md
                   - reference/sql/lower.md
                   - reference/sql/pico_sql_pretty.md
                   - reference/sql/substr.md

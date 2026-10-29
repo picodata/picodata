@@ -109,6 +109,7 @@ article.md-typeset.md-typeset ul {
 
 <b>F</b>
 
+* [FORMAT](reference/sql/format.md)
 * [FORWARD](reference/sql/explain_facets/forward.md)
 
 <b>G</b>

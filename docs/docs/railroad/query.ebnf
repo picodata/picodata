@@ -43,6 +43,7 @@ expression  ::= (('NOT'* (
                     | current_date
                     | current_timestamp
                     | current_user
+                    | format
                     | ilike
                     | json_extract_path
                     | literal
@@ -145,9 +146,10 @@ pico_replicaset_name  ::= 'PICO_REPLICASET_NAME' '(' text ')'
 pico_size_pretty      ::= 'PICO_SIZE_PRETTY' '(' (integer | decimal) ')'
 pico_sql_pretty       ::= 'PICO_SQL_PRETTY' '(' string ')'
 pico_tier_name        ::= 'PICO_TIER_NAME' '(' text ')'
+format                ::= 'FORMAT' '(' string (',' expression)* ')'
 _pico_bucket          ::= '_PICO_BUCKET' '(' text ')'
-to_char     ::= 'TO_CHAR' '(' expression ',' format ')'
-to_date     ::= 'TO_DATE' '(' expression ',' format ')'
+to_char     ::= 'TO_CHAR' '(' expression ',' format_string ')'
+to_date     ::= 'TO_DATE' '(' expression ',' format_string ')'
 trim        ::= 'TRIM' '('
                 ((('LEADING' | 'TRAILING' | 'BOTH')? removal_chars
                 | ('LEADING' | 'TRAILING' | 'BOTH')) 'FROM')? string ')'

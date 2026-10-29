@@ -4,6 +4,7 @@ use smol_str::{format_smolstr, SmolStr};
 use crate::errors::{Entity, SbroadError};
 use crate::ir::aggregates::AggregateKind;
 use crate::ir::expression::{FunctionFeature, TrimKind, VolatilityType};
+use crate::ir::function::get_real_function_name;
 use crate::ir::metadata::Metadata;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::{BoolExpr, Node, NodeId, Trim};
@@ -521,6 +522,13 @@ impl ParseExpression {
                 Some("DISTINCT modifier is allowed only for aggregate functions".into()),
             ))
         } else {
+            // format takes values of any type and prints them as
+            // text, so they get the same text as with `::text`.
+            if get_real_function_name("format") == Some(name.as_str()) {
+                for arg_id in plan_arg_ids.iter_mut().skip(1) {
+                    *arg_id = plan.add_cast(*arg_id, CastType::String)?;
+                }
+            }
             let func = worker.metadata.function(name)?;
             match func.volatility {
                 VolatilityType::Stable => {

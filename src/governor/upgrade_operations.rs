@@ -186,6 +186,8 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("proc_name", "proc_size_pretty"),
             ("proc_name", "proc_num_pretty"),
             ("proc_name", "proc_sql_pretty"),
+            // format.
+            ("proc_name", "proc_format"),
         ],
     ),
 ];

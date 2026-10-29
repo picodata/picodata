@@ -77,6 +77,13 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 false,
             ),
             Function::new_stable(
+                get_real_function_name("format")
+                    .expect("shouldn't fail")
+                    .into(),
+                DerivedType::new(UnrestrictedType::String),
+                false,
+            ),
+            Function::new_stable(
                 "to_date".into(),
                 DerivedType::new(UnrestrictedType::Datetime),
                 true,

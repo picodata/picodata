@@ -9,6 +9,7 @@
 
 use crate::traft::error::Error;
 use sql::explain::utils::format_query;
+use sql::frontend::sql::ast::quote_ident;
 use sql::ir::value::Value;
 use tarantool::decimal::Decimal;
 use tarantool::tuple::Decode;
@@ -25,6 +26,15 @@ impl<'de, T: tarantool::msgpack::Decode<'de>> Decode<'de> for Arg<T> {
     fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
         let (value,): (T,) = tarantool::msgpack::decode(data)?;
         Ok(Arg(value))
+    }
+}
+
+/// The arguments of a function with any number of arguments.
+pub struct Args<T>(Vec<T>);
+
+impl<'de, T: tarantool::msgpack::Decode<'de>> Decode<'de> for Args<T> {
+    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
+        Ok(Args(tarantool::msgpack::decode(data)?))
     }
 }
 
@@ -295,6 +305,82 @@ pub fn proc_sql_pretty(Arg(query): Arg<Option<String>>) -> Option<String> {
     query.map(|query| format_query(&query, &[] as &[String], true))
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// format
+////////////////////////////////////////////////////////////////////////////////
+
+/// `format(format_string, value...)`: the format string with the values in
+/// place of its specifiers, as `format` of PostgreSQL. The frontend casts
+/// the values to text, so they arrive as strings.
+#[tarantool::proc(packed_args)]
+pub fn proc_format(Args(args): Args<Option<String>>) -> Result<Option<String>, Error> {
+    let mut args = args.into_iter();
+    let Some(Some(format_string)) = args.next() else {
+        return Ok(None);
+    };
+    format(&format_string, args).map(Some)
+}
+
+/// The hint of PostgreSQL for a `%` that is not a specifier.
+const PERCENT_HINT: &str = r#"For a single "%" use "%%"."#;
+
+/// Puts `values` in place of the specifiers of `format_string`. The
+/// specifiers are those of `format` of PostgreSQL without positions, flags
+/// and widths:
+/// - `%s`: the value, or an empty string for `NULL`;
+/// - `%I`: the value quoted as an identifier, if necessary;
+/// - `%L`: the value quoted as a string literal, or `NULL` unquoted;
+/// - `%%`: a single `%`.
+///
+/// The errors have the text of PostgreSQL.
+fn format(
+    format_string: &str,
+    mut values: impl Iterator<Item = Option<String>>,
+) -> Result<String, Error> {
+    let mut result = String::with_capacity(format_string.len());
+    let mut chars = format_string.chars();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            result.push(c);
+            continue;
+        }
+        let specifier = chars.next().ok_or_else(|| {
+            Error::other(format!(
+                "unterminated format() type specifier. {PERCENT_HINT}"
+            ))
+        })?;
+        if specifier == '%' {
+            result.push('%');
+            continue;
+        }
+        if !matches!(specifier, 's' | 'I' | 'L') {
+            return Err(Error::other(format!(
+                r#"unrecognized format() type specifier "{specifier}". {PERCENT_HINT}"#
+            )));
+        }
+        let value = values
+            .next()
+            .ok_or_else(|| Error::other("too few arguments for format()"))?;
+        match (specifier, value) {
+            ('s', value) => result.push_str(value.as_deref().unwrap_or_default()),
+            ('I', Some(value)) => result.push_str(&quote_ident(&value)),
+            ('I', None) => {
+                return Err(Error::other(
+                    "null values cannot be formatted as an SQL identifier",
+                ))
+            }
+            ('L', Some(value)) => {
+                result.push('\'');
+                result.push_str(&value.replace('\'', "''"));
+                result.push('\'');
+            }
+            ('L', None) => result.push_str("NULL"),
+            _ => unreachable!("the specifier is checked above"),
+        }
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,5 +538,74 @@ mod tests {
             num_pretty("-10000000000000000000000000000000000000000"),
             "-10000000000000000Y"
         );
+    }
+
+    fn format_strs(format_string: &str, values: &[Option<&str>]) -> Result<String, String> {
+        let values = values.iter().map(|value| value.map(str::to_owned));
+        format(format_string, values).map_err(|e| e.to_string())
+    }
+
+    /// The results of `format` of PostgreSQL 18.
+    #[test]
+    fn format_is_pg_format() {
+        let cases: &[(&str, &[Option<&str>], &str)] = &[
+            ("", &[], ""),
+            ("no specifiers", &[Some("unused")], "no specifiers"),
+            ("Hello %s", &[Some("World")], "Hello World"),
+            ("%s, %s", &[Some("a"), Some("b")], "a, b"),
+            ("[%s]", &[None], "[]"),
+            ("100%%", &[], "100%"),
+            ("%%s", &[], "%s"),
+            ("%I", &[Some("t")], "t"),
+            ("%I", &[Some("My Table")], r#""My Table""#),
+            ("%I", &[Some("select")], r#""select""#),
+            ("%I", &[Some(r#"a"b"#)], r#""a""b""#),
+            ("%L", &[Some("O'Reilly")], "'O''Reilly'"),
+            ("%L", &[Some("42")], "'42'"),
+            ("%L", &[None], "NULL"),
+            (
+                "INSERT INTO %I VALUES(%L)",
+                &[Some("Foo bar"), Some("O'Reilly")],
+                r#"INSERT INTO "Foo bar" VALUES('O''Reilly')"#,
+            ),
+            ("привет, %s!", &[Some("мир")], "привет, мир!"),
+        ];
+        for (format_string, values, expected) in cases {
+            assert_eq!(
+                format_strs(format_string, values).as_deref(),
+                Ok(*expected),
+                "{format_string}"
+            );
+        }
+    }
+
+    /// The errors of `format` of PostgreSQL 18.
+    #[test]
+    fn format_errors_are_pg_errors() {
+        let cases: &[(&str, &[Option<&str>], &str)] = &[
+            ("%s %s", &[Some("a")], "too few arguments for format()"),
+            (
+                "%I",
+                &[None],
+                "null values cannot be formatted as an SQL identifier",
+            ),
+            ("50%", &[], "unterminated format() type specifier"),
+            (
+                "%d",
+                &[Some("1")],
+                r#"unrecognized format() type specifier "d""#,
+            ),
+            // PostgreSQL takes the position of the value here, which format
+            // does not support yet.
+            (
+                "%1$s",
+                &[Some("1")],
+                r#"unrecognized format() type specifier "1""#,
+            ),
+        ];
+        for (format_string, values, expected) in cases {
+            let error = format_strs(format_string, values).unwrap_err();
+            assert!(error.contains(expected), "{format_string}: {error}");
+        }
     }
 }

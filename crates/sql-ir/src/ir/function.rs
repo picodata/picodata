@@ -336,6 +336,10 @@ pub struct FunctionNameMapping {
     /// See <https://git.picodata.io/core/picodata/-/issues/2064> for more information.
     /// **NOTE**: uses Tarantool type names.
     pub parameter_list: &'static [&'static str],
+    /// Whether the procedure takes any number of arguments of any type.
+    /// Tarantool then does not check them against `parameter_list`
+    /// (`takes_raw_args`).
+    pub variadic: bool,
 }
 
 /// Stores all identifiers mappings for the functions.
@@ -345,84 +349,105 @@ pub const FUNCTION_NAME_MAPPINGS: &[FunctionNameMapping] = &[
         rust_procedure: "proc_config_file",
         tarantool_symbol: ".proc_config_file",
         parameter_list: &["string"],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_instance_dir",
         rust_procedure: "proc_instance_dir",
         tarantool_symbol: ".proc_instance_dir",
         parameter_list: &["string"],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_instance_name",
         rust_procedure: "proc_instance_name",
         tarantool_symbol: ".proc_instance_name",
         parameter_list: &["string"],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_instance_uuid",
         rust_procedure: "proc_instance_uuid",
         tarantool_symbol: ".proc_instance_uuid",
         parameter_list: &[],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_raft_leader_id",
         rust_procedure: "proc_raft_leader_id",
         tarantool_symbol: ".proc_raft_leader_id",
         parameter_list: &[],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_raft_leader_uuid",
         rust_procedure: "proc_raft_leader_uuid",
         tarantool_symbol: ".proc_raft_leader_uuid",
         parameter_list: &[],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_replicaset_name",
         rust_procedure: "proc_replicaset_name",
         tarantool_symbol: ".proc_replicaset_name",
         parameter_list: &["string"],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_tier_name",
         rust_procedure: "proc_tier_name",
         tarantool_symbol: ".proc_tier_name",
         parameter_list: &["string"],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "version",
         rust_procedure: "proc_picodata_version",
         tarantool_symbol: ".proc_picodata_version",
         parameter_list: &[],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_log_level",
         rust_procedure: "proc_log_level",
         tarantool_symbol: ".proc_log_level",
         parameter_list: &[],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_log_level_map",
         rust_procedure: "proc_log_level_map",
         tarantool_symbol: ".proc_log_level_map",
         parameter_list: &[],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_size_pretty",
         rust_procedure: "proc_size_pretty",
         tarantool_symbol: ".proc_size_pretty",
         parameter_list: &["number"],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_num_pretty",
         rust_procedure: "proc_num_pretty",
         tarantool_symbol: ".proc_num_pretty",
         parameter_list: &["number"],
+        variadic: false,
     },
     FunctionNameMapping {
         sql: "pico_sql_pretty",
         rust_procedure: "proc_sql_pretty",
         tarantool_symbol: ".proc_sql_pretty",
         parameter_list: &["string"],
+        variadic: false,
+    },
+    FunctionNameMapping {
+        sql: "format",
+        rust_procedure: "proc_format",
+        tarantool_symbol: ".proc_format",
+        parameter_list: &[],
+        variadic: true,
     },
 ];
 

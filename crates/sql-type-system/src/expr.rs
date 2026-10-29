@@ -290,6 +290,10 @@ pub enum ExprKind<Id> {
     /// Json extract expression.
     /// Examples: `json_extract_path(field, 'key', 'subkey')`.
     JsonExtractPath(Vec<Expr<Id>>),
+    /// The `format` function: a text format string, then values of any
+    /// type. The frontend casts the values to text.
+    /// Examples: `format('%s = %L', a, b)`.
+    Format(Vec<Expr<Id>>),
     /// Array literal with `NestedType` expressions.
     /// Examples: `array[1, 2., 67, NULL]`, `array[]`, `array[1, 'hello']`.
     Array(Vec<Expr<Id>>),
