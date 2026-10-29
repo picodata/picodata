@@ -180,6 +180,15 @@ impl Plan {
 
     /// Replaces the timestamp functions with corresponding constants
     pub fn update_timestamps(&mut self) -> Result<&mut Self, SbroadError> {
+        // Reading the clock costs more than this scan: most plans have no timestamps.
+        if !self
+            .nodes
+            .iter32()
+            .any(|node| matches!(node, Node32::Timestamp(_)))
+        {
+            return Ok(self);
+        }
+
         // we use `time` crate to represent time, but it has trouble determining UTC offset on linux
         // because it relies on libc and libc API is unsound in presence of more than one thread (fun™ :/)
         // so we utilize `chrono` to get the actual local time and then convert it to `time::OffsetDateTime`
