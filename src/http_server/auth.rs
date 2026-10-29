@@ -75,6 +75,22 @@ impl AuthError {
     }
 }
 
+impl tarantool::error::IntoBoxError for AuthError {
+    fn error_code(&self) -> u32 {
+        use picodata_plugin::error_code::ErrorCode;
+
+        match self {
+            AuthError::Inner(..) | AuthError::UserLookup(..) | AuthError::PrivilegesLookup(..) => {
+                ErrorCode::Other as _
+            }
+            AuthError::JWTValidation(jwt_compact::ValidationError::Expired) => {
+                ErrorCode::JwtExpired as _
+            }
+            _ => ErrorCode::JwtInvalid as _,
+        }
+    }
+}
+
 type AuthResult<T> = std::result::Result<T, AuthError>;
 
 impl From<AuthError> for HttpResponse {
@@ -148,19 +164,26 @@ fn create_jwt_token(
 }
 
 fn get_jwt_claims(auth_header: &str) -> AuthResult<JwtClaims> {
-    use jwt_compact::AlgorithmExt as _;
-
     let Some(secret_key) = get_jwt_secret()? else {
         return Err(AuthError::Disabled);
     };
-
-    let time_options = jwt_compact::TimeOptions::default();
 
     let token = auth_header
         .strip_prefix("Bearer ")
         .ok_or(AuthError::InvalidHeader)?;
 
-    let validator = jwt_compact::alg::Hs256.validator(&secret_key);
+    decode_jwt_claims(token, &secret_key)
+}
+
+fn decode_jwt_claims(
+    token: &str,
+    secret_key: &jwt_compact::alg::Hs256Key,
+) -> AuthResult<JwtClaims> {
+    use jwt_compact::AlgorithmExt as _;
+
+    let time_options = jwt_compact::TimeOptions::default();
+
+    let validator = jwt_compact::alg::Hs256.validator(secret_key);
 
     let token = jwt_compact::UntrustedToken::new(&token).map_err(AuthError::JWTParsing)?;
 
@@ -260,21 +283,36 @@ pub(crate) fn http_api_refresh_session(auth_header: String) -> AuthResult<TokenR
 }
 
 fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
-    let claims = get_jwt_claims(auth_header)?;
+    let ctx = validate_auth_claims(get_jwt_claims(auth_header)?)?;
 
+    if !ctx.roles.contains(&"login".to_string()) {
+        return Err(AuthError::InsufficientPrivileges);
+    }
+
+    Ok(ctx)
+}
+
+fn validate_auth_claims(claims: JwtClaims) -> AuthResult<AuthContext> {
     if claims.typ != "auth" {
         return Err(AuthError::InvalidType);
     }
 
-    let roles = claims.privileges.unwrap_or_default();
-    if !roles.contains(&"login".to_string()) {
-        return Err(AuthError::InsufficientPrivileges);
-    }
-
     Ok(AuthContext {
         username: claims.sub,
-        roles,
+        roles: claims.privileges.unwrap_or_default(),
     })
+}
+
+/// Validate a WebUI `auth` token (without the `Bearer ` prefix). Unlike the
+/// WebUI API endpoints, doesn't require any privileges: checking them is up
+/// to the caller. Returns `Ok(None)` when auth is disabled cluster-wide
+/// (`jwt_secret` is empty).
+pub(crate) fn validate_auth_token(token: &str) -> AuthResult<Option<AuthContext>> {
+    let Some(secret_key) = get_jwt_secret()? else {
+        return Ok(None);
+    };
+
+    validate_auth_claims(decode_jwt_claims(token, &secret_key)?).map(Some)
 }
 
 /// Resolve the caller's [`AuthContext`] from an `Authorization` header. When
@@ -324,33 +362,121 @@ pub(crate) fn http_api_config() -> AuthResult<UiConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jwt_compact::AlgorithmExt as _;
+    use jwt_compact::ValidationError;
+    use picodata_plugin::error_code::ErrorCode;
+    use tarantool::error::IntoBoxError as _;
+
+    const SECRET: &[u8] = b"jwt-test-secret";
+
+    fn secret_key() -> jwt_compact::alg::Hs256Key {
+        jwt_compact::alg::Hs256Key::new(SECRET)
+    }
+
+    fn make_token(
+        secret: &[u8],
+        typ: &str,
+        privileges: Option<Vec<String>>,
+        lifetime: chrono::Duration,
+    ) -> String {
+        let claims = JwtClaims {
+            sub: "jwt_user".into(),
+            typ: typ.into(),
+            privileges,
+        };
+        let claims = jwt_compact::Claims::new(claims)
+            .set_duration(&jwt_compact::TimeOptions::default(), lifetime);
+
+        jwt_compact::alg::Hs256
+            .token(
+                &jwt_compact::Header::empty(),
+                &claims,
+                &jwt_compact::alg::Hs256Key::new(secret),
+            )
+            .unwrap()
+    }
+
+    fn make_auth_token(privileges: Option<Vec<String>>) -> String {
+        make_token(SECRET, "auth", privileges, chrono::Duration::hours(1))
+    }
+
+    fn validate(token: &str) -> AuthResult<AuthContext> {
+        validate_auth_claims(decode_jwt_claims(token, &secret_key())?)
+    }
+
+    #[test]
+    fn valid_auth_token() {
+        let ctx = validate(&make_auth_token(None)).unwrap();
+        assert_eq!(ctx.username, "jwt_user");
+        assert_eq!(ctx.roles, Vec::<String>::new());
+    }
 
     #[test]
     fn auth_token_serializes_privileges() {
-        let claims = JwtClaims {
-            sub: "jwt_user".into(),
-            typ: "auth".into(),
-            privileges: Some(vec!["login".into()]),
-        };
-        let value = serde_json::to_value(&claims).unwrap();
-        assert_eq!(value["privileges"], serde_json::json!(["login"]));
-        assert!(value.get("roles").is_none());
-        let claims: JwtClaims = serde_json::from_value(value).unwrap();
-        assert_eq!(claims.privileges.unwrap(), ["login"]);
+        let token = make_auth_token(Some(vec!["login".into()]));
+        let token = jwt_compact::UntrustedToken::new(&token).unwrap();
+        let claims: jwt_compact::Claims<serde_json::Value> =
+            token.deserialize_claims_unchecked().unwrap();
+        assert_eq!(claims.custom["privileges"], serde_json::json!(["login"]));
+        assert!(claims.custom.get("roles").is_none());
+        assert_eq!(
+            validate(&make_auth_token(Some(vec!["login".into()])))
+                .unwrap()
+                .roles,
+            ["login"]
+        );
     }
 
     #[test]
     fn legacy_roles_claim_is_accepted() {
-        let claims: JwtClaims = serde_json::from_value(serde_json::json!({
+        let claims = jwt_compact::Claims::new(serde_json::json!({
             "sub": "jwt_user",
             "typ": "auth",
             "roles": ["login"],
         }))
-        .unwrap();
-        assert_eq!(claims.sub, "jwt_user");
-        assert_eq!(claims.privileges.as_deref().unwrap(), ["login"]);
-        let value = serde_json::to_value(&claims).unwrap();
-        assert_eq!(value["privileges"], serde_json::json!(["login"]));
-        assert!(value.get("roles").is_none());
+        .set_duration(
+            &jwt_compact::TimeOptions::default(),
+            chrono::Duration::hours(1),
+        );
+        let token = jwt_compact::alg::Hs256
+            .token(&jwt_compact::Header::empty(), &claims, &secret_key())
+            .unwrap();
+        let ctx = validate(&token).unwrap();
+        assert_eq!(ctx.username, "jwt_user");
+        assert_eq!(ctx.roles, ["login"]);
+    }
+
+    #[test]
+    fn refresh_token_is_rejected() {
+        let token = make_token(SECRET, "refresh", None, chrono::Duration::hours(1));
+        let err = validate(&token).unwrap_err();
+        assert!(matches!(err, AuthError::InvalidType), "{err:?}");
+        assert_eq!(err.error_code(), ErrorCode::JwtInvalid as u32);
+    }
+
+    #[test]
+    fn expired_token_is_rejected() {
+        // Way past the default leeway of the expiration check.
+        let token = make_token(SECRET, "auth", None, chrono::Duration::hours(-1));
+        let err = validate(&token).unwrap_err();
+        assert!(
+            matches!(err, AuthError::JWTValidation(ValidationError::Expired)),
+            "{err:?}"
+        );
+        assert_eq!(err.error_code(), ErrorCode::JwtExpired as u32);
+    }
+
+    #[test]
+    fn foreign_secret_is_rejected() {
+        let token = make_token(b"another secret", "auth", None, chrono::Duration::hours(1));
+        let err = validate(&token).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                AuthError::JWTValidation(ValidationError::InvalidSignature)
+            ),
+            "{err:?}"
+        );
+        assert_eq!(err.error_code(), ErrorCode::JwtInvalid as u32);
     }
 }

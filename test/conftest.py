@@ -172,6 +172,8 @@ class ErrorCode:
     RaftSnapshotReadViewNotAvailable = 10029
     LocalSchemaNotUpToDate = 10030
     ReplicationBroken = 10031
+    JwtExpired = 10032
+    JwtInvalid = 10033
 
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas

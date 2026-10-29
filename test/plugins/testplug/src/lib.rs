@@ -551,6 +551,22 @@ impl Service for Service3 {
                     })
                     .unwrap();
             }
+            "validate_jwt" => {
+                rpc::RouteBuilder::from(ctx)
+                    .path("/validate_jwt")
+                    .register(|input, _| {
+                        let token = std::str::from_utf8(input.as_bytes()).unwrap();
+                        let result = match picodata_plugin::authentication::validate_jwt(token) {
+                            Ok(Some(ctx)) => {
+                                format!("ok:{}:{}", ctx.username(), ctx.has_role("login"))
+                            }
+                            Ok(None) => "disabled".to_string(),
+                            Err(e) => format!("err:{}", e.error_code()),
+                        };
+                        rpc::Response::from_bytes(result.as_bytes())
+                    })
+                    .unwrap();
+            }
             "authentication_unknown_user" => {
                 // should fail
                 picodata_plugin::authentication::authenticate(

@@ -13,6 +13,7 @@ import pytest
 import requests
 from conftest import (
     Cluster,
+    ErrorCode,
     Instance,
     ProcessDead,
     Retriable,
@@ -22,6 +23,7 @@ from conftest import (
     log_crawler,
 )
 from framework.ldap import LdapServer
+from test_http_server import USERNAME, get_auth_token, make_expired_token, set_jwt_enabled
 from framework.thread import spawn_thread
 from framework.util import copy_plugin_library
 from framework.util.build import Executable, cargo_build_path, project_plugins_path
@@ -3102,6 +3104,39 @@ def test_sdk_background_concurrent_wait(cluster: Cluster):
     # unblocks the job, and verifies both fibers succeed.
     context = make_context(service=service)
     i1.call(".proc_rpc_dispatch", "/test_concurrent_wait", b"", context)
+
+
+def test_sdk_validate_jwt(cluster: Cluster):
+    [inst] = cluster.deploy(instance_count=1)
+    [service] = _PLUGIN_W_SDK_SERVICES
+
+    install_and_enable_plugin(
+        inst,
+        _PLUGIN_W_SDK,
+        [service],
+        migrate=True,
+        default_config={"test_type": "validate_jwt"},
+    )
+
+    def validate(token: str) -> str:
+        context = make_context(service=service)
+        return inst.call(".proc_rpc_dispatch", "/validate_jwt", token.encode(), context).decode()
+
+    secret = "jwt-test-secret"
+    inst.sql(f"ALTER SYSTEM SET jwt_secret = '{secret}'")
+    token = get_auth_token(inst)
+
+    # Both the bare token and the `Authorization` header value are accepted.
+    assert validate(token) == f"ok:{USERNAME}:true"
+    assert validate(f"Bearer {token}") == f"ok:{USERNAME}:true"
+
+    # The error code reaches the plugin. Other rejection cases
+    # are covered by the unit tests in `src/http_server/auth.rs`.
+    assert validate(make_expired_token(token, secret)) == f"err:{ErrorCode.JwtExpired}"
+
+    # Auth disabled cluster-wide.
+    set_jwt_enabled(inst, False)
+    assert validate(token) == "disabled"
 
 
 def test_sdk_authentication_unknown_user(cluster: Cluster):

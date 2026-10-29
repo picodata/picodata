@@ -14,6 +14,7 @@ pico_ffi_register_rpc_handler
 pico_ffi_rpc_request
 pico_ffi_rpc_version
 pico_ffi_sql_query
+pico_ffi_validate_jwt
 pico_ffi_version
 pico_ffi_wait_index
 pico_internal_initialize_dummy

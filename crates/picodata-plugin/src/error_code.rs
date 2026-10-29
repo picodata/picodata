@@ -106,6 +106,13 @@ tarantool::define_enum_with_introspection! {
         /// replication conflict.
         ReplicationBroken = 10031,
 
+        /// WebUI JWT has expired. The client should refresh its session.
+        JwtExpired = 10032,
+
+        /// WebUI JWT is malformed, has an invalid signature or is not
+        /// an `auth` token.
+        JwtInvalid = 10033,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range

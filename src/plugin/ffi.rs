@@ -13,6 +13,7 @@ use ::sql::ir::value::Value;
 use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSlice, RSome};
 use abi_stable::std_types::{RDuration, RStr, RString, RVec, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
+use picodata_plugin::authentication::JwtAuthContext;
 use picodata_plugin::background::FfiBackgroundJobCancellationToken;
 use picodata_plugin::background::JobCancellationResult;
 use picodata_plugin::internal::types;
@@ -599,5 +600,20 @@ pub extern "C" fn pico_ffi_authenticate(name: FfiSafeStr, password: FfiSafeBytes
             e.into_box_error().set_last();
             -1
         }
+    }
+}
+
+/// See [`crate::http_server::auth::validate_auth_token`] for more information.
+#[no_mangle]
+#[sabi_extern_fn]
+pub extern "C" fn pico_ffi_validate_jwt(token: FfiSafeStr) -> RResult<ROption<JwtAuthContext>, ()> {
+    // SAFETY: data outlives this function call
+    let token = unsafe { token.as_str() };
+
+    match crate::http_server::auth::validate_auth_token(token) {
+        Ok(ctx) => ROk(ctx
+            .map(|ctx| JwtAuthContext::new(ctx.username, ctx.roles))
+            .into()),
+        Err(e) => error_into_tt_error(e),
     }
 }

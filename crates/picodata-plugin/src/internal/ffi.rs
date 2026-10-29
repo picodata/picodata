@@ -1,3 +1,4 @@
+use crate::authentication::JwtAuthContext;
 use crate::background::FfiBackgroundJobCancellationToken;
 use crate::background::JobCancellationResult;
 use crate::internal::types;
@@ -98,6 +99,10 @@ extern "C" {
 
     /// See [`crate::authentication::authenticate`] wrapper for more information.
     pub fn pico_ffi_authenticate(name: FfiSafeStr, password: FfiSafeBytes) -> i32;
+
+    /// See [`crate::authentication::validate_jwt`] wrapper for more information.
+    #[allow(improper_ctypes)]
+    pub fn pico_ffi_validate_jwt(token: FfiSafeStr) -> RResult<ROption<JwtAuthContext>, ()>;
 }
 
 #[inline(always)]
