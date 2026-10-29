@@ -470,8 +470,11 @@ pub struct BlockExecData {
 }
 
 /// Key for the storage-side cache of assembled block VDBEs.
+///
+/// Computed on every block execution over the SQL of all its statements,
+/// which `Hash` feeds in many small writes: ahash keeps them cheap.
 pub fn block_vdbe_key(stmts: &[BlockStatement<BlockQuery>]) -> u64 {
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = ahash::AHasher::default();
     stmts.hash(&mut hasher);
     hasher.finish()
 }
