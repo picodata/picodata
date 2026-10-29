@@ -318,17 +318,6 @@ impl<'plan> Comparator<'plan> {
     pub fn are_subtrees_equal(&self, lhs: NodeId, rhs: NodeId) -> Result<bool, SbroadError> {
         let l = self.plan.get_node(lhs)?;
         let r = self.plan.get_node(rhs)?;
-        let cmp_expr_vec = |l: &[NodeId], r: &[NodeId]| -> Result<bool, SbroadError> {
-            if l.len() != r.len() {
-                return Ok(false);
-            }
-            for (l, r) in l.iter().zip(r.iter()) {
-                if !self.are_subtrees_equal(*l, *r)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        };
         if let Node::Expression(left) = l {
             if let Node::Expression(right) = r {
                 match left {
@@ -384,99 +373,9 @@ impl<'plan> Comparator<'plan> {
                             return Ok((l_name, l_var_type) == (r_name, r_var_type));
                         }
                     }
-                    Expression::Window(Window {
-                        partition: l_partition,
-                        ordering: l_ordering,
-                        frame: l_frame,
-                    }) => {
-                        if let Expression::Window(Window {
-                            partition: r_partition,
-                            ordering: r_ordering,
-                            frame: r_frame,
-                        }) = right
-                        {
-                            let mut parts_equal = true;
-                            match (l_partition, r_partition) {
-                                (Some(l_partition), Some(r_partition)) => {
-                                    parts_equal = cmp_expr_vec(l_partition, r_partition)?;
-                                }
-                                (None, None) => {}
-                                _ => return Ok(false),
-                            }
-                            let mut ordering_equal = true;
-                            match (l_ordering, r_ordering) {
-                                (Some(l_ordering), Some(r_ordering)) => {
-                                    if l_ordering.len() != r_ordering.len() {
-                                        return Ok(false);
-                                    }
-                                    for (l_elem, r_elem) in l_ordering.iter().zip(r_ordering.iter())
-                                    {
-                                        if l_elem.order_type != r_elem.order_type {
-                                            return Ok(false);
-                                        }
-                                        match (&l_elem.entity, &r_elem.entity) {
-                                            (
-                                                &OrderByEntity::Expression { expr_id: l_expr },
-                                                &OrderByEntity::Expression { expr_id: r_expr },
-                                            ) => {
-                                                if !self.are_subtrees_equal(l_expr, r_expr)? {
-                                                    return Ok(false);
-                                                }
-                                            }
-                                            _ => ordering_equal &= l_elem.entity == r_elem.entity,
-                                        }
-                                    }
-                                }
-                                (None, None) => {}
-                                _ => return Ok(false),
-                            }
-                            let mut frame_equal = true;
-                            match (l_frame, r_frame) {
-                                (Some(l_frame), Some(r_frame)) => {
-                                    if l_frame.ty != r_frame.ty {
-                                        return Ok(false);
-                                    }
-                                    let mut bound_types = [None, None];
-                                    match (&l_frame.bound, &r_frame.bound) {
-                                        (Bound::Single(l_bound), Bound::Single(r_bound)) => {
-                                            bound_types[0] = Some((l_bound, r_bound));
-                                        }
-                                        (
-                                            Bound::Between(l_lower, l_upper),
-                                            Bound::Between(r_lower, r_upper),
-                                        ) => {
-                                            bound_types[0] = Some((l_lower, r_lower));
-                                            bound_types[1] = Some((l_upper, r_upper));
-                                        }
-                                        _ => return Ok(false),
-                                    }
-                                    for b_type in bound_types {
-                                        let Some((l_bound, r_bound)) = b_type else {
-                                            continue;
-                                        };
-                                        match (l_bound, r_bound) {
-                                            (
-                                                BoundType::PrecedingOffset(l_offset),
-                                                BoundType::PrecedingOffset(r_offset),
-                                            ) => {
-                                                frame_equal &=
-                                                    self.are_subtrees_equal(*l_offset, *r_offset)?;
-                                            }
-                                            (
-                                                BoundType::FollowingOffset(l_offset),
-                                                BoundType::FollowingOffset(r_offset),
-                                            ) => {
-                                                frame_equal &=
-                                                    self.are_subtrees_equal(*l_offset, *r_offset)?;
-                                            }
-                                            _ => frame_equal &= l_bound == r_bound,
-                                        }
-                                    }
-                                }
-                                (None, None) => {}
-                                _ => return Ok(false),
-                            }
-                            return Ok(parts_equal && ordering_equal && frame_equal);
+                    Expression::Window(l_window) => {
+                        if let Expression::Window(r_window) = right {
+                            return self.are_windows_equal(l_window, r_window);
                         }
                     }
                     Expression::Over(Over {
@@ -524,48 +423,9 @@ impl<'plan> Comparator<'plan> {
                                 && self.are_subtrees_equal(*right_left, *right_right)?);
                         }
                     }
-                    Expression::Case(Case {
-                        search_expr: search_expr_left,
-                        when_blocks: when_blocks_left,
-                        else_expr: else_expr_left,
-                    }) => {
-                        if let Expression::Case(Case {
-                            search_expr: search_expr_right,
-                            when_blocks: when_blocks_right,
-                            else_expr: else_expr_right,
-                        }) = right
-                        {
-                            let mut search_expr_equal =
-                                search_expr_left.is_none() && search_expr_right.is_none();
-                            if let (Some(search_expr_left), Some(search_expr_right)) =
-                                (search_expr_left, search_expr_right)
-                            {
-                                search_expr_equal =
-                                    self.are_subtrees_equal(*search_expr_left, *search_expr_right)?;
-                            }
-
-                            if when_blocks_left.len() != when_blocks_right.len() {
-                                return Ok(false);
-                            }
-                            for ((cond_l, res_l), (cond_r, res_r)) in
-                                when_blocks_left.iter().zip(when_blocks_right.iter())
-                            {
-                                if !self.are_subtrees_equal(*cond_l, *cond_r)?
-                                    || !self.are_subtrees_equal(*res_l, *res_r)?
-                                {
-                                    return Ok(false);
-                                }
-                            }
-
-                            let mut else_expr_equal =
-                                else_expr_left.is_none() && else_expr_right.is_none();
-                            if let (Some(else_expr_left), Some(else_expr_right)) =
-                                (else_expr_left, else_expr_right)
-                            {
-                                else_expr_equal =
-                                    self.are_subtrees_equal(*else_expr_left, *else_expr_right)?;
-                            }
-                            return Ok(search_expr_equal && else_expr_equal);
+                    Expression::Case(l_case) => {
+                        if let Expression::Case(r_case) = right {
+                            return self.are_cases_equal(l_case, r_case);
                         }
                     }
                     Expression::Arithmetic(ArithmeticExpr {
@@ -596,7 +456,7 @@ impl<'plan> Comparator<'plan> {
                         }) = right
                         {
                             return Ok(self.are_subtrees_equal(*child_left, *child_right)?
-                                && cmp_expr_vec(indexes_left, indexes_right)?);
+                                && self.are_lists_equal(indexes_left, indexes_right)?);
                         }
                     }
                     Expression::Cast(Cast {
@@ -733,7 +593,7 @@ impl<'plan> Comparator<'plan> {
                             list: list_right, ..
                         }) = right
                         {
-                            return cmp_expr_vec(list_left, list_right);
+                            return self.are_lists_equal(list_left, list_right);
                         }
                     }
                     Expression::ArrayLiteral(ArrayLiteral {
@@ -743,7 +603,7 @@ impl<'plan> Comparator<'plan> {
                             list: list_right, ..
                         }) = right
                         {
-                            return cmp_expr_vec(list_left, list_right);
+                            return self.are_lists_equal(list_left, list_right);
                         }
                     }
                     Expression::ScalarFunction(ScalarFunction {
@@ -771,7 +631,7 @@ impl<'plan> Comparator<'plan> {
                                 && is_aggr_left == is_aggr_right
                                 && volatility_type_left == volatility_type_right
                                 && is_window_left == is_window_right
-                                && cmp_expr_vec(children_left, children_right)?);
+                                && self.are_lists_equal(children_left, children_right)?);
                         }
                     }
                     Expression::Unary(UnaryExpr {
@@ -791,6 +651,145 @@ impl<'plan> Comparator<'plan> {
             }
         }
         Ok(false)
+    }
+
+    fn are_lists_equal(&self, l: &[NodeId], r: &[NodeId]) -> Result<bool, SbroadError> {
+        if l.len() != r.len() {
+            return Ok(false);
+        }
+        for (l, r) in l.iter().zip(r.iter()) {
+            if !self.are_subtrees_equal(*l, *r)? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    fn are_windows_equal(&self, left: &Window, right: &Window) -> Result<bool, SbroadError> {
+        let Window {
+            partition: l_partition,
+            ordering: l_ordering,
+            frame: l_frame,
+        } = left;
+        let Window {
+            partition: r_partition,
+            ordering: r_ordering,
+            frame: r_frame,
+        } = right;
+        let mut parts_equal = true;
+        match (l_partition, r_partition) {
+            (Some(l_partition), Some(r_partition)) => {
+                parts_equal = self.are_lists_equal(l_partition, r_partition)?;
+            }
+            (None, None) => {}
+            _ => return Ok(false),
+        }
+        let mut ordering_equal = true;
+        match (l_ordering, r_ordering) {
+            (Some(l_ordering), Some(r_ordering)) => {
+                if l_ordering.len() != r_ordering.len() {
+                    return Ok(false);
+                }
+                for (l_elem, r_elem) in l_ordering.iter().zip(r_ordering.iter()) {
+                    if l_elem.order_type != r_elem.order_type {
+                        return Ok(false);
+                    }
+                    match (&l_elem.entity, &r_elem.entity) {
+                        (
+                            &OrderByEntity::Expression { expr_id: l_expr },
+                            &OrderByEntity::Expression { expr_id: r_expr },
+                        ) => {
+                            if !self.are_subtrees_equal(l_expr, r_expr)? {
+                                return Ok(false);
+                            }
+                        }
+                        _ => ordering_equal &= l_elem.entity == r_elem.entity,
+                    }
+                }
+            }
+            (None, None) => {}
+            _ => return Ok(false),
+        }
+        let mut frame_equal = true;
+        match (l_frame, r_frame) {
+            (Some(l_frame), Some(r_frame)) => {
+                if l_frame.ty != r_frame.ty {
+                    return Ok(false);
+                }
+                let mut bound_types = [None, None];
+                match (&l_frame.bound, &r_frame.bound) {
+                    (Bound::Single(l_bound), Bound::Single(r_bound)) => {
+                        bound_types[0] = Some((l_bound, r_bound));
+                    }
+                    (Bound::Between(l_lower, l_upper), Bound::Between(r_lower, r_upper)) => {
+                        bound_types[0] = Some((l_lower, r_lower));
+                        bound_types[1] = Some((l_upper, r_upper));
+                    }
+                    _ => return Ok(false),
+                }
+                for b_type in bound_types {
+                    let Some((l_bound, r_bound)) = b_type else {
+                        continue;
+                    };
+                    match (l_bound, r_bound) {
+                        (
+                            BoundType::PrecedingOffset(l_offset),
+                            BoundType::PrecedingOffset(r_offset),
+                        ) => {
+                            frame_equal &= self.are_subtrees_equal(*l_offset, *r_offset)?;
+                        }
+                        (
+                            BoundType::FollowingOffset(l_offset),
+                            BoundType::FollowingOffset(r_offset),
+                        ) => {
+                            frame_equal &= self.are_subtrees_equal(*l_offset, *r_offset)?;
+                        }
+                        _ => frame_equal &= l_bound == r_bound,
+                    }
+                }
+            }
+            (None, None) => {}
+            _ => return Ok(false),
+        }
+        Ok(parts_equal && ordering_equal && frame_equal)
+    }
+
+    fn are_cases_equal(&self, left: &Case, right: &Case) -> Result<bool, SbroadError> {
+        let Case {
+            search_expr: search_expr_left,
+            when_blocks: when_blocks_left,
+            else_expr: else_expr_left,
+        } = left;
+        let Case {
+            search_expr: search_expr_right,
+            when_blocks: when_blocks_right,
+            else_expr: else_expr_right,
+        } = right;
+        let mut search_expr_equal = search_expr_left.is_none() && search_expr_right.is_none();
+        if let (Some(search_expr_left), Some(search_expr_right)) =
+            (search_expr_left, search_expr_right)
+        {
+            search_expr_equal = self.are_subtrees_equal(*search_expr_left, *search_expr_right)?;
+        }
+
+        if when_blocks_left.len() != when_blocks_right.len() {
+            return Ok(false);
+        }
+        for ((cond_l, res_l), (cond_r, res_r)) in
+            when_blocks_left.iter().zip(when_blocks_right.iter())
+        {
+            if !self.are_subtrees_equal(*cond_l, *cond_r)?
+                || !self.are_subtrees_equal(*res_l, *res_r)?
+            {
+                return Ok(false);
+            }
+        }
+
+        let mut else_expr_equal = else_expr_left.is_none() && else_expr_right.is_none();
+        if let (Some(else_expr_left), Some(else_expr_right)) = (else_expr_left, else_expr_right) {
+            else_expr_equal = self.are_subtrees_equal(*else_expr_left, *else_expr_right)?;
+        }
+        Ok(search_expr_equal && else_expr_equal)
     }
 
     /// Checks are the relational subtrees `lhs` and `rhs` describe the same query.
@@ -818,17 +817,6 @@ impl<'plan> Comparator<'plan> {
             return Ok(false);
         }
 
-        let cmp_exprs = |l: &[NodeId], r: &[NodeId]| -> Result<bool, SbroadError> {
-            if l.len() != r.len() {
-                return Ok(false);
-            }
-            for (l, r) in l.iter().zip(r.iter()) {
-                if !self.are_subtrees_equal(*l, *r)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        };
         let cmp_opt_rel = |l: &Option<NodeId>, r: &Option<NodeId>| -> Result<bool, SbroadError> {
             match (l, r) {
                 (None, None) => Ok(true),
@@ -924,7 +912,7 @@ impl<'plan> Comparator<'plan> {
                 }) = r
                 {
                     return Ok(l_is_distinct == r_is_distinct
-                        && cmp_exprs(l_windows, r_windows)?
+                        && self.are_lists_equal(l_windows, r_windows)?
                         && cmp_opt_rel(l_child, r_child)?
                         && cmp_opt_rel(l_group_by, r_group_by)?
                         && cmp_opt_rel(l_having, r_having)?);
@@ -974,7 +962,7 @@ impl<'plan> Comparator<'plan> {
                     ..
                 }) = r
                 {
-                    return Ok(cmp_exprs(l_gr_exprs, r_gr_exprs)?
+                    return Ok(self.are_lists_equal(l_gr_exprs, r_gr_exprs)?
                         && self.are_rel_subtrees_equal(*l_child, *r_child)?);
                 }
             }
@@ -1128,7 +1116,7 @@ impl<'plan> Comparator<'plan> {
                 distribution: _,
             }) => {
                 if let Relational::Values(Values { rows: r_rows, .. }) = r {
-                    return cmp_exprs(l_rows, r_rows);
+                    return self.are_lists_equal(l_rows, r_rows);
                 }
             }
             Relational::SelectWithoutScan(SelectWithoutScan {
