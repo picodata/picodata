@@ -127,11 +127,15 @@ impl Eq for ColumnsLenMemo {}
 pub struct Nodes {
     /// The positions in the arrays act like pointers, so it is possible
     /// only to add nodes to the plan, but never remove them.
-    arena32: Vec<Node32>,
-    arena64: Vec<Node64>,
-    arena96: Vec<Node96>,
-    arena136: Vec<Node136>,
-    arena224: Vec<Node232>,
+    ///
+    /// Plan clones share the arenas and copy one on the first write to it
+    /// (`Rc::make_mut`): a prepared plan is cloned on every execution, and
+    /// binding usually changes only the small expression nodes of `arena32`.
+    arena32: Rc<Vec<Node32>>,
+    arena64: Rc<Vec<Node64>>,
+    arena96: Rc<Vec<Node96>>,
+    arena136: Rc<Vec<Node136>>,
+    arena224: Rc<Vec<Node232>>,
     /// Derived cache of relational column counts, dropped on any mutation.
     /// Do not make it public. It must be private.
     #[serde(skip)]
@@ -292,8 +296,7 @@ impl Nodes {
     pub(crate) fn get_mut(&mut self, id: NodeId) -> Option<MutNode<'_>> {
         self.columns_len_memo.clear();
         match id.arena_type {
-            ArenaType::Arena32 => self
-                .arena32
+            ArenaType::Arena32 => Rc::make_mut(&mut self.arena32)
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
                     Node32::Alias(alias) => MutNode::Expression(MutExpression::Alias(alias)),
@@ -350,8 +353,7 @@ impl Nodes {
                         MutNode::Expression(MutExpression::ArrayLiteral(arr))
                     }
                 }),
-            ArenaType::Arena64 => self
-                .arena64
+            ArenaType::Arena64 => Rc::make_mut(&mut self.arena64)
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
                     Node64::Over(over) => MutNode::Expression(MutExpression::Over(over)),
@@ -388,8 +390,7 @@ impl Nodes {
                         MutNode::Ddl(MutDdl::AlterSystemLocal(alter_system))
                     }
                 }),
-            ArenaType::Arena96 => self
-                .arena96
+            ArenaType::Arena96 => Rc::make_mut(&mut self.arena96)
                 .get_mut(id.offset as usize)
                 .map(|node| match node {
                     Node96::AnonymousBlock(block) => MutNode::Block(MutBlock::Anonymous(block)),
@@ -427,71 +428,57 @@ impl Nodes {
                         MutNode::Relational(MutRelational::ScanFunction(scan_func))
                     }
                 }),
-            ArenaType::Arena136 => {
-                self.arena136
-                    .get_mut(id.offset as usize)
-                    .map(|node| match node {
-                        Node136::AlterUser(alter_user) => {
-                            MutNode::Acl(MutAcl::AlterUser(alter_user))
-                        }
-                        Node136::AlterTable(alter_table) => {
-                            MutNode::Ddl(MutDdl::AlterTable(alter_table))
-                        }
-                        Node136::CreateProc(create_proc) => {
-                            MutNode::Ddl(MutDdl::CreateProc(create_proc))
-                        }
-                        Node136::GrantPrivilege(grant_priv) => {
-                            MutNode::Acl(MutAcl::GrantPrivilege(grant_priv))
-                        }
-                        Node136::CreateUser(create_user) => {
-                            MutNode::Acl(MutAcl::CreateUser(create_user))
-                        }
-                        Node136::RevokePrivilege(revoke_priv) => {
-                            MutNode::Acl(MutAcl::RevokePrivilege(revoke_priv))
-                        }
-                        Node136::Invalid(inv) => MutNode::Invalid(inv),
-                        Node136::AlterSystemCluster(alter_system) => {
-                            MutNode::Ddl(MutDdl::AlterSystemCluster(alter_system))
-                        }
-                        Node136::Update(update) => {
-                            MutNode::Relational(MutRelational::Update(update))
-                        }
-                        Node136::Motion(motion) => {
-                            MutNode::Relational(MutRelational::Motion(motion))
-                        }
-                        Node136::RenameRoutine(rename_routine) => {
-                            MutNode::Ddl(MutDdl::RenameRoutine(rename_routine))
-                        }
-                        Node136::MigrateTo(migrate) => {
-                            MutNode::Plugin(MutPlugin::MigrateTo(migrate))
-                        }
-                        Node136::ChangeConfig(change_config) => {
-                            MutNode::Plugin(MutPlugin::ChangeConfig(change_config))
-                        }
-                        Node136::Window(window) => {
-                            MutNode::Expression(MutExpression::Window(window))
-                        }
-                    })
-            }
-            ArenaType::Arena232 => {
-                self.arena224
-                    .get_mut(id.offset as usize)
-                    .map(|node| match node {
-                        Node232::CreateIndex(create_index) => {
-                            MutNode::Ddl(MutDdl::CreateIndex(create_index))
-                        }
-                        Node232::Invalid(inv) => MutNode::Invalid(inv),
-                        Node232::CreateTable(create_table) => {
-                            MutNode::Ddl(MutDdl::CreateTable(create_table))
-                        }
-                        Node232::AppendServiceToTier(append) => {
-                            MutNode::Plugin(MutPlugin::AppendServiceToTier(append))
-                        }
-                        Node232::RemoveServiceFromTier(remove) => {
-                            MutNode::Plugin(MutPlugin::RemoveServiceFromTier(remove))
-                        }
-                    })
-            }
+            ArenaType::Arena136 => Rc::make_mut(&mut self.arena136)
+                .get_mut(id.offset as usize)
+                .map(|node| match node {
+                    Node136::AlterUser(alter_user) => MutNode::Acl(MutAcl::AlterUser(alter_user)),
+                    Node136::AlterTable(alter_table) => {
+                        MutNode::Ddl(MutDdl::AlterTable(alter_table))
+                    }
+                    Node136::CreateProc(create_proc) => {
+                        MutNode::Ddl(MutDdl::CreateProc(create_proc))
+                    }
+                    Node136::GrantPrivilege(grant_priv) => {
+                        MutNode::Acl(MutAcl::GrantPrivilege(grant_priv))
+                    }
+                    Node136::CreateUser(create_user) => {
+                        MutNode::Acl(MutAcl::CreateUser(create_user))
+                    }
+                    Node136::RevokePrivilege(revoke_priv) => {
+                        MutNode::Acl(MutAcl::RevokePrivilege(revoke_priv))
+                    }
+                    Node136::Invalid(inv) => MutNode::Invalid(inv),
+                    Node136::AlterSystemCluster(alter_system) => {
+                        MutNode::Ddl(MutDdl::AlterSystemCluster(alter_system))
+                    }
+                    Node136::Update(update) => MutNode::Relational(MutRelational::Update(update)),
+                    Node136::Motion(motion) => MutNode::Relational(MutRelational::Motion(motion)),
+                    Node136::RenameRoutine(rename_routine) => {
+                        MutNode::Ddl(MutDdl::RenameRoutine(rename_routine))
+                    }
+                    Node136::MigrateTo(migrate) => MutNode::Plugin(MutPlugin::MigrateTo(migrate)),
+                    Node136::ChangeConfig(change_config) => {
+                        MutNode::Plugin(MutPlugin::ChangeConfig(change_config))
+                    }
+                    Node136::Window(window) => MutNode::Expression(MutExpression::Window(window)),
+                }),
+            ArenaType::Arena232 => Rc::make_mut(&mut self.arena224)
+                .get_mut(id.offset as usize)
+                .map(|node| match node {
+                    Node232::CreateIndex(create_index) => {
+                        MutNode::Ddl(MutDdl::CreateIndex(create_index))
+                    }
+                    Node232::Invalid(inv) => MutNode::Invalid(inv),
+                    Node232::CreateTable(create_table) => {
+                        MutNode::Ddl(MutDdl::CreateTable(create_table))
+                    }
+                    Node232::AppendServiceToTier(append) => {
+                        MutNode::Plugin(MutPlugin::AppendServiceToTier(append))
+                    }
+                    Node232::RemoveServiceFromTier(remove) => {
+                        MutNode::Plugin(MutPlugin::RemoveServiceFromTier(remove))
+                    }
+                }),
         }
     }
 
@@ -546,7 +533,7 @@ impl Nodes {
     }
     pub fn iter32_mut(&mut self) -> IterMut<'_, Node32> {
         self.columns_len_memo.clear();
-        self.arena32.iter_mut()
+        Rc::make_mut(&mut self.arena32).iter_mut()
     }
 
     /// Pair every node of an arena with its id.
@@ -602,7 +589,7 @@ impl Nodes {
                     arena_type: ArenaType::Arena32,
                 };
 
-                self.arena32.push(node32);
+                Rc::make_mut(&mut self.arena32).push(node32);
 
                 new_node_id
             }
@@ -612,7 +599,7 @@ impl Nodes {
                     arena_type: ArenaType::Arena64,
                 };
 
-                self.arena64.push(node64);
+                Rc::make_mut(&mut self.arena64).push(node64);
 
                 new_node_id
             }
@@ -622,7 +609,7 @@ impl Nodes {
                     arena_type: ArenaType::Arena96,
                 };
 
-                self.arena96.push(node96);
+                Rc::make_mut(&mut self.arena96).push(node96);
 
                 new_node_id
             }
@@ -632,7 +619,7 @@ impl Nodes {
                     arena_type: ArenaType::Arena136,
                 };
 
-                self.arena136.push(node136);
+                Rc::make_mut(&mut self.arena136).push(node136);
 
                 new_node_id
             }
@@ -642,7 +629,7 @@ impl Nodes {
                     arena_type: ArenaType::Arena232,
                 };
 
-                self.arena224.push(node224);
+                Rc::make_mut(&mut self.arena224).push(node224);
 
                 new_node_id
             }
@@ -676,7 +663,7 @@ impl Nodes {
         };
 
         self.columns_len_memo.clear();
-        let old_node = std::mem::replace(&mut self.arena32[offset], node);
+        let old_node = std::mem::replace(&mut Rc::make_mut(&mut self.arena32)[offset], node);
         Ok(old_node)
     }
 }
@@ -1091,9 +1078,7 @@ impl Plan {
         self.nodes.columns_len_memo.clear();
         match dst_id.arena_type {
             ArenaType::Arena32 => {
-                let node32 = self
-                    .nodes
-                    .arena32
+                let node32 = Rc::make_mut(&mut self.nodes.arena32)
                     .get_mut(usize::try_from(dst_id.offset).unwrap())
                     .unwrap();
                 let stub = Node32::Invalid(Invalid {});
@@ -1101,9 +1086,7 @@ impl Plan {
                 node32.into_owned()
             }
             ArenaType::Arena64 => {
-                let node64 = self
-                    .nodes
-                    .arena64
+                let node64 = Rc::make_mut(&mut self.nodes.arena64)
                     .get_mut(usize::try_from(dst_id.offset).unwrap())
                     .unwrap();
                 let stub = Node64::Invalid(Invalid {});
@@ -1111,9 +1094,7 @@ impl Plan {
                 node64.into_owned()
             }
             ArenaType::Arena96 => {
-                let node96 = self
-                    .nodes
-                    .arena96
+                let node96 = Rc::make_mut(&mut self.nodes.arena96)
                     .get_mut(usize::try_from(dst_id.offset).unwrap())
                     .unwrap();
                 let stub = Node96::Invalid(Invalid {});
@@ -1121,9 +1102,7 @@ impl Plan {
                 node96.into_owned()
             }
             ArenaType::Arena136 => {
-                let node136 = self
-                    .nodes
-                    .arena136
+                let node136 = Rc::make_mut(&mut self.nodes.arena136)
                     .get_mut(usize::try_from(dst_id.offset).unwrap())
                     .unwrap();
                 let stub = Node136::Invalid(Invalid {});
@@ -1131,9 +1110,7 @@ impl Plan {
                 node136.into_owned()
             }
             ArenaType::Arena232 => {
-                let node224 = self
-                    .nodes
-                    .arena224
+                let node224 = Rc::make_mut(&mut self.nodes.arena224)
                     .get_mut(usize::try_from(dst_id.offset).unwrap())
                     .unwrap();
                 let stub = Node232::Invalid(Invalid {});
@@ -1148,11 +1125,11 @@ impl Plan {
     pub fn new() -> Self {
         Self {
             nodes: Nodes {
-                arena32: Vec::new(),
-                arena64: Vec::new(),
-                arena96: Vec::new(),
-                arena136: Vec::new(),
-                arena224: Vec::new(),
+                arena32: Rc::default(),
+                arena64: Rc::default(),
+                arena96: Rc::default(),
+                arena136: Rc::default(),
+                arena224: Rc::default(),
                 columns_len_memo: ColumnsLenMemo::default(),
             },
             relations: Relations::new(),
@@ -1676,6 +1653,13 @@ impl Plan {
         use options::TimeoutSource;
 
         let Ok(top_id) = self.get_top() else { return };
+        // Look before writing: the write copies the arena shared with the prepared plan.
+        if !matches!(
+            self.get_node(top_id),
+            Ok(Node::Ddl(_) | Node::Acl(_) | Node::Plugin(_))
+        ) {
+            return;
+        }
         let Ok(mut mut_node) = self.get_mut_node(top_id) else {
             return;
         };

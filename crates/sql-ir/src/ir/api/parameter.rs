@@ -202,7 +202,7 @@ impl Plan {
                     time::UtcOffset::from_whole_seconds(time.offset().local_minus_utc()).unwrap(),
                 );
 
-        for node in self.nodes.arena32.iter_mut() {
+        for node in self.nodes.iter32_mut() {
             if let Node32::Timestamp(timestamp) = node {
                 *node = Node32::Constant(Constant {
                     value: Self::create_datetime_value(local_datetime, timestamp)?,
@@ -222,9 +222,18 @@ impl Plan {
         &mut self,
         get_user_name: impl Fn() -> Result<String, SbroadError>,
     ) -> Result<&mut Self, SbroadError> {
+        // Writing copies the arena shared with the prepared plan.
+        if !self
+            .nodes
+            .iter32()
+            .any(|node| matches!(node, Node32::CurrentUser(_)))
+        {
+            return Ok(self);
+        }
+
         let mut user_name: Option<String> = None;
 
-        for node in self.nodes.arena32.iter_mut() {
+        for node in self.nodes.iter32_mut() {
             if let Node32::CurrentUser(_) = node {
                 let name = match &user_name {
                     Some(name) => name,

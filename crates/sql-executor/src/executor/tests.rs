@@ -8,12 +8,15 @@ use crate::executor::ExecutingQuery;
 use crate::ir::bucket::Buckets;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, NodeId};
+use crate::ir::options::Options;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 use crate::test_helpers::vcolumn_integer_user_non_null;
 use crate::test_helpers::ExecutingQueryExt;
+use crate::utils::MutexLike;
 use insta::assert_snapshot;
+use sql_frontend::frontend::sql::transform_into_plan;
 use std::collections::HashMap;
 
 // Helper function to format back sql.
@@ -84,6 +87,37 @@ fn shard_union_query() {
         .determine_bucket_id(&[&param1])
         .unwrap();
     assert_eq!(buckets, &[bucket]);
+}
+
+#[test]
+fn bind_does_not_write_into_prepared_plan() {
+    // Like `PreparedStatement::bind`: each bind takes a clone of the
+    // prepared plan, which shares its node arenas.
+    let sql = r#"SELECT "FIRST_NAME" FROM "test_space" WHERE "id" = $1"#;
+    let coordinator = RouterRuntimeMock::new();
+    let mut prepared = {
+        let metadata = coordinator.metadata().lock();
+        transform_into_plan(sql, &[Value::from(1).get_type()], &*metadata).unwrap()
+    };
+    prepared.optimize_statement().unwrap();
+
+    for param in [Value::from(1), Value::from(2)] {
+        let mut plan = prepared.clone();
+        plan.bind_statement(vec![param.clone()], Options::default())
+            .unwrap();
+        let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+        let mut port = PortMocked::new();
+        query.dispatch(&mut port).unwrap();
+
+        let info = port.decode();
+        let DispatchInfo::Filtered(filtered) = info.first().unwrap() else {
+            panic!("Expected a custom plan dispatch");
+        };
+        let (_, params, _, buckets) = filtered.first().unwrap();
+        let bucket = coordinator.determine_bucket_id(&[&param]).unwrap();
+        assert_eq!(params, &[param]);
+        assert_eq!(buckets, &[bucket]);
+    }
 }
 
 #[test]
