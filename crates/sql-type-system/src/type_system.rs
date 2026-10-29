@@ -282,6 +282,16 @@ pub struct TypeAnalyzerCore<'a, Id: Hash + Eq + Clone> {
     parameters: Vec<Option<Type>>,
 }
 
+/// Reports the type of `id` and returns the report.
+fn report_type<Id: Hash + Eq + Clone>(
+    mut report: TypeReport<Id>,
+    id: &Id,
+    ty: Type,
+) -> TypeReport<Id> {
+    report.report(id, ty);
+    report
+}
+
 impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     pub fn new(type_system: &'a TypeSystem) -> Self {
         Self {
@@ -506,126 +516,30 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 report.report(&expr.id, *ty);
                 Ok(report)
             }
-            ExprKind::Literal(ty) => {
-                // Literals are similar to references, except literals can be coerced to desired.
-                let mut report = TypeReport::new();
-
-                match (*ty, desired_type) {
-                    (Type::Numeric, Type::Double) => {
-                        // Floating pointer literals have `numeric` type by default. However, in a
-                        // context with `double` values it should be coerced to `double`. Note that
-                        // this can only be done for literals, as expressions like `1.5`
-                        // do not have a fixed type.
-                        // Example: `insert into t (double_col) values (1.5)`
-                        report.cast(&expr.id, Type::Double);
-                        report.report(&expr.id, Type::Double);
-                        return Ok(report);
-                    }
-                    (Type::Text, desired) if desired != Type::Text => {
-                        // String literals can be coerced to any type, if context demands it.
-                        // This can be used in arithmetic expressions (`1 + '1'`), but this is much
-                        // more useful for non-trivial types such as `datetime` or `uuid`, as it
-                        // allows to avoid explicit type casts.
-                        // Example: `insert into t (date) values ('Fri, 07 Jul 2023 12:34:56')`
-                        report.cast(&expr.id, desired);
-                        report.report(&expr.id, desired);
-                        return Ok(report);
-                    }
-                    _ => (),
-                }
-
-                // Coerce literal type to desired if possible.
-                if *ty != desired_type && self.can_coerce(*ty, desired_type) {
-                    report.cast(&expr.id, desired_type);
-                    report.report(&expr.id, desired_type);
-                    return Ok(report);
-                }
-
-                report.report(&expr.id, *ty);
-                Ok(report)
-            }
-            ExprKind::Parameter(idx) => {
-                let mut report = TypeReport::new();
-                if let Some(param_type) = self.get_parameter_type(*idx) {
-                    report.report_param(*idx, param_type);
-                    // Coerce parameter type to desired if possible.
-                    if param_type != desired_type && self.can_coerce(param_type, desired_type) {
-                        report.cast(&expr.id, desired_type);
-                        report.report(&expr.id, desired_type);
-                        Ok(report)
-                    } else {
-                        report.report(&expr.id, param_type);
-                        Ok(report)
-                    }
-                } else {
-                    report.report_param(*idx, desired_type);
-                    report.report(&expr.id, desired_type);
-                    Ok(report)
-                }
-            }
+            ExprKind::Literal(ty) => self.analyze_literal(expr, *ty, desired_type),
+            ExprKind::Parameter(idx) => self.analyze_parameter(expr, *idx, desired_type),
             ExprKind::Cast(inner, to) => {
-                let mut report = self.analyze(inner, *to)?;
                 // TODO: check if we can cast expression
-                report.report(&expr.id, *to);
-                Ok(report)
+                self.analyze(inner, *to)
+                    .map(|report| report_type(report, &expr.id, *to))
             }
-            ExprKind::Operator(ref name, ref args) => {
-                let (ty, mut report) = self.analyze_operator_args(name, args, desired_type)?;
-                report.report(&expr.id, ty);
-                Ok(report)
-            }
-            ExprKind::Function(ref name, ref args) => {
-                let (ty, mut report) = self.analyze_function_args(name, args, desired_type)?;
-                report.report(&expr.id, ty);
-                Ok(report)
-            }
+            ExprKind::Operator(ref name, ref args) => self
+                .analyze_operator_args(name, args, desired_type)
+                .map(|(ty, report)| report_type(report, &expr.id, ty)),
+            ExprKind::Function(ref name, ref args) => self
+                .analyze_function_args(name, args, desired_type)
+                .map(|(ty, report)| report_type(report, &expr.id, ty)),
             ExprKind::WindowFunction {
                 ref name,
                 ref args,
                 filter,
                 over,
-            } => {
-                let (ty, mut report) = self.analyze_window_args(name, args, desired_type)?;
-                let over_report = self.analyze(over, Type::Text)?;
-                report.extend(over_report);
-
-                if let Some(filter) = filter {
-                    let filter_report = self.analyze_condition("FILTER", filter)?;
-                    report.extend(filter_report);
-                }
-
-                report.report(&expr.id, ty);
-                Ok(report)
-            }
+            } => self.analyze_window_function(expr, name, args, filter, over, desired_type),
             ExprKind::Window {
                 order_by,
                 partition_by,
                 frame,
-            } => {
-                let desired_types = vec![Type::Text; order_by.len()];
-                let mut report = self.analyze_many(order_by, &desired_types)?;
-
-                let desired_types = vec![Type::Text; partition_by.len()];
-                let partition_by_report = self.analyze_many(partition_by, &desired_types)?;
-                report.extend(partition_by_report);
-
-                if let Some(frame) = frame {
-                    let frame_report = match &**frame {
-                        WindowFrame::IntOnly { kind, offsets } => {
-                            self.analyze_int_offsets(*kind, offsets, false)?
-                        }
-                        WindowFrame::Rows(offsets) => {
-                            self.analyze_int_offsets(FrameKind::Rows, offsets, true)?
-                        }
-                        WindowFrame::Range { order_col, offsets } => {
-                            self.analyze_range_offsets(order_col, offsets)?
-                        }
-                    };
-                    report.extend(frame_report);
-                }
-
-                Ok(report)
-            }
+            } => self.analyze_window(order_by, partition_by, frame),
             ExprKind::IndexChain {
                 ref source,
                 ref keys,
@@ -636,110 +550,26 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 let desired_type =
                     NestedType::try_from(desired_type).map_or(Type::Map, Type::Array);
 
-                let (ty, mut report) = self.analyze_index_op(source, keys, desired_type)?;
-                report.report(&expr.id, ty);
-                Ok(report)
+                self.analyze_index_op(source, keys, desired_type)
+                    .map(|(ty, report)| report_type(report, &expr.id, ty))
             }
             ExprKind::Unnest(ref args) => self.analyze_unnest(expr, args, desired_type),
-            ExprKind::Coalesce(ref args) => {
-                let (ty, mut report) =
-                    self.analyze_homogeneous_exprs("COALESCE", args, desired_type)?;
-                report.report(&expr.id, ty);
-                Ok(report)
-            }
-            ExprKind::JsonExtractPath(ref args) => {
-                if args.len() < 2 {
-                    return Err(self.could_not_resolve_function_overload_error(
-                        FunctionKind::Scalar,
-                        "json_extract_path",
-                        args,
-                    ));
-                };
-
-                let mut report = TypeReport::new();
-                let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
-                for (arg, ty) in args.iter().zip(arg_types) {
-                    let r = self.analyze(arg, ty)?;
-                    report.extend(r);
-                }
-
-                let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
-                for (arg, ty) in args.iter().zip(arg_types) {
-                    if report.get_type(&arg.id) != ty {
-                        return Err(self.could_not_resolve_function_overload_error(
-                            FunctionKind::Scalar,
-                            "json_extract_path",
-                            args,
-                        ));
-                    }
-                }
-
-                report.report(&expr.id, Type::Any);
-                Ok(report)
-            }
-            ExprKind::Comparison(op, left, right) => {
-                let mut report = self.analyze_comparison_operation(*op, left, right)?;
-                report.report(&expr.id, Type::Boolean);
-                Ok(report)
-            }
+            ExprKind::Coalesce(ref args) => self
+                .analyze_homogeneous_exprs("COALESCE", args, desired_type)
+                .map(|(ty, report)| report_type(report, &expr.id, ty)),
+            ExprKind::JsonExtractPath(ref args) => self.analyze_json_extract_path(expr, args),
+            ExprKind::Comparison(op, left, right) => self
+                .analyze_comparison_operation(*op, left, right)
+                .map(|report| report_type(report, &expr.id, Type::Boolean)),
             ExprKind::Case {
                 search_expr,
                 when_exprs,
                 result_exprs,
-            } => {
-                let when_report = match search_expr {
-                    // In the simple form when expressions are compared with the search one.
-                    Some(search) => {
-                        let mut exprs = Vec::with_capacity(when_exprs.len() + 1);
-                        exprs.push(search.as_ref());
-                        exprs.extend(when_exprs);
-                        let (_, report) =
-                            self.analyze_homogeneous_exprs("CASE/WHEN", &exprs, Type::Text)?;
-                        report
-                    }
-                    None => {
-                        let mut report = TypeReport::new();
-                        for when in when_exprs {
-                            report.extend(self.analyze_condition("CASE/WHEN", when)?);
-                        }
-                        report
-                    }
-                };
-                let (result_ty, mut result_report) =
-                    self.analyze_homogeneous_exprs("CASE/THEN", result_exprs, desired_type)?;
-                result_report.extend(when_report);
-                result_report.report(&expr.id, result_ty);
-                Ok(result_report)
-            }
-            ExprKind::Between(exprs) => {
-                let (_, mut between_report) =
-                    self.analyze_homogeneous_exprs("BETWEEN", exprs, Type::Text)?;
-                between_report.report(&expr.id, Type::Boolean);
-                Ok(between_report)
-            }
-            ExprKind::Unary(op, child) => {
-                let mut report = match op {
-                    UnaryOperator::Not => self.analyze_condition("NOT", child)?,
-                    // Postgres-style strictness: `1 IS TRUE` is a type error.
-                    UnaryOperator::IsTrue => self.analyze_condition("IS TRUE", child)?,
-                    UnaryOperator::IsFalse => self.analyze_condition("IS FALSE", child)?,
-                    UnaryOperator::IsNull => self.analyze(child, Type::Text)?,
-                    UnaryOperator::IsUnknown => self.analyze_condition("IS UNKNOWN", child)?,
-                    UnaryOperator::Exists => {
-                        if let ExprKind::Subquery(_) = child.kind {
-                            // TODO: analyze subquery
-                            TypeReport::new()
-                        } else {
-                            return Err(ErrorKind::Other(
-                                "EXISTS can only be applied to subquery".into(),
-                            )
-                            .into());
-                        }
-                    }
-                };
-                report.report(&expr.id, Type::Boolean);
-                Ok(report)
-            }
+            } => self.analyze_case(expr, search_expr, when_exprs, result_exprs, desired_type),
+            ExprKind::Between(exprs) => self
+                .analyze_homogeneous_exprs("BETWEEN", exprs, Type::Text)
+                .map(|(_, report)| report_type(report, &expr.id, Type::Boolean)),
+            ExprKind::Unary(op, child) => self.analyze_unary(expr, *op, child),
             ExprKind::Subquery(types) => {
                 if types.len() == 1 {
                     let mut report = TypeReport::new();
@@ -758,6 +588,224 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             }
             ExprKind::Array(args) => self.analyze_array_literal(&expr.id, args, desired_type),
         }
+    }
+
+    fn analyze_literal(
+        &self,
+        expr: &Expr<Id>,
+        ty: Type,
+        desired_type: Type,
+    ) -> Result<TypeReport<Id>, Error> {
+        // Literals are similar to references, except literals can be coerced to desired.
+        let mut report = TypeReport::new();
+
+        match (ty, desired_type) {
+            (Type::Numeric, Type::Double) => {
+                // Floating pointer literals have `numeric` type by default. However, in a
+                // context with `double` values it should be coerced to `double`. Note that
+                // this can only be done for literals, as expressions like `1.5`
+                // do not have a fixed type.
+                // Example: `insert into t (double_col) values (1.5)`
+                report.cast(&expr.id, Type::Double);
+                report.report(&expr.id, Type::Double);
+                return Ok(report);
+            }
+            (Type::Text, desired) if desired != Type::Text => {
+                // String literals can be coerced to any type, if context demands it.
+                // This can be used in arithmetic expressions (`1 + '1'`), but this is much
+                // more useful for non-trivial types such as `datetime` or `uuid`, as it
+                // allows to avoid explicit type casts.
+                // Example: `insert into t (date) values ('Fri, 07 Jul 2023 12:34:56')`
+                report.cast(&expr.id, desired);
+                report.report(&expr.id, desired);
+                return Ok(report);
+            }
+            _ => (),
+        }
+
+        // Coerce literal type to desired if possible.
+        if ty != desired_type && self.can_coerce(ty, desired_type) {
+            report.cast(&expr.id, desired_type);
+            report.report(&expr.id, desired_type);
+            return Ok(report);
+        }
+
+        report.report(&expr.id, ty);
+        Ok(report)
+    }
+
+    fn analyze_parameter(
+        &self,
+        expr: &Expr<Id>,
+        idx: u16,
+        desired_type: Type,
+    ) -> Result<TypeReport<Id>, Error> {
+        let mut report = TypeReport::new();
+        if let Some(param_type) = self.get_parameter_type(idx) {
+            report.report_param(idx, param_type);
+            // Coerce parameter type to desired if possible.
+            if param_type != desired_type && self.can_coerce(param_type, desired_type) {
+                report.cast(&expr.id, desired_type);
+                report.report(&expr.id, desired_type);
+                Ok(report)
+            } else {
+                report.report(&expr.id, param_type);
+                Ok(report)
+            }
+        } else {
+            report.report_param(idx, desired_type);
+            report.report(&expr.id, desired_type);
+            Ok(report)
+        }
+    }
+
+    fn analyze_window_function(
+        &mut self,
+        expr: &Expr<Id>,
+        name: &str,
+        args: &[Expr<Id>],
+        filter: &Option<Box<Expr<Id>>>,
+        over: &Expr<Id>,
+        desired_type: Type,
+    ) -> Result<TypeReport<Id>, Error> {
+        let (ty, mut report) = self.analyze_window_args(name, args, desired_type)?;
+        let over_report = self.analyze(over, Type::Text)?;
+        report.extend(over_report);
+
+        if let Some(filter) = filter {
+            let filter_report = self.analyze_condition("FILTER", filter)?;
+            report.extend(filter_report);
+        }
+
+        report.report(&expr.id, ty);
+        Ok(report)
+    }
+
+    fn analyze_window(
+        &mut self,
+        order_by: &[Expr<Id>],
+        partition_by: &[Expr<Id>],
+        frame: &Option<Box<WindowFrame<Id>>>,
+    ) -> Result<TypeReport<Id>, Error> {
+        let desired_types = vec![Type::Text; order_by.len()];
+        let mut report = self.analyze_many(order_by, &desired_types)?;
+
+        let desired_types = vec![Type::Text; partition_by.len()];
+        let partition_by_report = self.analyze_many(partition_by, &desired_types)?;
+        report.extend(partition_by_report);
+
+        if let Some(frame) = frame {
+            let frame_report = match &**frame {
+                WindowFrame::IntOnly { kind, offsets } => {
+                    self.analyze_int_offsets(*kind, offsets, false)?
+                }
+                WindowFrame::Rows(offsets) => {
+                    self.analyze_int_offsets(FrameKind::Rows, offsets, true)?
+                }
+                WindowFrame::Range { order_col, offsets } => {
+                    self.analyze_range_offsets(order_col, offsets)?
+                }
+            };
+            report.extend(frame_report);
+        }
+
+        Ok(report)
+    }
+
+    fn analyze_json_extract_path(
+        &mut self,
+        expr: &Expr<Id>,
+        args: &[Expr<Id>],
+    ) -> Result<TypeReport<Id>, Error> {
+        if args.len() < 2 {
+            return Err(self.could_not_resolve_function_overload_error(
+                FunctionKind::Scalar,
+                "json_extract_path",
+                args,
+            ));
+        };
+
+        let mut report = TypeReport::new();
+        let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
+        for (arg, ty) in args.iter().zip(arg_types) {
+            let r = self.analyze(arg, ty)?;
+            report.extend(r);
+        }
+
+        let arg_types = iter::once(Type::Map).chain(iter::repeat(Type::Text));
+        for (arg, ty) in args.iter().zip(arg_types) {
+            if report.get_type(&arg.id) != ty {
+                return Err(self.could_not_resolve_function_overload_error(
+                    FunctionKind::Scalar,
+                    "json_extract_path",
+                    args,
+                ));
+            }
+        }
+
+        report.report(&expr.id, Type::Any);
+        Ok(report)
+    }
+
+    fn analyze_case(
+        &mut self,
+        expr: &Expr<Id>,
+        search_expr: &Option<Box<Expr<Id>>>,
+        when_exprs: &[Expr<Id>],
+        result_exprs: &[Expr<Id>],
+        desired_type: Type,
+    ) -> Result<TypeReport<Id>, Error> {
+        let when_report = match search_expr {
+            // In the simple form when expressions are compared with the search one.
+            Some(search) => {
+                let mut exprs = Vec::with_capacity(when_exprs.len() + 1);
+                exprs.push(search.as_ref());
+                exprs.extend(when_exprs);
+                let (_, report) =
+                    self.analyze_homogeneous_exprs("CASE/WHEN", &exprs, Type::Text)?;
+                report
+            }
+            None => {
+                let mut report = TypeReport::new();
+                for when in when_exprs {
+                    report.extend(self.analyze_condition("CASE/WHEN", when)?);
+                }
+                report
+            }
+        };
+        let (result_ty, mut result_report) =
+            self.analyze_homogeneous_exprs("CASE/THEN", result_exprs, desired_type)?;
+        result_report.extend(when_report);
+        result_report.report(&expr.id, result_ty);
+        Ok(result_report)
+    }
+
+    fn analyze_unary(
+        &mut self,
+        expr: &Expr<Id>,
+        op: UnaryOperator,
+        child: &Expr<Id>,
+    ) -> Result<TypeReport<Id>, Error> {
+        let mut report = match op {
+            UnaryOperator::Not => self.analyze_condition("NOT", child)?,
+            // Postgres-style strictness: `1 IS TRUE` is a type error.
+            UnaryOperator::IsTrue => self.analyze_condition("IS TRUE", child)?,
+            UnaryOperator::IsFalse => self.analyze_condition("IS FALSE", child)?,
+            UnaryOperator::IsNull => self.analyze(child, Type::Text)?,
+            UnaryOperator::IsUnknown => self.analyze_condition("IS UNKNOWN", child)?,
+            UnaryOperator::Exists => {
+                if let ExprKind::Subquery(_) = child.kind {
+                    // TODO: analyze subquery
+                    TypeReport::new()
+                } else {
+                    return Err(
+                        ErrorKind::Other("EXISTS can only be applied to subquery".into()).into(),
+                    );
+                }
+            }
+        };
+        report.report(&expr.id, Type::Boolean);
+        Ok(report)
     }
 
     /// Analyze the call `expr` of `unnest`: one or more arrays. The call has
@@ -1009,21 +1057,28 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             }
         }
 
-        // Finally, pick the most suitable candidate,
-        // taking into account the costs and the desired type.
+        Ok(self.select_overload(resolved_overloads, desired_type))
+    }
 
+    /// Picks the most suitable of the overloads that accept the arguments.
+    fn select_overload(
+        &self,
+        mut resolved_overloads: Vec<(&Function, TypeReport<Id>)>,
+        desired_type: Type,
+    ) -> Option<(Type, TypeReport<Id>)> {
+        // Take into account the costs and the desired type.
         // Start with overloads returning desired type.
         let best_matches = select_best_overloads(&resolved_overloads, Some(desired_type));
         if let [idx] = best_matches[..] {
             let (func, report) = resolved_overloads.swap_remove(idx);
-            return Ok(Some((func.return_type, report)));
+            return Some((func.return_type, report));
         }
 
         // If the previous step didn't succeed, ignore desired type.
         let best_matches = select_best_overloads(&resolved_overloads, None);
         if let [idx] = best_matches[..] {
             let (func, report) = resolved_overloads.swap_remove(idx);
-            return Ok(Some((func.return_type, report)));
+            return Some((func.return_type, report));
         }
 
         // In case of ambiguity, select overload that returns a type that can be coerced
@@ -1036,11 +1091,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
                 .map(|&other| resolved_overloads[other].0.return_type);
             if other_types.all(|other| self.can_coerce(return_type, other)) {
                 let (_, report) = resolved_overloads.swap_remove(idx);
-                return Ok(Some((return_type, report)));
+                return Some((return_type, report));
             }
         }
 
-        Ok(None)
+        None
     }
 
     fn could_not_resolve_function_overload_error(
@@ -1112,6 +1167,15 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             ComparisonOperator::In => ComparisonOperator::Eq.as_str(),
             _ => op.as_str(),
         };
+        self.analyze_comparison_operands(op_fmt, left, right)
+    }
+
+    fn analyze_comparison_operands(
+        &mut self,
+        op_fmt: &str,
+        left: &Expr<Id>,
+        right: &Expr<Id>,
+    ) -> Result<TypeReport<Id>, Error> {
         let report = match (&left.kind, &right.kind) {
             (ExprKind::Row(left_row), ExprKind::Row(right_row)) => {
                 // Example: `(a,b) = (1,2)`
@@ -1274,8 +1338,16 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
             }
         }
 
-        // Finally, pick the most suitable candidate, taking into account candidates
-        // and desired type.
+        Ok(self.select_common_type(candidates, desired_type))
+    }
+
+    /// Picks the common type of the candidates that all expressions can be coerced to.
+    fn select_common_type(
+        &self,
+        mut candidates: Vec<(Type, TypeReport<Id>)>,
+        desired_type: Type,
+    ) -> Option<(Type, TypeReport<Id>)> {
+        // Take into account the candidates and the desired type.
         //
         // Note that in contrast to function analysis we ignore costs here.
         // Consider costs in the following examples:
@@ -1287,12 +1359,12 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         //    Again, `numeric` and `double` literals met, and we'd expect `double`.
         //    However, the result will be `numeric`, as this cost is lower (1 vs 2).
         if candidates.len() == 1 {
-            return Ok(Some(candidates.pop().unwrap()));
+            return candidates.pop();
         }
 
         if let Some(idx) = candidates.iter().position(|(ty, _)| *ty == desired_type) {
             // TODO: ensure that there is only one such candidate
-            return Ok(Some(candidates.swap_remove(idx)));
+            return Some(candidates.swap_remove(idx));
         }
 
         // In case of ambiguity, try to find a type that can be coerced to other types.
@@ -1307,10 +1379,10 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         });
         if let Some(idx) = weakest {
             // TODO: ensure that there is only one such candidate
-            return Ok(Some(candidates.swap_remove(idx)));
+            return Some(candidates.swap_remove(idx));
         }
 
-        Ok(None)
+        None
     }
 
     fn types_cannot_be_matched_error(
