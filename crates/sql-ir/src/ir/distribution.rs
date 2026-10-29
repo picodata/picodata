@@ -521,23 +521,30 @@ impl Plan {
                 self.distr_from_node(*output)?
             }
             Relational::Join(Join { left, right, .. }) => {
-                // The columns of the left child are followed by the columns of the right one.
-                let (left, right) = (*left, *right);
-                let mut child_pos_map = AHashMap::new();
-                self.map_child_columns(left, 0, &mut child_pos_map)?;
-                let left_len = self.columns_len(left)?;
-                self.map_child_columns(right, left_len, &mut child_pos_map)?;
-                self.get_two_children_node_dist(&child_pos_map, left, right, rel_id)?
+                // The columns of the left child are followed by the columns of the right
+                // one, so the keys of the right child move by the width of the left one.
+                let left_len = self.columns_len(*left)?;
+                let right_dist = match self.rel_distr_ref(*right)? {
+                    Distribution::Segment { keys } => {
+                        let keys: HashSet<Key, RepeatableState> = keys
+                            .iter()
+                            .map(|key| {
+                                Key::new(key.positions.iter().map(|pos| pos + left_len).collect())
+                            })
+                            .collect();
+                        Distribution::Segment { keys: keys.into() }
+                    }
+                    dist => dist.clone(),
+                };
+                Distribution::join(self.rel_distr_ref(*left)?, &right_dist)
             }
+            // Every column is taken from both children at the same position.
             Relational::Union(Union { left, right, .. })
-            | Relational::UnionAll(UnionAll { left, right, .. })
-            | Relational::Except(Except { left, right, .. }) => {
-                // Every column is taken from both children at the same position.
-                let (left, right) = (*left, *right);
-                let mut child_pos_map = AHashMap::new();
-                self.map_child_columns(left, 0, &mut child_pos_map)?;
-                self.map_child_columns(right, 0, &mut child_pos_map)?;
-                self.get_two_children_node_dist(&child_pos_map, left, right, rel_id)?
+            | Relational::UnionAll(UnionAll { left, right, .. }) => {
+                Distribution::union(self.rel_distr_ref(*left)?, self.rel_distr_ref(*right)?)
+            }
+            Relational::Except(Except { left, right, .. }) => {
+                Distribution::except(self.rel_distr_ref(*left)?, self.rel_distr_ref(*right)?)
             }
             Relational::Intersect(Intersect { right: child, .. })
             | Relational::Selection(Selection { child, .. })
@@ -554,11 +561,8 @@ impl Plan {
             | Relational::Delete(Delete {
                 child: Some(child), ..
             }) => {
-                // The node passes the columns of its child through.
-                let child = *child;
-                let mut child_pos_map = AHashMap::new();
-                self.map_child_columns(child, 0, &mut child_pos_map)?;
-                self.dist_from_child(child, &child_pos_map)?
+                // The node passes the columns of its child through at the same positions.
+                self.rel_distr_ref(*child)?.clone()
             }
             Relational::Insert(_)
             | Relational::Values(_)
@@ -575,23 +579,6 @@ impl Plan {
         };
 
         self.set_rel_distr(rel_id, dist)
-    }
-
-    /// Records that every column of `child` appears in the parent's output at
-    /// the same position shifted by `offset`.
-    fn map_child_columns(
-        &self,
-        child: NodeId,
-        offset: usize,
-        child_pos_map: &mut AHashMap<ChildColumnReference, Vec<ParentColumnPosition>>,
-    ) -> Result<(), SbroadError> {
-        for pos in 0..self.columns_len(child)? {
-            child_pos_map
-                .entry((child, pos).into())
-                .or_default()
-                .push(pos + offset);
-        }
-        Ok(())
     }
 
     /// Each relational node have non-sq (required) and sq (additional) children.
@@ -769,31 +756,6 @@ impl Plan {
                 })
             }
         }
-    }
-
-    fn get_two_children_node_dist(
-        &self,
-        child_pos_map: &AHashMap<ChildColumnReference, Vec<ParentColumnPosition>>,
-        left_id: NodeId,
-        right_id: NodeId,
-        parent_id: NodeId,
-    ) -> Result<Distribution, SbroadError> {
-        let left_dist = self.dist_from_child(left_id, child_pos_map)?;
-        let right_dist = self.dist_from_child(right_id, child_pos_map)?;
-
-        let parent = self.get_relation_node(parent_id)?;
-        let new_dist = match parent {
-            Relational::Except { .. } => Distribution::except(&left_dist, &right_dist),
-            Relational::Union { .. } | Relational::UnionAll { .. } => {
-                Distribution::union(&left_dist, &right_dist)
-            }
-            Relational::Join { .. } => Distribution::join(&left_dist, &right_dist),
-            _ => {
-                panic!("Expected Except, Union(All) or Join node");
-            }
-        };
-
-        Ok(new_dist)
     }
 
     /// Calculates the distribution of an expression (a row or a reference in a
