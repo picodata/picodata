@@ -259,15 +259,31 @@ ERROR_INJECTION_FEATURE = "error_injection"
 
 
 @functools.cache
+def _long_version_info(executable: str) -> dict:
+    """
+    YAML reported by `picodata -VV` of the given binary.
+    """
+    long_version = subprocess.check_output([executable, "-VV"], text=True)
+    return yaml.safe_load(long_version)
+
+
+@functools.cache
 def cargo_features(executable: str) -> frozenset[str]:
     """
     Set of cargo features the given picodata binary was built with,
     as reported by `picodata -VV`.
     """
-    long_version = subprocess.check_output([executable, "-VV"], text=True)
-    info = yaml.safe_load(long_version)
-    features = info.get("cargo_features") or []
+    features = _long_version_info(executable).get("cargo_features") or []
     return frozenset(features)
+
+
+def has_debug_assertions(executable: str) -> bool:
+    """
+    Whether the given picodata binary was built with `debug_assertions`,
+    as reported by `picodata -VV`.
+    """
+    cargo_cfg = _long_version_info(executable).get("cargo_cfg") or {}
+    return "CARGO_CFG_DEBUG_ASSERTIONS" in cargo_cfg
 
 
 def assert_error_injection_supported(executable: str, error: str) -> None:

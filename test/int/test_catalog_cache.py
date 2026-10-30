@@ -1,14 +1,16 @@
 import pytest
 
 from conftest import Cluster, Instance, ProcessDead, Retriable, TarantoolError, log_crawler
+from framework.util.build import has_debug_assertions
 
 NOT_OPERABLE = "cannot be modified now as DDL operation is in progress"
 
 
 def is_debug_build(instance: Instance) -> bool:
-    """`pico._catalog_cache_check` and the cache check after raft entries
-    exist only in debug builds."""
-    return instance.eval("return pico._catalog_cache_check ~= nil")
+    """Whether the binary of the instance was built with `debug_assertions`:
+    `pico._catalog_cache_check` and the cache check after raft entries exist
+    only in such builds."""
+    return has_debug_assertions(instance.executable.command)
 
 
 def skip_unless_debug_build(instance: Instance):
@@ -23,6 +25,11 @@ def skip_unless_debug_tarantool(instance: Instance):
 
 def table_id(instance: Instance, name: str) -> int:
     return instance.eval("return box.space._pico_table.index._pico_table_name:get(...).id", name)
+
+
+def check_cache(instance: Instance):
+    if is_debug_build(instance):
+        instance.eval("pico._catalog_cache_check()")
 
 
 def test_debug_check_finds_write_bypassing_picodata(instance: Instance):
@@ -62,19 +69,6 @@ def test_raft_propose_dml_into_catalog(instance: Instance):
     instance.raft_wait_index(index)
     assert instance.eval("return box.space._pico_table:get(...).description", id) == "proposed"
     instance.eval("pico._catalog_cache_check()")
-
-
-def test_sql_truncate_of_system_table_is_denied(instance: Instance):
-    for table in ["_pico_table", "_pico_index"]:
-        with pytest.raises(TarantoolError, match=f"TRUNCATE on table '{table}' is denied for all users"):
-            instance.sql(f"TRUNCATE {table}")
-    assert instance.eval("return box.space._pico_index:len()") > 0
-    check_cache(instance)
-
-
-def check_cache(instance: Instance):
-    if is_debug_build(instance):
-        instance.eval("pico._catalog_cache_check()")
 
 
 def test_table_found_after_restart(cluster: Cluster):

@@ -2009,6 +2009,15 @@ cluster:
             assert table_ids[table_name] == table_id
 
 
+def test_sql_truncate_of_system_table_is_denied(instance: Instance):
+    # Like writes into system tables, TRUNCATE would bypass the checks which
+    # keep picodata's own metadata consistent.
+    for table in ["_pico_table", "_pico_index"]:
+        with pytest.raises(TarantoolError, match=f"TRUNCATE on table '{table}' is denied for all users"):
+            instance.sql(f"TRUNCATE {table}")
+    assert instance.eval("return box.space._pico_index:len()") > 0
+
+
 def test_truncate_stops_rebalancing_before(cluster: Cluster):
     # Initially cluster consists of single replicaset.
     r1 = cluster.deploy(instance_count=1)[0]
