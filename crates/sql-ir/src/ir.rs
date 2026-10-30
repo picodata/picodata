@@ -1800,7 +1800,7 @@ impl Plan {
     /// Return Reference if this `node_id` refers to it,
     /// otherwise return `None`.
     pub fn get_reference(&self, node_id: NodeId) -> Option<&Reference> {
-        if let Expression::Reference(r) = self.get_expression_node(node_id).ok()? {
+        if let Node::Expression(Expression::Reference(r)) = self.get_node(node_id).ok()? {
             return Some(r);
         }
         None
@@ -1809,7 +1809,7 @@ impl Plan {
     /// Return Reference if this `node_id` refers to it,
     /// otherwise return `None`.
     pub fn get_sq_reference(&self, node_id: NodeId) -> Option<&SubQueryReference> {
-        if let Expression::SubQueryReference(r) = self.get_expression_node(node_id).ok()? {
+        if let Node::Expression(Expression::SubQueryReference(r)) = self.get_node(node_id).ok()? {
             return Some(r);
         }
         None

@@ -1596,6 +1596,18 @@ impl<N: Ord + Borrow<str>> ColumnPositionMap<N> {
         }
     }
 
+    /// Whether [`Self::get`] (without `scan`) or [`Self::get_with_scan`] finds
+    /// exactly one position. Unlike them, it does not build an error on a miss.
+    pub fn has_single(&self, column: &str, scan: Option<&str>) -> bool {
+        let Some(scans) = self.map.get(column) else {
+            return false;
+        };
+        match scan {
+            None => matches!(scans.as_slice(), [(_, Positions::Single(_))]),
+            Some(_) => matches!(Self::under_scan(scans, scan), Some(Positions::Single(_))),
+        }
+    }
+
     /// Get positions of all columns in relational node output
     /// that corresponds to given `target_scan_name`.
     pub fn get_by_scan_name(&self, target_scan_name: &str) -> Result<Vec<Position>, SbroadError> {

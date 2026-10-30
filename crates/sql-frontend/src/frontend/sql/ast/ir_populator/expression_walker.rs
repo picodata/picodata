@@ -410,6 +410,19 @@ where
         }
     }
 
+    /// Same as `columns_map_get_positions(..).is_ok()` without the error on a miss.
+    pub(in crate::frontend::sql) fn columns_map_has_position(
+        &self,
+        rel_id: NodeId,
+        col_name: &str,
+        scan_name: Option<&str>,
+    ) -> bool {
+        self.column_positions_cache
+            .get(&rel_id)
+            .expect("Columns map should be in the cache already")
+            .has_single(col_name, scan_name)
+    }
+
     pub(in crate::frontend::sql) fn resolves_to_column(
         &mut self,
         plan: &Plan,
@@ -418,9 +431,7 @@ where
     ) -> bool {
         referred_relation_ids.iter().any(|rel_id| {
             self.build_columns_map(plan, *rel_id).is_ok()
-                && self
-                    .columns_map_get_positions(*rel_id, col_name, None)
-                    .is_ok()
+                && self.columns_map_has_position(*rel_id, col_name, None)
         })
     }
 

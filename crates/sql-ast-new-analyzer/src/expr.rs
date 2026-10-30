@@ -505,12 +505,11 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                     .result_types()?
                     .into_iter()
                     .map(|derived_type| {
-                        derived_type.get().map_or(
-                            Err(semantic_err(format_smolstr!(
+                        derived_type.get().map(Type::from).ok_or_else(|| {
+                            semantic_err(format_smolstr!(
                                 "cannot get result data type for scalar subquery"
-                            ))),
-                            |ty| Ok(Type::from(ty)),
-                        )
+                            ))
+                        })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 (

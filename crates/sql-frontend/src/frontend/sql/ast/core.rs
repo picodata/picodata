@@ -1108,7 +1108,7 @@ impl AstCore {
                         })?;
 
                         let output_len = plan.columns_len(referred_rel_id)?;
-                        let output_idx = index_usize.checked_sub(1).ok_or(SbroadError::Invalid(
+                        let output_idx = index_usize.checked_sub(1).ok_or_else(|| SbroadError::Invalid(
                                 Entity::Expression,
                                 Some(format_smolstr!("ORDER BY position 0 is not in select list"))
                             ))?;
@@ -1281,17 +1281,19 @@ impl AstCore {
         let mut ordering = None;
         let mut frame = None;
 
-        let err = Err(SbroadError::Invalid(
+        let err = || {
+            Err(SbroadError::Invalid(
             Entity::Expression,
             Some(SmolStr::from("Invalid WINDOW body definition. Expected view of [BASE_WINDOW] [PARTITION BY] [ORDER BY] [FRAME]"))
-        ));
+        ))
+        };
 
         for node_child_index in &node.children {
             let body_info_node = self.nodes.get_node(*node_child_index)?;
             match body_info_node.rule {
                 Rule::WindowPartition => {
                     if partition.is_some() || ordering.is_some() || frame.is_some() {
-                        return err;
+                        return err();
                     }
 
                     for part_expr_node_id in &body_info_node.children {
@@ -1314,7 +1316,7 @@ impl AstCore {
                 }
                 Rule::WindowOrderBy => {
                     if ordering.is_some() || frame.is_some() {
-                        return err;
+                        return err();
                     }
                     let order_by_elements = self.parse_order_by_elements(
                         plan,
@@ -1328,7 +1330,7 @@ impl AstCore {
                 }
                 Rule::WindowFrame => {
                     if frame.is_some() {
-                        return err;
+                        return err();
                     }
                     let frame_type_node_id = body_info_node
                         .children
@@ -3321,16 +3323,20 @@ pub(in crate::frontend::sql) fn parse_create_table(
     let mut bucket_id_sort_order = None;
     let mut vinyl_options = VinylOptions::default();
 
-    let nullable_primary_key_column_error = Err(SbroadError::Invalid(
-        Entity::Column,
-        Some(SmolStr::from(
-            "Primary key mustn't contain nullable columns.",
-        )),
-    ));
-    let primary_key_already_declared_error = Err(SbroadError::Invalid(
-        Entity::Node,
-        Some(format_smolstr!("Primary key has been already declared.",)),
-    ));
+    let nullable_primary_key_column_error = || {
+        Err(SbroadError::Invalid(
+            Entity::Column,
+            Some(SmolStr::from(
+                "Primary key mustn't contain nullable columns.",
+            )),
+        ))
+    };
+    let primary_key_already_declared_error = || {
+        Err(SbroadError::Invalid(
+            Entity::Node,
+            Some(format_smolstr!("Primary key has been already declared.",)),
+        ))
+    };
 
     for child_id in &node.children {
         let child_node = ast.nodes.get_node(*child_id)?;
@@ -3370,12 +3376,12 @@ pub(in crate::frontend::sql) fn parse_create_table(
                             }
                             Rule::InlinePrimaryKey => {
                                 if !pk_keys.is_empty() {
-                                    return primary_key_already_declared_error;
+                                    return primary_key_already_declared_error();
                                 }
 
                                 let name = name.clone();
                                 if is_nullable && explicit_null_columns.contains(&name) {
-                                    return nullable_primary_key_column_error;
+                                    return nullable_primary_key_column_error();
                                 }
                                 // Infer not null on primary key column
                                 is_nullable = false;
@@ -3399,7 +3405,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
             }
             Rule::PrimaryKey => {
                 if !pk_keys.is_empty() {
-                    return primary_key_already_declared_error;
+                    return primary_key_already_declared_error();
                 }
                 let pk_node = ast.nodes.get_node(*child_id)?;
                 // First child is a `PrimaryKeyMark` that we should skip.
@@ -3575,7 +3581,7 @@ pub(in crate::frontend::sql) fn parse_create_table(
             if column.name == pk_col_name {
                 column_found = true;
                 if column.is_nullable && explicit_null_columns.contains(&column.name) {
-                    return nullable_primary_key_column_error;
+                    return nullable_primary_key_column_error();
                 }
                 // Infer not null on primary key column
                 column.is_nullable = false;

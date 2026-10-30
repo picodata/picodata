@@ -255,10 +255,9 @@ impl Metadata for MockCatalog {
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
-        self.functions.get(fn_name).ok_or(SbroadError::NotFound(
-            Entity::SQLFunction,
-            SmolStr::new(fn_name),
-        ))
+        self.functions
+            .get(fn_name)
+            .ok_or_else(|| SbroadError::NotFound(Entity::SQLFunction, SmolStr::new(fn_name)))
     }
 
     fn waiting_timeout(&self) -> Duration {

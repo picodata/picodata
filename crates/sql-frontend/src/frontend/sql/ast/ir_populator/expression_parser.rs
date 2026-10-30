@@ -261,31 +261,34 @@ fn parse_window_func<M: Metadata>(
         Rule::Identifier => {
             let window_name = window_pair.as_str().to_smolstr();
 
-            let err = Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(format_smolstr!("Window with name {window_name} not found")),
-            ));
-
             worker
                 .curr_named_windows
                 .get(&window_name)
-                .map_or(err, |id| Ok(*id))?
+                .copied()
+                .ok_or_else(|| {
+                    SbroadError::Invalid(
+                        Entity::Expression,
+                        Some(format_smolstr!("Window with name {window_name} not found")),
+                    )
+                })?
         }
         Rule::WindowBody => {
             let mut partition: Option<Vec<NodeId>> = None;
             let mut ordering = None;
             let mut frame = None;
 
-            let err = Err(SbroadError::Invalid(
+            let err = || {
+                Err(SbroadError::Invalid(
                 Entity::Expression,
                 Some(SmolStr::from("Invalid WINDOW body definition. Expected view of [BASE_WINDOW] [PARTITION BY] [ORDER BY] [FRAME]"))
-            ));
+            ))
+            };
 
             for body_part in window_pair.into_inner() {
                 match body_part.as_rule() {
                     Rule::WindowPartition => {
                         if partition.is_some() || ordering.is_some() || frame.is_some() {
-                            return err;
+                            return err();
                         }
 
                         let mut partition_exprs = Vec::new();
@@ -367,7 +370,7 @@ fn parse_window_func<M: Metadata>(
                     }
                     Rule::WindowFrame => {
                         if frame.is_some() {
-                            return err;
+                            return err();
                         }
 
                         let mut frame_inner = body_part.into_inner();
@@ -810,25 +813,23 @@ fn parse_reference<M: Metadata>(
         )));
     }
 
-    let plan_left_id = referred_relation_ids.first().ok_or(SbroadError::Invalid(
-        Entity::Query,
-        Some("Reference must point to some relational node".into()),
-    ))?;
+    let plan_left_id = referred_relation_ids.first().ok_or_else(|| {
+        SbroadError::Invalid(
+            Entity::Query,
+            Some("Reference must point to some relational node".into()),
+        )
+    })?;
 
     worker.build_columns_map(plan, *plan_left_id)?;
-
-    let left_child_col_position =
-        worker.columns_map_get_positions(*plan_left_id, &norm_ident, tbl_name.as_deref());
 
     let plan_right_id = referred_relation_ids.get(1);
     if let Some(plan_right_id) = plan_right_id {
         // Referencing Join node.
         worker.build_columns_map(plan, *plan_right_id)?;
-        let right_child_col_position =
-            worker.columns_map_get_positions(*plan_right_id, &norm_ident, tbl_name.as_deref());
-
-        let present_in_left = left_child_col_position.is_ok();
-        let present_in_right = right_child_col_position.is_ok();
+        let present_in_left =
+            worker.columns_map_has_position(*plan_left_id, &norm_ident, tbl_name.as_deref());
+        let present_in_right =
+            worker.columns_map_has_position(*plan_right_id, &norm_ident, tbl_name.as_deref());
 
         let ref_id = if present_in_left && present_in_right {
             return Err(SbroadError::Invalid(
@@ -853,7 +854,7 @@ fn parse_reference<M: Metadata>(
         Ok(ParseExpression::PlanId { plan_id: ref_id })
     } else {
         // Referencing single node.
-        match left_child_col_position {
+        match worker.columns_map_get_positions(*plan_left_id, &norm_ident, tbl_name.as_deref()) {
             Ok(col_position) => {
                 let col_type = plan
                     .column_at(RelColumn::new(*plan_left_id, col_position))
