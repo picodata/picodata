@@ -1273,8 +1273,10 @@ where
                     let child_expr_pair = inner_pairs
                         .next()
                         .expect("Expected to see inner expression under parentheses");
+                    // The child is an `Expr`: parse its inner pairs here instead of one more
+                    // Pratt pass that only unwraps it.
                     parse_expr_pratt(
-                        Pairs::single(child_expr_pair),
+                        child_expr_pair.into_inner(),
                         param_types,
                         referred_relation_ids,
                         worker,
