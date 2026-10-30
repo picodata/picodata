@@ -18,7 +18,7 @@ use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::NodeId;
 use sql::ir::options::Forward;
-use sql::ir::value::{MsgPackValue, Value};
+use sql::ir::value::Value;
 use sql::ir::Plan;
 use sql::ir::PlanKind;
 use sql::utils::MutexLike;
@@ -53,9 +53,9 @@ use crate::metrics::{
     record_router_cache_hit, record_router_cache_miss, record_router_cache_statement_added,
     record_router_cache_statement_evicted,
 };
-use smallvec::SmallVec;
+use tarantool::msgpack::{self, Encode};
 use tarantool::space::SpaceId;
-use tarantool::tuple::{FieldType, KeyDef, ToTupleBuffer, Tuple};
+use tarantool::tuple::{FieldType, KeyDef, KeyDefPart};
 
 use super::dispatch::{custom_plan_dispatch, single_plan_dispatch};
 use super::port::PicoPortOwned;
@@ -600,8 +600,8 @@ pub fn replicasets_by_buckets(buckets: &Buckets) -> Result<Vec<String>, SbroadEr
 
 thread_local! {
     /// Last key definition used to calculate bucket ids,
-    /// along with the types of the shard key it was built for.
-    static LAST_KEY_DEF: RefCell<Option<(Vec<FieldType>, KeyDef)>> = const { RefCell::new(None) };
+    /// along with the number of parts it was built for.
+    static LAST_KEY_DEF: RefCell<Option<(usize, KeyDef)>> = const { RefCell::new(None) };
 }
 
 /// Calculate the bucket id for the given sharding key.
@@ -623,26 +623,29 @@ pub(crate) fn calculate_bucket_id(
 
     LAST_KEY_DEF.with_borrow_mut(|cached| {
         // Key def creation is expensive, while the bucket id is calculated for
-        // every row of a virtual table, where all the rows must have the same types.
-        // So the last key def is kept and reused until the types change.
-        let hit = cached.as_ref().is_some_and(|(types, _)| {
-            types.len() == tuple.len()
-                && tuple
-                    .iter()
-                    .zip(types)
-                    .all(|(value, tp)| value.field_type() == *tp)
-        });
+        // every row of a virtual table. `key_hash` reads only the number of key
+        // parts and their collations, so the types of the key fields don't matter,
+        // and they can differ between rows, e.g. because of NULLs.
+        // So the last key def is kept and reused until the number of parts changes.
+        let hit = cached
+            .as_ref()
+            .is_some_and(|(part_count, _)| *part_count == tuple.len());
         if !hit {
             let mut key_parts = Vec::with_capacity(tuple.len());
-            for (pos, value) in tuple.iter().enumerate() {
-                let pos = u32::try_from(pos).map_err(|_| {
+            for pos in 0..tuple.len() {
+                let field_no = u32::try_from(pos).map_err(|_| {
                     SbroadError::FailedTo(
                         Action::Create,
                         Some(Entity::KeyDef),
                         "Tuple is too long".to_smolstr(),
                     )
                 })?;
-                key_parts.push(value.as_key_def_part(pos));
+                key_parts.push(KeyDefPart {
+                    field_no,
+                    field_type: FieldType::Any,
+                    is_nullable: true,
+                    ..Default::default()
+                });
             }
             let key_def = KeyDef::new(key_parts.as_slice()).map_err(|e| {
                 SbroadError::FailedTo(
@@ -651,27 +654,37 @@ pub(crate) fn calculate_bucket_id(
                     format_smolstr!("{e:?}"),
                 )
             })?;
-            let types = tuple.iter().map(|value| value.field_type()).collect();
-            *cached = Some((types, key_def));
+            *cached = Some((tuple.len(), key_def));
         }
         let (_, key_def) = cached.as_ref().expect("key def is cached above");
 
+        // The key is hashed as is, without building a tuple from it.
         buf.clear();
-        let wrapped_tuple: SmallVec<[MsgPackValue; 8]> =
-            tuple.iter().map(|v| MsgPackValue::from(*v)).collect();
-        let tnt_tuple = wrapped_tuple
-            .as_slice()
-            .write_tuple_data(buf)
-            .and_then(|()| Tuple::try_from_slice(buf))
-            .map_err(|e| {
+        for value in tuple {
+            let start = buf.len();
+            value.encode(buf, &msgpack::Context::DEFAULT).map_err(|e| {
                 SbroadError::FailedTo(
-                    Action::Create,
+                    Action::Encode,
                     Some(Entity::Tuple),
                     format_smolstr!("{e:?}"),
                 )
             })?;
+            // Input limits keep strings below this size, but not arrays: they
+            // can be motion keys and may grow when encoded.
+            let field_len = buf.len() - start;
+            if field_len >= i32::MAX as usize {
+                return Err(SbroadError::FailedTo(
+                    Action::Encode,
+                    Some(Entity::Tuple),
+                    format_smolstr!("key field of {field_len} bytes is too long to hash"),
+                ));
+            }
+        }
+        // SAFETY: `buf` holds one MsgPack field per key part, and the loop above
+        // checked that each of them is shorter than `i32::MAX` bytes.
+        let hash = unsafe { key_def.hash_key_raw(buf) };
 
-        Ok(u64::from(key_def.hash(&tnt_tuple)) % bucket_count + 1)
+        Ok(u64::from(hash) % bucket_count + 1)
     })
 }
 
@@ -1040,6 +1053,11 @@ mod tests {
     use super::*;
     use crate::schema::{IndexDef, TableDef};
     use crate::storage::SystemTable as _;
+    use sql::ir::value::MsgPackValue;
+    use tarantool::datetime::Datetime;
+    use tarantool::decimal::Decimal;
+    use tarantool::tuple::{ToTupleBuffer, Tuple};
+    use tarantool::uuid::Uuid;
 
     /// The router reads the catalog cache of the node, so tests write through it.
     fn node() -> &'static node::Node {
@@ -1136,5 +1154,192 @@ mod tests {
         (node.storage.indexes.delete(id, 0, &node.catalog_cache)).unwrap();
         let table = table_by_id(id).unwrap();
         assert_eq!(pk_names(&table), ["key"]);
+    }
+
+    /// The key hash as it was calculated before `key_hash`: through a tuple
+    /// encoded with serde and a key def typed by the values.
+    fn tuple_hash(key: &[&Value]) -> u32 {
+        let parts: Vec<_> = (0..)
+            .zip(key)
+            .map(|(field_no, value)| KeyDefPart {
+                field_no,
+                field_type: match value {
+                    Value::Boolean(_) => FieldType::Boolean,
+                    Value::Integer(_) => FieldType::Integer,
+                    Value::Datetime(_) => FieldType::Datetime,
+                    Value::Decimal(_) => FieldType::Decimal,
+                    Value::Double(_) => FieldType::Double,
+                    Value::String(_) => FieldType::String,
+                    Value::Tuple(_) => FieldType::Array,
+                    Value::Uuid(_) => FieldType::Uuid,
+                    Value::Null => FieldType::Any,
+                },
+                is_nullable: true,
+                ..Default::default()
+            })
+            .collect();
+        let key_def = KeyDef::new(&parts).unwrap();
+        let wrapped: Vec<_> = key.iter().map(|v| MsgPackValue::from(*v)).collect();
+        let mut data = Vec::new();
+        wrapped.as_slice().write_tuple_data(&mut data).unwrap();
+        key_def.hash(&Tuple::try_from_slice(&data).unwrap())
+    }
+
+    #[::tarantool::test]
+    fn bucket_id_matches_tuple_hash() {
+        let mut values = vec![Value::Null, Value::from(true), Value::from(false)];
+        for i in [
+            i64::MIN,
+            -(1 << 31) - 1,
+            -(1 << 31),
+            -32769,
+            -32768,
+            -129,
+            -128,
+            -33,
+            -32,
+            -1,
+            0,
+            1,
+            127,
+            128,
+            255,
+            256,
+            65535,
+            65536,
+            (1 << 32) - 1,
+            1 << 32,
+            i64::MAX,
+        ] {
+            values.push(Value::from(i));
+        }
+        for d in [
+            0.0,
+            -0.0,
+            1.0,
+            -1.0,
+            1.5,
+            -1.5,
+            2f64.powi(53),
+            2f64.powi(63),
+            -(2f64.powi(63)),
+            2f64.powi(64),
+            1e300,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ] {
+            values.push(Value::Double(d.into()));
+        }
+        for len in [0, 1, 2, 3, 31, 32, 255, 256, 65536] {
+            values.push(Value::from("x".repeat(len)));
+        }
+        values.push(Value::from("тест"));
+        for d in [
+            "0",
+            "1.5",
+            "1.50",
+            "-0.001",
+            "12345678901234567890.123456789",
+        ] {
+            values.push(Value::from(d.parse::<Decimal>().unwrap()));
+        }
+        values.push(Value::from(Uuid::nil()));
+        values.push(Value::from(
+            Uuid::parse_str("6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1").unwrap(),
+        ));
+        values.push(Value::from(Datetime::from_inner(time::macros::datetime!(
+            2024-01-02 03:04:05.123456789 +03:00
+        ))));
+        values.push(Value::from(vec![Value::from(1), Value::from("a")]));
+        // The array header changes its width at 16 and 65536 elements.
+        for len in [0, 15, 16, 65535, 65536] {
+            values.push(Value::from(vec![Value::from(1); len]));
+        }
+        values.push(Value::from(vec![
+            Value::Double(2.0.into()),
+            Value::from(vec![Value::Null, Value::from(true)]),
+            Value::from("1.50".parse::<Decimal>().unwrap()),
+            Value::from(Uuid::nil()),
+            Value::from(Datetime::from_inner(time::macros::datetime!(
+                2024-01-02 03:04:05 UTC
+            ))),
+        ]));
+
+        let mut buf = Vec::new();
+        // Neighbour fields of different lengths share 4-byte murmur blocks.
+        for len in 1..=3 {
+            for window in values.windows(len) {
+                let key: Vec<&Value> = window.iter().collect();
+                // Keys of one length share a key def in `calculate_bucket_id`,
+                // while `tuple_hash` builds one for the types of each key.
+                // With the maximal bucket count the bucket id is the hash plus one.
+                let bucket_id = calculate_bucket_id(&key, u64::MAX, &mut buf).unwrap();
+                assert_eq!(bucket_id - 1, u64::from(tuple_hash(&key)), "key: {key:?}");
+            }
+        }
+    }
+
+    /// Stored rows live in these buckets: a change here moves existing data.
+    #[::tarantool::test]
+    fn bucket_id_is_stable() {
+        let cases = [
+            // The same as in the Python tests.
+            (vec![Value::from(1)], 1934),
+            // An integral double is hashed as an integer.
+            (vec![Value::Double(2.0.into())], 1410),
+            (vec![Value::from(true)], 2131),
+            (vec![Value::Double(1.5.into())], 510),
+            (vec![Value::from("a")], 714),
+            (vec![Value::from("1.5".parse::<Decimal>().unwrap())], 1753),
+            (
+                vec![Value::from(
+                    Uuid::parse_str("6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1").unwrap(),
+                )],
+                1905,
+            ),
+            // Datetime is encoded in 8 bytes without nanoseconds and offset.
+            (
+                vec![Value::from(Datetime::from_inner(time::macros::datetime!(
+                    2024-01-02 03:04:05 UTC
+                )))],
+                565,
+            ),
+            (
+                vec![Value::from(Datetime::from_inner(time::macros::datetime!(
+                    2024-01-02 03:04:05.123456789 +03:00
+                )))],
+                2370,
+            ),
+            (vec![Value::Null, Value::from("a"), Value::from(1)], 2116),
+            // An integer is hashed with its MsgPack header, so the width of the
+            // encoding matters.
+            (vec![Value::from(-1)], 2286),
+            (vec![Value::from(-33)], 1728),
+            (vec![Value::from(-129)], 344),
+            (vec![Value::from(-32769)], 2910),
+            (vec![Value::from(128)], 1089),
+            (vec![Value::from(256)], 1052),
+            (vec![Value::from(65536)], 108),
+            (vec![Value::from(1_i64 << 32)], 2356),
+            (vec![Value::from(i64::MIN)], 413),
+            (vec![Value::from(i64::MAX)], 246),
+            // Trailing zeros of a decimal stay in its encoding.
+            (vec![Value::from("1.50".parse::<Decimal>().unwrap())], 288),
+            (vec![Value::from(Vec::<Value>::new())], 628),
+            (
+                vec![Value::from(vec![Value::from(1), Value::from("a")])],
+                656,
+            ),
+            // A double inside an array is not hashed as an integer.
+            (vec![Value::from(vec![Value::from(2)])], 2373),
+            (vec![Value::from(vec![Value::Double(2.0.into())])], 338),
+        ];
+        let mut buf = Vec::new();
+        for (key, expected) in cases {
+            let key: Vec<&Value> = key.iter().collect();
+            let bucket_id = calculate_bucket_id(&key, 3000, &mut buf).unwrap();
+            assert_eq!(bucket_id, expected, "key: {key:?}");
+        }
     }
 }

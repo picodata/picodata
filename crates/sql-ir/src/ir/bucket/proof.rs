@@ -3,32 +3,27 @@
 use std::collections::HashSet;
 
 use smol_str::SmolStr;
-use tarantool::tuple::FieldType;
+use tarantool::msgpack;
 
 use super::{value_to_bucket_id, BucketAlgebra, BucketsResolver, UnboundKeyPart};
 use crate::errors::SbroadError;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
-use crate::ir::value::{MsgPackValue, Value};
+use crate::ir::value::Value;
 
 /// One column of a [`RoutingKey`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum KeyPart {
-    Value {
-        ty: FieldType,
-        bytes: Vec<u8>,
-    },
+    /// The MsgPack encoding of a value, as the router hashes it.
+    Value(Vec<u8>),
     /// An unbound parameter. Equal indexes route alike; another parameter or
     /// a literal may route apart.
     Param(u16),
 }
 
 impl KeyPart {
-    fn value(value: &Value) -> Result<Self, SbroadError> {
-        Ok(Self::Value {
-            ty: value.field_type(),
-            bytes: rmp_serde::to_vec(&MsgPackValue::from(value))?,
-        })
+    fn value(value: &Value) -> Self {
+        Self::Value(msgpack::encode(value))
     }
 }
 
@@ -37,17 +32,16 @@ impl KeyPart {
 pub(crate) struct RoutingKey(Vec<KeyPart>);
 
 impl RoutingKey {
-    fn new(values: &[&Value]) -> Result<Self, SbroadError> {
-        let parts = values.iter().map(|v| KeyPart::value(v));
-        Ok(Self(parts.collect::<Result<_, _>>()?))
+    fn new(values: &[&Value]) -> Self {
+        Self(values.iter().map(|v| KeyPart::value(v)).collect())
     }
 
-    fn unbound(parts: &[UnboundKeyPart<'_>]) -> Result<Self, SbroadError> {
+    fn unbound(parts: &[UnboundKeyPart<'_>]) -> Self {
         let parts = parts.iter().map(|part| match part {
             UnboundKeyPart::Value(value) => KeyPart::value(value),
-            UnboundKeyPart::Param(index) => Ok(KeyPart::Param(*index)),
+            UnboundKeyPart::Param(index) => KeyPart::Param(*index),
         });
-        Ok(Self(parts.collect::<Result<_, _>>()?))
+        Self(parts.collect())
     }
 
     fn has_param(&self) -> bool {
@@ -234,7 +228,7 @@ impl BucketsResolver for StaticResolver {
         Ok(BucketProof::Filtered {
             upper: 1,
             nonempty: true,
-            keys: HashSet::from_iter([RoutingKey::new(values)?]),
+            keys: HashSet::from_iter([RoutingKey::new(values)]),
         })
     }
 
@@ -247,7 +241,7 @@ impl BucketsResolver for StaticResolver {
         Ok(BucketProof::Filtered {
             upper: 1,
             nonempty: false,
-            keys: HashSet::from_iter([RoutingKey::unbound(parts)?]),
+            keys: HashSet::from_iter([RoutingKey::unbound(parts)]),
         })
     }
 

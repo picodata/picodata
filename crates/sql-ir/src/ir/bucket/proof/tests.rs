@@ -56,7 +56,7 @@ fn check_keys(
 fn check(proof: &BucketProof, actual: &Buckets, mapping: &[u64; 4]) {
     check_keys(proof, actual, &|k| {
         let i = (0..4)
-            .find(|&i| *k == RoutingKey::new(&[&Value::from(i as i64)]).unwrap())
+            .find(|&i| *k == RoutingKey::new(&[&Value::from(i as i64)]))
             .unwrap();
         Some(mapping[i])
     });
@@ -110,8 +110,8 @@ fn bounds_cover_all_small_bucket_mappings() {
 /// literals that collide or not.
 #[test]
 fn parameter_bounds_cover_all_small_bindings() {
-    let literal = |i: i64| RoutingKey::new(&[&Value::from(i)]).unwrap();
-    let parameter = |i: u16| RoutingKey::unbound(&[UnboundKeyPart::Param(i)]).unwrap();
+    let literal = |i: i64| RoutingKey::new(&[&Value::from(i)]);
+    let parameter = |i: u16| RoutingKey::unbound(&[UnboundKeyPart::Param(i)]);
     let choices = [None, Some(0), Some(1)];
     for mapping in [[1_u64, 1], [1, 2]] {
         for first in choices {
@@ -163,7 +163,7 @@ fn parameter_bounds_cover_all_small_bindings() {
 
 #[test]
 fn parameter_keys_compare_by_index_and_arity() {
-    let unbound = |parts: &[UnboundKeyPart]| RoutingKey::unbound(parts).unwrap();
+    let unbound = |parts: &[UnboundKeyPart]| RoutingKey::unbound(parts);
     let one = Value::from(1);
     let two = Value::from(2);
     assert_eq!(
@@ -188,7 +188,7 @@ fn parameter_keys_compare_by_index_and_arity() {
     );
     assert_eq!(
         unbound(&[UnboundKeyPart::Value(&one), UnboundKeyPart::Value(&two)]),
-        RoutingKey::new(&[&one, &two]).unwrap()
+        RoutingKey::new(&[&one, &two])
     );
 }
 
@@ -289,14 +289,14 @@ fn key_identity_survives_hash_collisions() {
     let one = Value::from(1);
     let two = Value::from(2);
     let double = Value::from(1.0);
-    let a = RoutingKey::new(&[&one, &two]).unwrap();
-    let b = RoutingKey::new(&[&two, &one]).unwrap();
-    let c = RoutingKey::new(&[&double, &two]).unwrap();
+    let a = RoutingKey::new(&[&one, &two]);
+    let b = RoutingKey::new(&[&two, &one]);
+    let c = RoutingKey::new(&[&double, &two]);
     let mut keys = HashSet::<_, BuildHasherDefault<CollidingHasher>>::default();
     assert!(keys.insert(a.clone()));
     assert!(keys.insert(b));
     assert!(keys.insert(c));
-    assert!(!keys.insert(RoutingKey::new(&[&one, &two]).unwrap()));
+    assert!(!keys.insert(RoutingKey::new(&[&one, &two])));
     assert_eq!(keys.len(), 3);
     assert!(keys.contains(&a));
 }

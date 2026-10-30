@@ -15,7 +15,6 @@ use tarantool::ffi::datetime::MP_DATETIME;
 use tarantool::ffi::decimal::MP_DECIMAL;
 use tarantool::ffi::uuid::MP_UUID;
 use tarantool::msgpack::{Context, Decode, DecodeError, Encode, EncodeError, ExtStruct};
-use tarantool::tuple::{FieldType, KeyDefPart};
 use tarantool::uuid::Uuid;
 
 use crate::errors::{Entity, SbroadError};
@@ -589,34 +588,6 @@ impl Value {
                 Value::Null => Trivalent::Unknown,
                 Value::Datetime(o) => s.eq(o).into(),
             },
-        }
-    }
-
-    /// Tarantool field type the value is encoded with.
-    #[must_use]
-    pub fn field_type(&self) -> FieldType {
-        match self {
-            Value::Boolean(_) => FieldType::Boolean,
-            Value::Integer(_) => FieldType::Integer,
-            Value::Datetime(_) => FieldType::Datetime,
-            Value::Decimal(_) => FieldType::Decimal,
-            Value::Double(_) => FieldType::Double,
-            Value::String(_) => FieldType::String,
-            Value::Tuple(_) => FieldType::Array,
-            Value::Uuid(_) => FieldType::Uuid,
-            Value::Null => FieldType::Any,
-        }
-    }
-
-    #[must_use]
-    pub fn as_key_def_part(&self, field_no: u32) -> KeyDefPart<'_> {
-        KeyDefPart {
-            field_no,
-            field_type: self.field_type(),
-            collation: None,
-            is_nullable: true,
-            path: None,
-            sort_order: None,
         }
     }
 
