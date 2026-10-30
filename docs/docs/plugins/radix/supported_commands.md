@@ -81,6 +81,10 @@
     background-color: #95aac7;
 }
 
+.stream {
+    background-color: #7ddd2a8c;
+}
+
 .string {
     background-color: #b0deff;
 }
@@ -125,6 +129,7 @@
 - <span class="tag scripting">scripting</span> — команды для работы со скриптами
 - <span class="tag slow">slow</span> — команды медленного выполнения
 - <span class="tag sortedset">sortedset</span> — команды, имеющие отношение к сортированным множествам
+- <span class="tag stream">stream</span> — команды для работы со стримами
 - <span class="tag string">string</span> — команды, работающие со строковыми данными
 - <span class="tag transaction">transaction</span> — команды для работы с транзакциями
 - <span class="tag write">write</span> — команды, записывающие данные в ключи
@@ -336,6 +341,33 @@ ACL WHOAMI
 
 Выводит список текущего (прошедшего авторизацию) пользователя.
 
+## Работа с битовыми значениями {: #bitmap_management }
+
+### getbit {: #bitmap_getbit }
+
+```sql
+GETBIT key offset
+```
+<span class="tag">поддерживается с версии 1.1.2</span>
+<span class="tag fast">fast</span>
+<span class="tag read">read</span>
+
+Возвращает значение конкретного бита (0 или 1) по его смещению (`offset`)
+в строковом значении, хранящемся по указанному ключу `key`.
+
+### setbit {: #bitmap_setbit }
+
+```sql
+SETBIT key offset value
+```
+<span class="tag">поддерживается с версии 1.1.2</span>
+<span class="tag slow">slow</span>
+<span class="tag write">write</span>
+
+Устанавливает или сбрасывает бит в значение (`value`) 0 или 1 по указанному
+смещению (`offset`) в строковом значении, которое хранится по ключу
+`key`.
+
 ## Управление кластером {: #cluster_management }
 
 ### cluster getkeysinslot {: #cluster_getkeysinslot }
@@ -504,7 +536,7 @@ QUIT
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["quit" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["quit" ] }';
     ```
 
 ### readonly {: #cluster_readonly }
@@ -1158,6 +1190,18 @@ PTTL key
 Возвращает оставшееся время жизни ключа `key` подобно [TTL](#ttl), но в
 миллисекундах.
 
+### rename
+
+```sql
+RENAME key newkey
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag keyspace">keyspace</span>
+<span class="tag write">write</span>
+
+Переименовывает ключ `key`, присваивая ему новое имя `newkey`.
+
 ### scan
 
 ```sql
@@ -1355,7 +1399,7 @@ HMSET key field value [field value ...]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["hmset" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["hmset" ] }';
     ```
 
 ### hscan
@@ -2272,7 +2316,7 @@ ZRANGEBYLEX key min max [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebylex" ] }';
     ```
 
 ### zrangebyscore
@@ -2292,7 +2336,7 @@ ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrangebyscore" ] }';
     ```
 
 ### zrangestore
@@ -2401,7 +2445,7 @@ ZREVRANGE key start stop [WITHSCORES]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrange" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrange" ] }';
     ```
 
 ### zrevrangebylex
@@ -2421,7 +2465,7 @@ ZREVRANGEBYLEX key max min [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebylex" ] }';
     ```
 
 ### zrevrangebyscore
@@ -2441,7 +2485,7 @@ ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["zrevrangebyscore" ] }';
     ```
 
 ### zrevrank
@@ -2492,7 +2536,7 @@ ZSCORE key member
 
 ```sql
 ZUNION numkeys key [key ...] [WEIGHTS weight [weight ...]]
-  [AGGREGATE <SUM | MIN | MAX>] [WITHSCORES]
+  [AGGREGATE <SUM | MIN | MAX | COUNT>] [WITHSCORES]
 ```
 <span class="tag">поддерживается с версии 0.10.0</span>
 <span class="tag read">read</span>
@@ -2569,6 +2613,1104 @@ ZUNIONSTORE destination numkeys key [key ...] [WEIGHTS weight
 6) "9"
 ```
 
+## Команды для стримов {: #streams }
+
+Стрим — упорядоченная последовательность записей. Каждая запись содержит
+идентификатор (ID) и одну или несколько пар «поле — значение». ID имеет
+формат `<миллисекунды>-<порядковый номер>`, например `1720000000000-0`.
+Идентификаторы новых записей должны возрастать; их можно задавать явно
+или генерировать автоматически при добавлении.
+
+Группы потребителей позволяют распределять записи между обработчиками.
+Полученная через [XREADGROUP](#xreadgroup) запись обычно попадает в список
+ожидающих подтверждения записей группы (Pending Entries List, PEL).
+После обработки потребитель подтверждает её командой [XACK](#xack).
+Подтверждение и удаление записи из стрима — отдельные операции.
+
+Примеры ниже выполняются независимо друг от друга. Перед выполнением
+каждого примера предполагается, что используемый в нём ключ `mystream`
+ещё не существует.
+
+### xack {: #xack }
+
+```sql
+XACK key group id [id ...]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Подтверждает обработку записей в группе потребителей и удаляет их из PEL
+этой группы. Сами записи остаются в стриме. Возвращает количество записей,
+для которых подтверждение было принято; повторное подтверждение не
+увеличивает это число.
+
+Параметры:
+
+- `key` — ключ стрима
+- `group` — имя группы потребителей
+- `id` — один или несколько идентификаторов подтверждаемых записей
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XGROUP CREATE mystream workers 0
+OK
+> XREADGROUP GROUP workers worker1 STREAMS mystream >
+1) 1) "mystream"
+   2) 1) 1) "1-0"
+         2) 1) "event"
+            2) "created"
+> XACK mystream workers 1-0
+(integer) 1
+> XLEN mystream
+(integer) 1
+```
+
+### xackdel {: #xackdel }
+
+```sql
+XACKDEL key group [KEEPREF | DELREF | ACKED] IDS numids id [id ...]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Подтверждает обработку записей в группе и удаляет их из стрима с учётом
+выбранного режима. Возвращает массив результатов в порядке переданных ID:
+`1` — запись подтверждена и удалена (либо уже отсутствовала в стриме),
+`-1` — запись отсутствует в PEL указанной группы, `2` — запись подтверждена,
+но сохранена из-за других групп при использовании `ACKED`.
+
+Параметры:
+
+- `key` — ключ стрима
+- `group` — имя группы потребителей
+- `KEEPREF` — сохранять ссылки на удаляемые записи в PEL других групп.
+  Используется по умолчанию
+- `DELREF` — удалять ссылки на записи из PEL всех групп.
+- `ACKED` — удалять запись из стрима только после её обработки всеми
+  группами: ни одна группа не должна отставать от этого ID или хранить
+  его в PEL
+- `IDS numids` — количество следующих за ним идентификаторов
+- `id` — идентификаторы подтверждаемых записей
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XGROUP CREATE mystream workers 0
+OK
+> XREADGROUP GROUP workers worker1 STREAMS mystream >
+1) 1) "mystream"
+   2) 1) 1) "1-0"
+         2) 1) "event"
+            2) "created"
+> XACKDEL mystream workers DELREF IDS 1 1-0
+1) (integer) 1
+> XLEN mystream
+(integer) 0
+```
+
+### xadd {: #xadd }
+
+```sql
+XADD key [NOMKSTREAM] [KEEPREF | DELREF | ACKED]
+  [IDMPAUTO pid | IDMP pid iid]
+  [<MAXLEN | MINID> [= | ~] threshold [LIMIT count]]
+  <* | id> field value [field value ...]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Добавляет запись в конец стрима и возвращает её ID. Если ключ отсутствует,
+создаёт стрим. При использовании `NOMKSTREAM` отсутствующий ключ не
+создаётся, а результатом будет `(nil)`.
+
+Параметры:
+
+- `key` — ключ стрима
+- `NOMKSTREAM` — добавлять запись только в существующий стрим.
+- `KEEPREF`, `DELREF`, `ACKED` — правила обработки ссылок групп при
+  сокращении стрима, описанные в [XTRIM](#xtrim). По умолчанию — `KEEPREF`
+- `IDMPAUTO pid` — предотвращать повторное добавление одинаковых записей
+  от отправителя `pid`, вычисляя идентификатор идемпотентности из полей
+  и значений записи
+- `IDMP pid iid` — предотвращать повторное добавление по паре
+  «идентификатор отправителя `pid` — идентификатор идемпотентности `iid`».
+  Повторный запрос возвращает ID ранее добавленной записи. Оба режима
+  IDMP допустимы только с `*`; `pid` и `iid` должны быть непустыми
+  Срок и объём хранения идентификаторов задаются через [XCFGSET](#xcfgset).
+- `MAXLEN threshold` — ограничивать длину стрима указанным числом записей
+- `MINID threshold` — удалять записи с ID меньше указанного порога
+  в формате `<миллисекунды>-<порядковый номер>`
+- `=` — применять точное сокращение; используется по умолчанию.
+- `~` — разрешать приблизительное сокращение, при котором стрим может
+  сохранить больше записей, чем задано порогом
+- `LIMIT count` — ограничивать объём сокращения; применяется только с `~`.
+- `*` — автоматически сформировать ID новой записи
+- `id` — явный ID, который должен быть больше `0-0` и последнего
+  сгенерированного ID стрима. Вариант `<миллисекунды>-*` автоматически
+  выбирает порядковый номер в указанных миллисекундах
+- `field value` — одна или несколько пар «поле — значение»
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created user alice
+"1-0"
+> XADD mystream MAXLEN = 2 2-0 event updated user alice
+"2-0"
+> XLEN mystream
+(integer) 2
+```
+
+### xautoclaim {: #xautoclaim }
+
+```sql
+XAUTOCLAIM key group consumer min-idle-time start [COUNT count] [JUSTID]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Перебирает PEL группы и передаёт указанному потребителю записи,
+которые достаточно долго остаются без подтверждения. Возвращает три
+элемента: ID для продолжения обхода, переданные записи и ID записей,
+которые уже удалены из стрима и поэтому были очищены из PEL.
+Курсор `0-0` в ответе означает завершение текущего обхода.
+
+Параметры:
+
+- `key` — ключ стрима
+- `group` — имя группы потребителей
+- `consumer` — имя нового владельца записей; при необходимости потребитель
+  создаётся автоматически
+- `min-idle-time` — минимальное время с последней доставки записи
+  в миллисекундах. Значение `0` позволяет передавать записи без ожидания
+- `start` — ID, с которого начинается поиск, включительно. Для обхода
+  с начала используют `0-0`, затем передают курсор из предыдущего ответа
+- `COUNT count` — максимальное число обрабатываемых записей, по умолчанию
+  `100`. Команда проверяет не более `count × 10` элементов PEL за вызов,
+  поэтому может вернуть меньше записей
+- `JUSTID` — возвращать только ID переданных записей и не увеличивать
+  их счётчик доставок
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XGROUP CREATE mystream workers 0
+OK
+> XREADGROUP GROUP workers worker1 STREAMS mystream >
+1) 1) "mystream"
+   2) 1) 1) "1-0"
+         2) 1) "event"
+            2) "created"
+> XAUTOCLAIM mystream workers worker2 0 0-0 COUNT 10 JUSTID
+1) "0-0"
+2) 1) "1-0"
+3) (empty array)
+```
+
+### xcfgset {: #xcfgset }
+
+```sql
+XCFGSET key [IDMP-DURATION duration] [IDMP-MAXSIZE maxsize]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Настраивает хранение идентификаторов идемпотентности (IDMP), используемых
+для защиты от повторного добавления записей через [XADD](#xadd).
+Стрим должен существовать; необходимо задать хотя бы один параметр.
+Возвращает `OK`.
+
+Параметры:
+
+- `key` — ключ стрима
+- `IDMP-DURATION duration` — срок хранения идентификаторов в секундах:
+  от `1` до `86400`, по умолчанию `100`
+- `IDMP-MAXSIZE maxsize` — максимальное количество идентификаторов для
+  одного отправителя: от `1` до `10000`, по умолчанию `100`.
+  При превышении лимита старые идентификаторы вытесняются
+
+Изменение любого из этих значений очищает накопленные идентификаторы
+идемпотентности. Сами записи стрима сохраняются.
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XCFGSET mystream IDMP-DURATION 600 IDMP-MAXSIZE 1000
+OK
+```
+
+### xclaim {: #xclaim }
+
+```sql
+XCLAIM key group consumer min-idle-time id [id ...]
+  [IDLE ms] [TIME unix-time-milliseconds] [RETRYCOUNT count]
+  [FORCE] [JUSTID] [LASTID lastid]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Передаёт указанные неподтверждённые записи другому потребителю группы.
+Возвращает переданные записи с полями и значениями либо только их ID
+при использовании `JUSTID`. По умолчанию сбрасывает время простоя записи
+и увеличивает её счётчик доставок.
+
+Параметры:
+
+- `key` — ключ стрима
+- `group` — имя группы потребителей
+- `consumer` — имя нового владельца; отсутствующий потребитель создаётся.
+- `min-idle-time` — минимальное время с последней доставки в миллисекундах.
+  Записи с меньшим временем простоя пропускаются
+- `id` — идентификаторы передаваемых записей
+- `IDLE ms` — установить время простоя записи в миллисекундах.
+- `TIME unix-time-milliseconds` — установить время последней доставки
+  как Unix-время в миллисекундах
+- `RETRYCOUNT count` — явно задать счётчик доставок
+- `FORCE` — добавить запись в PEL, если её там нет. Сама запись должна
+  существовать в стриме
+- `JUSTID` — вернуть только ID и не увеличивать счётчик доставок
+- `LASTID lastid` — продвинуть последний доставленный ID группы до
+  указанного значения, если оно больше текущего
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XGROUP CREATE mystream workers 0
+OK
+> XREADGROUP GROUP workers worker1 STREAMS mystream >
+1) 1) "mystream"
+   2) 1) 1) "1-0"
+         2) 1) "event"
+            2) "created"
+> XCLAIM mystream workers worker2 0 1-0 JUSTID
+1) "1-0"
+```
+
+### xdel {: #xdel }
+
+```sql
+XDEL key id [id ...]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Удаляет записи из стрима и возвращает число удалённых записей.
+Несуществующие ID игнорируются. Ссылки в PEL групп сохраняются;
+для управления ими используйте [XDELEX](#xdelex).
+После удаления последней записи ключ стрима остаётся существовать.
+
+Параметры:
+
+- `key` — ключ стрима.
+- `id` — один или несколько идентификаторов удаляемых записей.
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XDEL mystream 1-0 2-0
+(integer) 1
+> XLEN mystream
+(integer) 0
+```
+
+### xdelex {: #xdelex }
+
+```sql
+XDELEX key [KEEPREF | DELREF | ACKED] IDS numids id [id ...]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Удаляет записи с возможностью учитывать состояние групп потребителей.
+Возвращает массив результатов для переданных ID: `1` — запись удалена,
+`-1` — запись не найдена, `2` — удаление отложено из-за состояния групп
+при использовании `ACKED`.
+
+Параметры:
+
+- `key` — ключ стрима
+- `KEEPREF` — сохранять ссылки в PEL групп; используется по умолчанию
+- `DELREF` — удалять запись вместе со ссылками на неё в PEL всех групп
+- `ACKED` — удалять только записи, которые больше не ожидаются ни одной
+  группой: все группы прошли этот ID, и он отсутствует в их PEL
+- `IDS numids` — количество следующих за ним идентификаторов
+- `id` — идентификаторы удаляемых записей
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XDELEX mystream DELREF IDS 2 1-0 2-0
+1) (integer) 1
+2) (integer) -1
+```
+
+### xgroup create {: #xgroup_create }
+
+```sql
+XGROUP CREATE key group <id | $> [MKSTREAM] [ENTRIESREAD entriesread]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Создаёт группу потребителей для стрима. Возвращает `OK`; если группа
+с таким именем уже существует, возвращает ошибку `BUSYGROUP`.
+
+Параметры:
+
+- `key` — ключ стрима
+- `group` — имя новой группы
+- `id` — начальная позиция группы: при чтении новых записей будут
+  выдаваться ID строго больше указанного. Значение `0` или `0-0`
+  позволяет читать стрим с начала
+- `$` — установить позицию в конец стрима, чтобы получать только
+  последующие записи
+- `MKSTREAM` — создать пустой стрим, если ключ отсутствует
+- `ENTRIESREAD entriesread` — задать логическое число уже прочитанных
+  группой записей для расчёта отставания (`lag`). Значение `-1` означает,
+  что счётчик неизвестен
+
+Пример:
+
+```sql
+> XGROUP CREATE mystream workers 0 MKSTREAM
+OK
+> XLEN mystream
+(integer) 0
+```
+
+### xgroup createconsumer {: #xgroup_createconsumer }
+
+```sql
+XGROUP CREATECONSUMER key group consumer
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Создаёт потребителя в существующей группе. Возвращает `1`, если
+потребитель создан, или `0`, если он уже существует. Потребители также
+создаются автоматически при чтении через [XREADGROUP](#xreadgroup).
+
+Параметры:
+
+- `key` — ключ стрима.
+- `group` — имя существующей группы.
+- `consumer` — имя создаваемого потребителя.
+
+Пример:
+
+```sql
+> XGROUP CREATE mystream workers 0 MKSTREAM
+OK
+> XGROUP CREATECONSUMER mystream workers worker1
+(integer) 1
+```
+
+### xgroup delconsumer {: #xgroup_delconsumer }
+
+```sql
+XGROUP DELCONSUMER key group consumer
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Удаляет потребителя из группы вместе с принадлежащими ему записями PEL.
+Возвращает количество его неподтверждённых записей на момент удаления.
+Данные в самом стриме сохраняются. Если сообщения ещё нужно обработать,
+перед удалением потребителя передайте их другому потребителю командой
+[XCLAIM](#xclaim) или [XAUTOCLAIM](#xautoclaim).
+
+Параметры:
+
+- `key` — ключ стрима.
+- `group` — имя группы потребителей.
+- `consumer` — имя удаляемого потребителя.
+
+Пример удаления потребителя без неподтверждённых записей:
+
+```sql
+> XGROUP CREATE mystream workers 0 MKSTREAM
+OK
+> XGROUP CREATECONSUMER mystream workers worker1
+(integer) 1
+> XGROUP DELCONSUMER mystream workers worker1
+(integer) 0
+```
+
+### xgroup destroy {: #xgroup_destroy }
+
+```sql
+XGROUP DESTROY key group
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Удаляет группу вместе с её потребителями и PEL. Записи стрима сохраняются.
+Возвращает `1`, если группа удалена, или `0`, если её не было.
+
+Параметры:
+
+- `key` — ключ стрима.
+- `group` — имя удаляемой группы.
+
+Пример:
+
+```sql
+> XGROUP CREATE mystream workers 0 MKSTREAM
+OK
+> XGROUP DESTROY mystream workers
+(integer) 1
+```
+
+### xgroup help {: #xgroup_help }
+
+```sql
+XGROUP HELP
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Возвращает справку по подкомандам `XGROUP` и их параметрам.
+Дополнительные параметры не требуются.
+
+Пример вызова:
+
+```sql
+> XGROUP HELP
+```
+
+### xgroup setid {: #xgroup_setid }
+
+```sql
+XGROUP SETID key group <id | $> [ENTRIESREAD entriesread]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Изменяет позицию, с которой группа получает новые записи через
+[XREADGROUP](#xreadgroup) с ID `>`. Существующий PEL не очищается.
+Возвращает `OK`.
+
+Параметры:
+
+- `key` — ключ стрима
+- `group` — имя существующей группы
+- `id` — последний ID, который считается доставленным группе.
+  Значение `0` или `0-0` возвращает позицию к началу стрима
+- `$` — установить позицию в конец стрима
+- `ENTRIESREAD entriesread` — задать логическое число прочитанных записей
+  для расчёта отставания группы (`lag`); `-1` означает неизвестный счётчик
+
+Пример перехода от чтения только новых записей к чтению с начала стрима:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XGROUP CREATE mystream workers $
+OK
+> XGROUP SETID mystream workers 0 ENTRIESREAD 0
+OK
+```
+
+### xidmprecord {: #xidmprecord }
+
+```sql
+XIDMPRECORD key pid iid stream-id
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Служебная команда для привязки идентификаторов идемпотентности к уже
+существующей записи. Она не добавляет запись в стрим. После привязки
+повторный [XADD](#xadd) с той же парой `pid`/`iid` вернёт `stream-id`,
+пока привязка хранится согласно настройкам [XCFGSET](#xcfgset).
+Возвращает `OK`; привязка той же пары к другому ID приводит к ошибке.
+
+Параметры:
+
+- `key` — ключ существующего стрима.
+- `pid` — непустой идентификатор отправителя.
+- `iid` — непустой идентификатор идемпотентности сообщения.
+- `stream-id` — ID существующей записи, к которой относится привязка.
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XIDMPRECORD mystream producer1 message1 1-0
+OK
+> XADD mystream IDMP producer1 message1 * event created
+"1-0"
+> XLEN mystream
+(integer) 1
+```
+
+### xinfo consumers {: #xinfo_consumers }
+
+```sql
+XINFO CONSUMERS key group
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag read">read</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Возвращает сведения о потребителях группы: имя (`name`), количество
+неподтверждённых записей (`pending`), время с последней попытки
+взаимодействия (`idle`) и с последнего успешного получения записи
+(`inactive`). Времена указаны в миллисекундах; `inactive = -1` означает,
+что потребитель ещё не получал записей.
+
+Параметры:
+
+- `key` — ключ стрима.
+- `group` — имя группы потребителей.
+
+Пример получения сведений о созданном потребителе:
+
+```sql
+> XGROUP CREATE mystream workers 0 MKSTREAM
+OK
+> XGROUP CREATECONSUMER mystream workers worker1
+(integer) 1
+> XINFO CONSUMERS mystream workers
+```
+
+### xinfo groups {: #xinfo_groups }
+
+```sql
+XINFO GROUPS key
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag read">read</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Возвращает сведения обо всех группах стрима: имя (`name`), количество
+потребителей (`consumers`), размер PEL (`pending`), последний доставленный
+ID (`last-delivered-id`), логическое число прочитанных записей
+(`entries-read`) и число ещё не доставленных группе записей (`lag`).
+Если счётчик или отставание нельзя определить, соответствующее поле
+содержит `(nil)`.
+
+Параметры:
+
+- `key` — ключ стрима.
+
+Пример:
+
+```sql
+> XGROUP CREATE mystream workers 0 MKSTREAM ENTRIESREAD 0
+OK
+> XINFO GROUPS mystream
+1)  1) "name"
+    2) "workers"
+    3) "consumers"
+    4) (integer) 0
+    5) "pending"
+    6) (integer) 0
+    7) "last-delivered-id"
+    8) "0-0"
+    9) "entries-read"
+   10) (integer) 0
+   11) "lag"
+   12) (integer) 0
+```
+
+### xinfo help {: #xinfo_help }
+
+```sql
+XINFO HELP
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Возвращает справку по подкомандам `XINFO`: получению сведений о стриме,
+его группах и потребителях. Дополнительные параметры не требуются.
+
+Пример вызова:
+
+```sql
+> XINFO HELP
+```
+
+### xinfo stream {: #xinfo_stream }
+
+```sql
+XINFO STREAM key [FULL [COUNT count]]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag read">read</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Возвращает метаданные стрима: длину (`length`), последний сгенерированный
+ID (`last-generated-id`), число добавленных за всё время записей
+(`entries-added`), максимальный удалённый ID (`max-deleted-entry-id`),
+сведения о группах, первой и последней записях. Ответ также содержит
+параметры IDMP и счётчики обнаруженных повторных сообщений.
+
+Параметры:
+
+- `key` — ключ стрима.
+- `FULL` — включить записи стрима и подробные сведения о группах,
+  потребителях и PEL. Поле группы `nacked-count` показывает число записей,
+  освобождённых через [XNACK](#xnack).
+- `COUNT count` — ограничить число записей стрима в ответе `FULL`.
+  По умолчанию `10`; `0` возвращает все записи. В Radix 1.2.0 этот
+  параметр не ограничивает списки PEL в сведениях о группах и потребителях.
+
+Пример запроса подробных сведений с одной записью стрима:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XINFO STREAM mystream FULL COUNT 1
+```
+
+### xlen {: #xlen }
+
+```sql
+XLEN key
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag read">read</span>
+<span class="tag stream">stream</span>
+
+Возвращает количество записей, которые сейчас хранятся в стриме.
+Для отсутствующего ключа возвращает `0`. Удалённые записи не учитываются.
+
+Параметры:
+
+- `key` — ключ стрима.
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XLEN mystream
+(integer) 1
+```
+
+### xnack {: #xnack }
+
+```sql
+XNACK key group <SILENT | FAIL | FATAL> IDS numids id [id ...]
+  [RETRYCOUNT count] [FORCE]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Освобождает неподтверждённые записи от текущего потребителя, оставляя их
+в PEL группы без владельца. Такие записи можно получить повторно через
+[XCLAIM](#xclaim), [XAUTOCLAIM](#xautoclaim) или [XREADGROUP](#xreadgroup)
+с параметром `CLAIM`. Возвращает количество освобождённых записей.
+
+Параметры:
+
+- `key` — ключ стрима
+- `group` — имя группы потребителей
+- `SILENT` — уменьшить счётчик доставок на один, но не ниже нуля
+- `FAIL` — сохранить счётчик доставок
+- `FATAL` — установить счётчик доставок в `9223372036854775807`,
+  обозначая неустранимую ошибку обработки. Запись остаётся в PEL
+- `IDS numids` — количество следующих за ним идентификаторов
+- `id` — идентификаторы освобождаемых записей
+- `RETRYCOUNT count` — явно задать неотрицательный счётчик доставок;
+  имеет приоритет над выбранным режимом
+- `FORCE` — создать запись PEL без владельца, если её ещё нет в PEL,
+  но соответствующая запись существует в стриме
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XGROUP CREATE mystream workers 0
+OK
+> XREADGROUP GROUP workers worker1 STREAMS mystream >
+1) 1) "mystream"
+   2) 1) 1) "1-0"
+         2) 1) "event"
+            2) "created"
+> XNACK mystream workers FAIL IDS 1 1-0
+(integer) 1
+> XPENDING mystream workers - + 10
+1) 1) "1-0"
+   2) ""
+   3) (integer) -1
+   4) (integer) 1
+```
+
+### xpending {: #xpending }
+
+```sql
+XPENDING key group [[IDLE min-idle-time] start end count [consumer]]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag read">read</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Возвращает сведения о неподтверждённых записях группы. Без диапазона
+выводит сводку: размер PEL, минимальный и максимальный ID, а также
+количество записей у каждого потребителя. С диапазоном возвращает
+для каждой записи ID, имя владельца, время с последней доставки
+в миллисекундах и счётчик доставок. Для записей, освобождённых через
+[XNACK](#xnack), владелец — пустая строка, время простоя — `-1`.
+
+Параметры:
+
+- `key` — ключ стрима
+- `group` — имя группы потребителей
+- `IDLE min-idle-time` — отбирать записи с временем простоя не меньше
+  указанного в миллисекундах. Записи без владельца проходят этот фильтр
+- `start`, `end` — границы диапазона ID, по умолчанию включительные.
+  `-` и `+` обозначают начало и конец диапазона; префикс `(` исключает
+  указанный ID из диапазона
+- `count` — максимальное число возвращаемых записей. Обязательно вместе
+  с `start` и `end`
+- `consumer` — ограничить результат записями указанного потребителя
+
+Пример получения сводки:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XGROUP CREATE mystream workers 0
+OK
+> XREADGROUP GROUP workers worker1 STREAMS mystream >
+1) 1) "mystream"
+   2) 1) 1) "1-0"
+         2) 1) "event"
+            2) "created"
+> XPENDING mystream workers
+1) (integer) 1
+2) "1-0"
+3) "1-0"
+4) 1) 1) "worker1"
+      2) "1"
+```
+
+### xrange {: #xrange }
+
+```sql
+XRANGE key start end [COUNT count]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag read">read</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Возвращает записи из диапазона ID в порядке возрастания идентификаторов.
+Каждая запись представлена ID и списком полей со значениями. Чтение
+не изменяет состояние групп и PEL; при отсутствии записей возвращается
+пустой массив.
+
+Параметры:
+
+- `key` — ключ стрима
+- `start` — нижняя граница диапазона; `-` означает отсутствие ограничения
+  снизу
+- `end` — верхняя граница диапазона; `+` означает отсутствие ограничения
+  сверху
+- `COUNT count` — максимальное число возвращаемых записей
+
+Обе границы включительны. Префикс `(` перед ID исключает соответствующую
+границу, например `(1-0`. Если указаны только миллисекунды, для нижней
+границы используется минимальный, а для верхней — максимальный
+порядковый номер в этих миллисекундах.
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XADD mystream 2-0 event updated
+"2-0"
+> XRANGE mystream - + COUNT 1
+1) 1) "1-0"
+   2) 1) "event"
+      2) "created"
+```
+
+### xread {: #xread }
+
+```sql
+XREAD [COUNT count] [BLOCK milliseconds] STREAMS key [key ...] id [id ...]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag blocking">blocking</span>
+<span class="tag read">read</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Читает записи одного или нескольких стримов с ID строго больше переданных.
+Возвращает список стримов с найденными записями. Если данных нет,
+без `BLOCK` сразу возвращает `(nil)`, а с `BLOCK` ждёт появления данных
+до истечения таймаута. Команда не использует группы потребителей
+и не требует подтверждения прочитанных записей.
+
+Параметры:
+
+- `COUNT count` — максимальное число записей для каждого стрима
+- `BLOCK milliseconds` — ожидать записи указанное число миллисекунд;
+  `0` означает ожидание без ограничения времени. Блокируется текущее
+  клиентское соединение
+- `STREAMS key [key ...]` — ключи читаемых стримов. При чтении нескольких
+  стримов ключи должны находиться на одном репликасете
+- `id [id ...]` — последние прочитанные ID в том же порядке, что и ключи.
+  Число ID должно совпадать с числом ключей. `0` или `0-0` позволяет
+  читать с начала, `$` — ждать только записи, появившиеся после вызова,
+  `+` — вернуть последнюю существующую запись соответствующего стрима
+
+Для последовательного чтения передавайте в следующий вызов последний
+полученный ID. Значение `$` используют только при начальном подключении,
+иначе записи, появившиеся между вызовами, могут быть пропущены.
+Параметр `CLAIM` доступен только в [XREADGROUP](#xreadgroup);
+его передача в `XREAD` приводит к ошибке.
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XREAD COUNT 1 STREAMS mystream 0-0
+1) 1) "mystream"
+   2) 1) 1) "1-0"
+         2) 1) "event"
+            2) "created"
+```
+
+### xreadgroup {: #xreadgroup }
+
+```sql
+XREADGROUP GROUP group consumer [COUNT count] [BLOCK milliseconds]
+  [CLAIM min-idle-time] [NOACK] STREAMS key [key ...] id [id ...]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag blocking">blocking</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Читает записи от имени потребителя группы. Новые записи распределяются
+между потребителями и, если не указан `NOACK`, заносятся в PEL.
+После обработки их следует подтвердить командой [XACK](#xack).
+Группа должна быть заранее создана в каждом указанном стриме.
+Возвращает стримы с прочитанными записями; если новых данных нет,
+может ожидать их поступления согласно `BLOCK`.
+
+Параметры:
+
+- `GROUP group consumer` — имя группы и имя потребителя. Потребитель
+  создаётся автоматически при первом обращении
+- `COUNT count` — максимальное число возвращаемых записей для каждого
+  стрима
+- `BLOCK milliseconds` — время ожидания новых записей в миллисекундах;
+  `0` означает ожидание без ограничения времени. По истечении таймаута
+  возвращается `(nil)`
+- `CLAIM min-idle-time` — перед чтением новых записей передавать этому
+  потребителю неподтверждённые записи с временем простоя не меньше
+  указанного в миллисекундах, включая записи, освобождённые через
+  [XNACK](#xnack). В ответ дополнительно включаются время простоя
+  и счётчик доставок до передачи записи
+- `NOACK` — не добавлять новые записи в PEL; подтверждать их не требуется
+- `STREAMS key [key ...]` — ключи стримов, находящиеся на одном репликасете
+- `id [id ...]` — по одному ID для каждого ключа. `>` запрашивает записи,
+  ещё не доставленные группе, а явный ID возвращает собственные
+  неподтверждённые записи потребителя с большими ID. Значение `0`
+  позволяет перечитать весь его PEL. При чтении собственного PEL
+  параметры `BLOCK`, `NOACK` и `CLAIM` не применяются
+
+Пример:
+
+```sql
+> XGROUP CREATE mystream workers 0 MKSTREAM
+OK
+> XADD mystream 1-0 event created
+"1-0"
+> XREADGROUP GROUP workers worker1 COUNT 1 STREAMS mystream >
+1) 1) "mystream"
+   2) 1) 1) "1-0"
+         2) 1) "event"
+            2) "created"
+> XACK mystream workers 1-0
+(integer) 1
+```
+
+### xrevrange {: #xrevrange }
+
+```sql
+XREVRANGE key end start [COUNT count]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag read">read</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+
+Возвращает записи из диапазона ID в порядке убывания идентификаторов.
+Удобна для получения последних записей стрима. Формат ответа такой же,
+как у [XRANGE](#xrange), но первой указывается верхняя граница диапазона.
+
+Параметры:
+
+- `key` — ключ стрима
+- `end` — верхняя граница диапазона; `+` означает конец стрима
+- `start` — нижняя граница диапазона; `-` означает начало стрима
+- `COUNT count` — максимальное число возвращаемых записей
+
+Границы включительны; префикс `(` перед ID делает границу исключительной.
+
+Пример получения последней записи:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XADD mystream 2-0 event updated
+"2-0"
+> XREVRANGE mystream + - COUNT 1
+1) 1) "2-0"
+   2) 1) "event"
+      2) "updated"
+```
+
+### xsetid {: #xsetid }
+
+```sql
+XSETID key last-id [ENTRIESADDED entries-added] [MAXDELETEDID max-deleted-id]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Служебная команда для изменения метаданных существующего стрима,
+например при восстановлении его состояния. Устанавливает последний
+сгенерированный ID без добавления записи и возвращает `OK`.
+Позиции групп потребителей изменяются отдельно через
+[XGROUP SETID](#xgroup_setid).
+
+Параметры:
+
+- `key` — ключ существующего стрима
+- `last-id` — последний сгенерированный ID в полном формате
+  `<миллисекунды>-<порядковый номер>`. Он не может быть меньше ID
+  последней существующей записи или максимального удалённого ID
+- `ENTRIESADDED entries-added` — общее число добавленных за всё время
+  записей. Неотрицательное значение, не меньше текущей длины стрима
+- `MAXDELETEDID max-deleted-id` — максимальный удалённый ID в полном
+  формате; не должен превышать `last-id`
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XSETID mystream 10-0 ENTRIESADDED 1
+OK
+> XADD mystream 10-* event updated
+"10-1"
+```
+
+### xtrim {: #xtrim }
+
+```sql
+XTRIM key <MAXLEN | MINID> [= | ~] threshold [LIMIT count]
+  [KEEPREF | DELREF | ACKED]
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag slow">slow</span>
+<span class="tag stream">stream</span>
+<span class="tag write">write</span>
+
+Сокращает стрим, удаляя старые записи по заданному условию.
+Возвращает количество удалённых записей. Ключ сохраняется,
+даже если после сокращения стрим стал пустым.
+
+Параметры:
+
+- `key` — ключ стрима
+- `MAXLEN threshold` — сокращать стрим до указанного числа записей.
+  Порог должен быть неотрицательным
+- `MINID threshold` — удалять записи с ID меньше указанного порога
+  в формате `<миллисекунды>-<порядковый номер>`
+- `=` — точное сокращение; используется по умолчанию
+- `~` — приблизительное сокращение. Может сохранять дополнительные
+  записи, чтобы удалять их более крупными блоками
+- `LIMIT count` — ограничить число удаляемых записей за вызов.
+  Допустим только с `~`; значение должно быть неотрицательным
+- `KEEPREF` — сохранять ссылки на удалённые записи в PEL групп.
+  Используется по умолчанию
+- `DELREF` — удалять также ссылки на записи из PEL всех групп
+- `ACKED` — удалять только записи, которые больше не ожидаются ни одной
+  группой: все группы прошли соответствующий ID, и он отсутствует в PEL.
+  Из-за этого стрим может остаться больше заданного порога
+
+Пример:
+
+```sql
+> XADD mystream 1-0 event created
+"1-0"
+> XADD mystream 2-0 event updated
+"2-0"
+> XTRIM mystream MAXLEN = 1
+(integer) 1
+> XRANGE mystream - +
+1) 1) "2-0"
+   2) 1) "event"
+      2) "updated"
+```
+
 ## Команды для списков {: #lists }
 
 ### blmove
@@ -2643,7 +3785,7 @@ BRPOPLPUSH source destination timeout
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["brpoplpush" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["brpoplpush" ] }';
     ```
 
 ### brpop
@@ -3174,7 +4316,7 @@ RPOPLPUSH source destination
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["rpoplpush" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["rpoplpush" ] }';
     ```
 
 ### rpush
@@ -3404,6 +4546,43 @@ APPEND key value
 "Hello World"
 ```
 
+### delex
+
+```sql
+DELEX key [IFEQ ifeq-value | IFNE ifne-value | IFDEQ ifdeq-digest |
+  IFDNE ifdne-digest]
+```
+<span class="tag">поддерживается с версии 1.0.0</span>
+<span class="tag fast">fast</span>
+<span class="tag string">string</span>
+<span class="tag write">write</span>
+
+Производит условное удаления ключа `key` на основе сравнения его
+текущего значения (`ifeq-value` для равенства, `ifne-value` — для
+неравенства) или хеш-дайджеста (`ifdeq-digest`).
+
+Параметры:
+
+- `IFEQ ifeq-value` — удалить ключ, только если его строковое значение
+  в точности равно `ifeq-value`
+- `IFNE ifne-value` — удалить ключ, только если его значение не равно
+  `ifne-value`
+- `IFDEQ / IFDNE digest` — аналогично, но проверяет
+  равенство/неравенство хеш-дайджеста (`ifdeq-digest`/`ifdne-digest`)
+  строки (вычисленного по алгоритму XXH3)
+
+### digest
+
+```sql
+DIGEST key
+```
+<span class="tag">поддерживается с версии 1.2.0</span>
+<span class="tag fast">fast</span>
+<span class="tag string">string</span>
+<span class="tag read">read</span>
+
+Вычисляет контрольную сумму (хеш-дайджест) для строки, сохраненной по ключу `key`.
+
 ### get
 
 ```sql
@@ -3536,13 +4715,14 @@ PSETEX key milliseconds value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["psetex" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["psetex" ] }';
     ```
 
 ### set
 
 ```sql
-SET key value [NX | XX] [GET] [EX seconds | PX milliseconds |
+SET key value [NX | XX | IFEQ ifeq-value | IFNE ifne-value |
+  IFDEQ ifdeq-digest | IFDNE ifdne-digest] [GET] [EX seconds | PX milliseconds |
   EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL]
 ```
 <span class="tag">поддерживается с версии 0.1.0</span>
@@ -3557,6 +4737,13 @@ SET key value [NX | XX] [GET] [EX seconds | PX milliseconds |
 
 Параметры:
 
+- `IFEQ ifeq-value` — сохранить ключ, только если его строковое значение
+  в точности равно `ifeq-value`
+- `IFNE ifne-value` — сохранить ключ, только если его значение не равно
+  `ifne-value`
+- `IFDEQ / IFDNE digest` — аналогично, но проверяет
+  равенство/неравенство хеш-дайджеста (`ifdeq-digest`/`ifdne-digest`)
+  строки (вычисленного по алгоритму XXH3)
 - `EX` — установка указанного времени истечения срока действия в
   секундах (целое положительное число)
 - `PX` — установка указанного времени истечения в миллисекундах (целое
@@ -3597,7 +4784,7 @@ SET key value EX seconds
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setex" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setex" ] }';
     ```
 
 Установка некорректного значения вернёт ошибку.
@@ -3620,7 +4807,7 @@ SETNX key value
     устаревших и по умолчанию отключена в Radix. Для включения
     используйте следующий SQL-запрос:
     ```sql
-    ALTER PLUGIN radix 1.1.2 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setnx" ] }';
+    ALTER PLUGIN radix 1.2.0 SET radix.redis_compatibility = '{ "enforce_one_slot_transactions": true, "push_result_includes_popped_items": true, "include_radix_section_in_info_by_default": true, "disable_scatter_gather": true, "enabled_deprecated_commands": ["setnx" ] }';
     ```
 
 ### strlen

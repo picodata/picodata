@@ -74,7 +74,7 @@ Redis Standalone, развернув Radix в составе одного реп
 
 То есть при выставлении `disable_scatter_gather = true`, команда исполняется только на одном узле как в Redis Cluster, а при `disable_scatter_gather = false` по всем данным как в Redis Standalone, даже если Radix запущен на нескольких репликасетах.
 
-По умолчанию - `true`.
+По умолчанию — `true`.
 
 ### include_radix_section_in_info_by_default
 

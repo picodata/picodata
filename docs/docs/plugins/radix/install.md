@@ -28,10 +28,9 @@ Picodata на нескольких узлах, в том числе, с подд
 относящийся к Radix:
 
 ```yaml
-
 plugins:
   radix:                                                          # плагин
-    path: '../files/radix_1.1.2-centos_el8.tar.gz'                # путь до пакета с Radix
+    path: '../files/radix_1.2.0-centos_el8.tar.gz'                # путь до пакета с Radix
     config: '../files/radix-config.yml'                           # путь до файла с настройками Radix
     services:
       radix:
@@ -130,7 +129,7 @@ plugins:
 
         plugins:
           radix:                                                        # плагин
-            path: '../plugins/radix_1.1.2-1-ubuntu_noble.tar.gz'        # путь до пакета с Radix
+            path: '../plugins/radix_1.2.0-1-ubuntu_noble.tar.gz'        # путь до пакета с Radix
             config: '../plugins/radix-config.yml'                       # путь до файла с настройками Radix
             services:
               radix:
@@ -201,9 +200,9 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 
 Доступны два образа:
 
-- `<registry>/radix:1.1.2` — полноценный образ, готовый для
-  использования в Kubernetes. Не имеет преднастроек.
-- `<registry>/radix:1.1.2-standalone` — образ с одиночным инстансом
+- `<registry>/radix:1.2.0` — полноценный образ, готовый для
+  [использования в Kubernetes](#radix_deploy_k8s). Не имеет преднастроек.
+- `<registry>/radix:1.2.0-standalone` — образ с одиночным инстансом
   Picodata и предустановленным плагином Radix для быстрого ознакомления.
   Не предназначен для использования в производственной среде.
 
@@ -213,8 +212,8 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 Запуск одиночного образа:
 
 ```shell
-docker pull <registry>/radix:1.1.2-standalone
-docker run --rm -p 7379:7379 -p 4327:4327 -p 5327:5327 <registry>/radix:1.1.2-standalone
+docker pull <registry>/radix:1.2.0-standalone
+docker run --rm -p 7379:7379 -p 4327:4327 -p 5327:5327 <registry>/radix:1.2.0-standalone
 ```
 
 После старта плагин готов к работе:
@@ -230,6 +229,309 @@ redis-cli -p 7379 ping
 | 7379 | Redis (RESP2) |
 | 4327 | PostgreSQL    |
 | 5327 | HTTP          |
+
+## Развёртывание с помощью Kubernetes {: #radix_deploy_k8s }
+
+### Требования {: #radix_k8s_requirements }
+
+Для данного способа требуются:
+
+- Kubernetes и Minikube 1.30 или новее
+- `kubectl` и `helm`
+- `redis-cli` на рабочей машине (для проверки)
+- Доступ из кластера Kubernetes к Docker-реестру от Picodata (предоставляется клиентам Radix по запросу)
+- Сам Docker-образ, содержащий ненастроенные Picodata и Radix (кластер и плагин настраивает [оператор](#radix_k8s_install_operator))
+
+Для начала запустите Minikube:
+
+```shell
+minikube start --driver=docker --cpus=4 --memory=8192
+```
+
+!!! note "Примечания"
+    - В ресурсе `PicoclusterDB` нужно оставить `disableAutoAntiAffinity: true`, так как в кластере `minikube` один узел.
+    - Временное событие `FailedScheduling` о несвязанных PVC не является ошибкой.
+
+### Установка оператора {: #radix_k8s_install_operator }
+
+Требуется оператор версии 0.14.2 или новее. Выполните следующие команды:
+
+```shell
+helm repo add picodata https://binary.picodata.io/repository/helm
+helm repo update
+helm install picodata-operator picodata/picodata-operator -n picodata-operator-system --create-namespace
+kubectl rollout status deployment/picodata-operator-controller-manager -n picodata-operator-system --timeout=600s
+```
+
+### Пространство имён и секреты {: #radix_k8s_namespaces_and_secrets }
+
+Кластер размещается в пространстве имён `picodata`. Пароль администратора Picodata хранится в Secret `picodata-admin-secret`, пустой пароль пользователя по умолчанию — в Secret `radix-default-user` (см. [Особенности авторизации](#radix_k8s_auth)):
+
+```bash
+kubectl create namespace picodata
+kubectl create secret generic picodata-admin-secret --namespace picodata --from-literal=password=Radix123Pass
+kubectl create secret generic radix-default-user --namespace picodata --from-literal=password=
+```
+
+Замените `Radix123Pass` на собственный пароль. Пароль должен удовлетворять парольной политике, настроенной в вашем кластере. По умолчанию требуются: одна заглавная латинская буква, одна строчная, одна цифра, не менее 8 символов.
+
+### Настройка кластера {: #radix_k8s_cluster_config }
+
+Добавьте описание кластера в конфигурационный файл `radix-cluster.yaml`:
+
+```yaml
+apiVersion: picodata.picodata.io/v1
+kind: PicoclusterDB
+metadata:
+  name: radix
+  namespace: picodata
+spec:
+  image:
+    repository: <registry>
+    tag: "radix:1.2.0"
+    pullPolicy: IfNotPresent
+  clusterName: radix
+  adminPassword:
+    secretName: picodata-admin-secret
+    key: password
+  cluster:
+    defaultBucketCount: 16384
+    shareDir: /usr/share/picodata
+    plugins:
+      - name: radix
+        version: "1.2.0"
+        users:
+          - name: default
+            passwordSecretRef: radix-default-user
+            roles:
+              - radix_reader
+              - radix_writer
+        migrationContext:
+          tier_for_db_0: "default"
+          tier_for_db_1: "default"
+          tier_for_db_2: "default"
+          tier_for_db_3: "default"
+          tier_for_db_4: "default"
+          tier_for_db_5: "default"
+          tier_for_db_6: "default"
+          tier_for_db_7: "default"
+          tier_for_db_8: "default"
+          tier_for_db_9: "default"
+          tier_for_db_10: "default"
+          tier_for_db_11: "default"
+          tier_for_db_12: "default"
+          tier_for_db_13: "default"
+          tier_for_db_14: "default"
+          tier_for_db_15: "default"
+          unlogged: ""
+  systemParameters:
+    auth_password_length_min: "0"
+    auth_password_enforce_uppercase: "false"
+    auth_password_enforce_lowercase: "false"
+    auth_password_enforce_digits: "false"
+  tiers:
+    - name: default
+      replicasets: 1
+      replicationFactor: 3
+      canVote: true
+      disableAutoAntiAffinity: true
+      storage:
+        size: 1Gi
+      memtx:
+        memory: "256M"
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+      plugins:
+        - name: radix
+          services:
+            - name: radix
+              listenerPort: 7379
+```
+
+!!! note "Примечание"
+    Все параметры конфигурации являются обязательными.
+
+Особенности параметров конфигурации:
+
+- `spec.image.repository` и `spec.image.tag` склеиваются через `/` в полное имя образа: `<registry>/radix:1.2.0`.
+- `spec.clusterName` — имя кластера Picodata: значение попадает в параметр [`cluster.name`](../../reference/config.md#cluster_name) конфигурации Picodata. Имена подов и сервисов строятся из `metadata.name`.
+- `spec.adminPassword` — ссылка на секрет с паролем администратора, созданным на предыдущем шаге.
+- `spec.cluster.defaultBucketCount` — количество бакетов в тирах (параметр [default_bucket_count](../../reference/config.md#cluster_default_bucket_count)).
+- `spec.cluster.shareDir` — директория, в которой образ хранит файлы плагинов.
+- `spec.cluster.plugins[]` — плагин `radix` версии 1.2.0 и его [контекст миграций из 17 параметров](#plugin_enable_details).
+- `spec.cluster.plugins[].users[]` — пользователь по умолчанию `default` с пустым паролем из секрета `radix-default-user` и ролями `radix_reader` и `radix_writer`. Оператор [создаёт пользователя](#radix_k8s_auth) и выдаёт роли после миграций плагина.
+- `spec.systemParameters` — параметры, которые оператор применяет через `ALTER SYSTEM SET` при каждой синхронизации. Здесь они ослабляют парольную политику: без этого пустой пароль пользователя `default` не пройдёт валидацию.
+- `spec.tiers[]` — один тир `default` с одним репликасетом и фактором репликации 3, то есть 3 инстанса: 1 мастер и 2 реплики. Поды получают имена `default-radix-1-0`, `default-radix-1-1` и `default-radix-1-2` (шаблон `<тир>-<metadata.name>-1-<N>`).
+- `spec.tiers[].plugins[].services[].listenerPort` — порт, который слушает Redis (7379).
+- `memtx.memory` — объём памяти под хранение данных инстанса, параметр [instance.memtx.memory](../../reference/config.md#instance_memtx_memory).
+- `storage.size`, `memtx.memory` и `resources` — минимальные значения для примера (подбираются под нагрузку).
+- `disableAutoAntiAffinity: true` — нужен только для кластеров Kubernetes из одного узла, например `minikube`.
+
+!!! warning "Внимание"
+    На тирах, где работает Radix, количество бакетов должно быть равно ровно
+    16384. В данном примере тир один, поэтому достаточно
+    `spec.cluster.defaultBucketCount: 16384`.
+
+!!! warning "Внимание"
+    При развёртывание в промышленной среде удалите строку
+    `disableAutoAntiAffinity: true`. Тогда поды одного тира будут по
+    возможности размещаться на разных узлах Kubernetes.
+
+### Запуск кластера {: #radix_k8s_cluster_deploy }
+
+Для запуска кластера выполните следующие команды:
+
+```shell
+kubectl apply -f radix-cluster.yaml
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/instance=radix -n picodata --timeout=600s
+kubectl wait --for=jsonpath='{.status.phase}'=Ready picoclusterdb/radix -n picodata --timeout=600s
+kubectl get picoclusterdb radix -n picodata -o jsonpath='{.status.tiers[*].plugins}'
+```
+
+Ожидаемый статус плагина:
+
+```json
+[{"enabled":true,"name":"radix","version":"1.2.0"}]
+```
+
+Готовность подов не означает готовности плагина. Поды принимают
+состояние `Ready` примерно за 30 секунд, после чего оператор выполняет
+`CREATE PLUGIN`, `ADD SERVICE`, установку `migration_context`,
+`MIGRATE`, создание пользователя по умолчанию и `ENABLE`. Процесс
+занимает от нескольких секунд до пары минут и заканчивается переходом
+ресурса `PicoclusterDB` из фазы `Initializing` в фазу `Ready` — её и
+ждёт вторая команда `kubectl wait...`. Первая команда может завершиться
+раньше, чем созданы все три пода; полноту кластера гарантирует именно
+ожидание фазы `Ready`.
+
+За прогрессом можно следить командой `kubectl get picoclusterdb radix -n
+picodata -w` и по журналам оператора. Если фаза `Ready` не наступает,
+см. [«Устранение неполадок»](#radix_k8s_troubleshooting).
+
+### Адреса Radix {: #radix_k8s_addresses }
+
+Конфигурацию листенера Radix оператор создаёт сам в ConfigMap `default-radix`, ручная настройка не требуется:
+
+- `listen` — `0.0.0.0:7379`
+- `advertise` — FQDN пода: `<под>.default-radix-interconnect.picodata.svc.cluster.local:7379`. В самом ConfigMap на этом месте хранится заглушка `__PLUGIN_ADVERTISE_RADIX_RADIX__`, которую init-контейнер пода подставляет при старте.
+
+Клиенты внутри Kubernetes подключаются к этим адресам, их же возвращает команда `CLUSTER SLOTS`. Например, первый под доступен по адресу `default-radix-1-0.default-radix-interconnect.picodata.svc.cluster.local:7379`.
+
+### Доступ внешних клиентов {: #radix_k8s_external_access }
+
+Пример развёртывания предполагает клиентов внутри Kubernetes. Для доступа снаружи добавьте листенеру Radix поле `externalService` (в `spec.tiers[].plugins[].services[]`):
+
+```yaml
+...
+          services:
+            - name: radix
+              listenerPort: 7379
+              externalService:
+                enabled: true
+                perPod: true
+...
+```
+
+Особенности параметров конфигурации:
+
+- `enabled: true` — создаёт внешний Service типа LoadBalancer или NodePort
+- `perPod: true` — создаёт отдельный LoadBalancer на каждый под: `default-radix-1-0-external` и так далее. Виртуальный IP-адрес (VIP) каждого пода становится его адресом `advertise`, и `CLUSTER SLOTS` возвращает клиентам VIP вместо внутрикластерных FQDN, поэтому клиентам в кластерном режиме нужен именно `perPod`. Для выдачи VIP требуется MetalLB или облачный балансировщик (этот вариант проверен в minikube с расширением `metallb`).
+
+См. также:
+
+- [Per-pod-сервисы для клиентов, работающих с шардированными данными](../../admin/deploy_kubernetes.md#external_service_perpod)
+- [Внешний доступ](../../admin/deploy_kubernetes.md#external_access)
+
+!!! warning "Внимание"
+    При первом создании ресурса следует включить `externalService`.
+    Включение `perPod` на работающем тире меняет адрес `advertise`, что
+    не поддерживается в данный момент в Picodata.
+
+### Особенности авторизации {: #radix_k8s_auth }
+
+В Radix 1.2.0 `authorization_mode.state` по умолчанию равен `enabled`, а `authorization_mode.default_user_name` — `default`. Без этого пользователя листенер запускается, но каждый клиент получает ошибку `NOAUTH Authentication required`.
+
+Пользователя создаёт оператор по блоку `users` ресурса
+`radix-cluster.yaml`, отдельных действий не требуется. Для неявной
+аутентификации пароль пользователя `default` должен быть пустым, поэтому
+секрет `radix-default-user` содержит пустое значение. Пустой пароль
+допустим только с методами аутентификации `md5` и `chap-sha1` (см.
+[CREATE USER](../../reference/sql/create_user.md)) и запрещён парольной
+политикой по умолчанию — её ослабляет блок `systemParameters`. После
+создания кластера клиенты без явной команды `AUTH` аутентифицируются как
+`default`: команда `ACL WHOAMI` возвращает `default`.
+
+!!! warning "Внимание"
+ Oслабленная парольная политика действует на весь кластер, и вернуть строгую политику при декларативном способе нельзя: оператор выполняет `ALTER USER "default"` с пустым паролем при каждой синхронизации, в то время как со строгой политикой синхронизации завершаются ошибкой `password is too short`, а фаза ресурса падает в `Initializing`. Если это недопустимо, используйте SQL-вариант [ниже](#radix_k8s_auth_sql) либо откажитесь от неявной аутентификации: задайте пользователю `default` полноценный пароль в Secret `radix-default-user`. Тогда блок `systemParameters` не нужен, а клиенты аутентифицируются явно.
+
+### Настройка авторизации с помощью SQL {: #radix_k8s_auth_sql }
+
+Если держать ослабленную парольную политику в ресурсе недопустимо, а пароль у пользователя по умолчанию должен быть пустым, то уберите блоки `users` и `systemParameters` из `radix-cluster.yaml` и создайте пользователя вручную после перехода `PicoclusterDB` в фазу `Ready` (роли `radix_reader` и `radix_writer` создаются миграциями плагина; до создания пользователя клиенты получают `NOAUTH`). Скрипт ослабляет парольную политику только на время своей работы. Сохраните его в файл `create-default-user.sql`:
+
+```sql
+ALTER SYSTEM SET auth_password_length_min TO 0;
+ALTER SYSTEM SET auth_password_enforce_uppercase TO FALSE;
+ALTER SYSTEM SET auth_password_enforce_lowercase TO FALSE;
+ALTER SYSTEM SET auth_password_enforce_digits TO FALSE;
+CREATE USER IF NOT EXISTS "default" WITH PASSWORD '';
+GRANT radix_reader TO "default";
+GRANT radix_writer TO "default";
+ALTER SYSTEM SET auth_password_enforce_digits TO TRUE;
+ALTER SYSTEM SET auth_password_enforce_lowercase TO TRUE;
+ALTER SYSTEM SET auth_password_enforce_uppercase TO TRUE;
+ALTER SYSTEM SET auth_password_length_min TO 8;
+```
+
+Примените команды из этого файла, подключившись к административной
+консоли Picodata:
+
+```shell
+kubectl exec -i -n picodata default-radix-1-0 -c picodata -- picodata admin /pico/admin.sock < create-default-user.sql
+```
+
+### Проверка работы кластера {: #radix_k8s_check }
+
+Проверьте доступность Radix на порту 7379:
+
+```shell
+kubectl port-forward -n picodata pod/default-radix-1-0 7379:7379 &
+redis-cli -p 7379 PING          # PONG
+redis-cli -p 7379 SET k1 v1     # OK
+redis-cli -p 7379 GET k1        # v1
+redis-cli -p 7379 CLUSTER SLOTS # 0..16383 + три FQDN подов
+```
+
+`kubectl port-forward` используется только для проверки; после неё процесс можно остановить. Рабочие клиенты подключаются изнутри Kubernetes к FQDN подов на порт 7379 (см. [«Адреса Radix»](#radix_k8s_addresses)).
+
+### Определение мастера репликасета {: #radix_k8s_detect_replicaset_master }
+
+Мастер репликасета определяется командой `INFO replication`: на мастере она возвращает `role:master` и `connected_slaves:2`. Также можно использовать `CLUSTER NODES`. Команда `ROLE` не поддерживается.
+
+Подключаться можно к любому поду: запись, отправленная на реплику, проксируется на мастер без ответов `MOVED` или `READONLY`.
+
+### Устранение неполадок {: #radix_k8s_troubleshooting }
+
+- Клиенты получают `NOAUTH Authentication required` — не создан пользователь `default`: проверьте блок `users` в ресурсе и наличие Secret `radix-default-user`, см. [Особенности авторизации](#radix_k8s_auth).
+- Статус плагина не `"enabled":true` или фаза `PicoclusterDB` надолго остаётся `Initializing` — смотрите журналы оператора (`kubectl logs deployment/picodata-operator-controller-manager -n picodata-operator-system`) и журналы подов кластера.
+- Следующие сообщения в журналах не являются ошибками:
+  - предупреждение `Plugin version 26.2.1 does not match picodata version 26.2.3`;
+  - сообщение реплик `DdlCommit: awaiting DDL results from master replica` во время миграций.
+- Пароль администратора доступен в переменной окружения `PICODATA_ADMIN_PASSWORD` пода любому, кто может выполнить в нём `kubectl exec`. Ограничьте право `exec` через RBAC.
+
+### Удаление кластера {: #radix_k8s_cluster_remove }
+
+```bash
+kubectl delete picoclusterdb radix -n picodata
+```
+
+Команда удаляет StatefulSet, сервисы и ConfigMap кластера. PVC с данными
+при этом сохраняются. Чтобы удалить также и данные:
+
+```shell
+kubectl delete pvc -n picodata --all
+```
 
 ## Развёртывание вручную {: #radix_deploy_manual }
 
@@ -327,7 +629,7 @@ Radix поддерживает 16 баз данных, каждую из кот�
 в административной консоли Picodata:
 
 ```sql
-CREATE PLUGIN radix 1.1.2;
+CREATE PLUGIN radix 1.2.0;
 ```
 
 Выполните указанные ниже шаги для того, чтобы включить плагин.
@@ -343,59 +645,59 @@ CREATE PLUGIN radix 1.1.2;
 **Пример для одного тира (default)**
 
 ```sql
-ALTER PLUGIN radix 1.1.2 ADD SERVICE radix TO TIER default;
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_0='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_1='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_2='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_3='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_4='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_5='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_6='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_7='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_8='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_9='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_10='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_11='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_12='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_13='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_14='default';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_15='default';
+ALTER PLUGIN radix 1.2.0 ADD SERVICE radix TO TIER default;
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_0='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_1='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_2='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_3='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_4='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_5='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_6='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_7='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_8='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_9='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_10='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_11='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_12='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_13='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_14='default';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_15='default';
 ```
 
 **Пример для двух тиров (hot/cold)**
 
 
 ```sql
-ALTER PLUGIN radix 1.1.2 ADD SERVICE radix TO TIER hot;
-ALTER PLUGIN radix 1.1.2 ADD SERVICE radix TO TIER cold;
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_0='hot';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_1='hot';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_2='hot';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_3='hot';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_4='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_5='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_6='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_7='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_8='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_9='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_10='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_11='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_12='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_13='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_14='cold';
-ALTER PLUGIN radix 1.1.2 SET migration_context.tier_for_db_15='cold';
+ALTER PLUGIN radix 1.2.0 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 1.2.0 ADD SERVICE radix TO TIER cold;
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_0='hot';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_1='hot';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_2='hot';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_3='hot';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_4='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_5='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_6='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_7='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_8='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_9='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_10='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_11='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_12='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_13='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_14='cold';
+ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_15='cold';
 ```
 
 Параметр `unlogged` может принимать только два значения: `''` (пустая строка) для включённого WAL (режим Radix до версии 1.0.0):
 
 ```sql
-ALTER PLUGIN radix 1.1.2 SET migration_context.unlogged='' OPTION(TIMEOUT=1200);
+ALTER PLUGIN radix 1.2.0 SET migration_context.unlogged='' OPTION(TIMEOUT=1200);
 ```
 
 или `UNLOGGED` для отключённого:
 
 ```sql
-ALTER PLUGIN radix 1.1.2 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOUT=1200);
+ALTER PLUGIN radix 1.2.0 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOUT=1200);
 ```
 
 !!! warning "Внимание!"
@@ -412,7 +714,7 @@ ALTER PLUGIN radix 1.1.2 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOU
 Для выполнения миграции выполните команду:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 1.1.2 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 1.2.0 OPTION(TIMEOUT=300);
 ```
 
 <!--
@@ -454,7 +756,7 @@ GRANT radix_writer TO default;
 После этого включите плагин:
 
 ```sql
-ALTER PLUGIN radix 1.1.2 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.2.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
@@ -465,3 +767,7 @@ SELECT * FROM _pico_plugin;
 
 В строке, соответствующей плагину Radix, в колонке `enabled` должно быть
 значение `true`.
+
+Читать далее:
+
+- [Настройка плагина](configuration.md)

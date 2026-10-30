@@ -43,13 +43,16 @@ radix:
     pico_commands_enabled: true
 ```
 
+!!! note "Примечание"
+    Все параметры конфигурации являются обязательными.
+
 [`picodata plugin configure`]: ../../reference/cli.md#plugin_configure
 [инвентарного файла Ansible]: ../../admin/deploy_ansible.md#plugin_management
 
 Пример команды, применяющей файл конфигурации:
 
 ```shell
-picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.1.2 radix/plugin_config.yaml
+picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.2.0 radix/plugin_config.yaml
 ```
 
 ## Авторизация и управление доступом {: #auth_and_access_control}
@@ -310,7 +313,7 @@ GRANT radix_writer TO pubsub OPTION(TIMEOUT=1200);
 Включите в Radix авторизацию, указав путь к файлу с правами и имя пользователя по умолчанию:
 
 ```sql
-ALTER PLUGIN radix 1.1.2 SET radix.authorization_mode='{ "state": "enabled", "aclfile": "/tmp/users.acl", "default_user_name": "default" }';
+ALTER PLUGIN radix 1.2.0 SET radix.authorization_mode='{ "state": "enabled", "aclfile": "/tmp/users.acl", "default_user_name": "default" }';
 ```
 
 **Включение плагина**
@@ -318,7 +321,7 @@ ALTER PLUGIN radix 1.1.2 SET radix.authorization_mode='{ "state": "enabled", "ac
 Включите плагин Radix в Picodata:
 
 ```sql
-ALTER PLUGIN radix 1.1.2 ENABLE;
+ALTER PLUGIN radix 1.2.0 ENABLE;
 ```
 
 При первом запуске заданному по умолчанию пользователю выдается ACL на
@@ -507,7 +510,7 @@ OK
 #### Изменение конфигурации Radix через SQL-запросы в Picodata {: #setup_radix_with_sql }
 
 ```sql
-ALTER PLUGIN radix 1.1.2 SET radix.authorization_mode='{"state": "enabled", "default_user_name": "custom_user"}';
+ALTER PLUGIN radix 1.2.0 SET radix.authorization_mode='{"state": "enabled", "default_user_name": "custom_user"}';
 ```
 
 #### Использование LDAP {: #ldapuser }
@@ -516,7 +519,7 @@ ALTER PLUGIN radix 1.1.2 SET radix.authorization_mode='{"state": "enabled", "def
 CREATE USER custom_user USING ldap;
 GRANT radix_reader TO custom_user;
 GRANT radix_writer TO custom_user;
-ALTER PLUGIN radix 1.1.2 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "custom_user" }';
+ALTER PLUGIN radix 1.2.0 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "custom_user" }';
 ```
 
 #### Использование Argus для синхронизации пользователей {: #argus }
