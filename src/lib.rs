@@ -176,7 +176,6 @@ fn preload_vshard() {
     preload!("vshard.error", "vshard/error.lua");
     preload!("vshard.hash", "vshard/hash.lua");
     preload!("vshard.heap", "vshard/heap.lua");
-    preload!("vshard.lref", "vshard/storage/ref.lua");
     preload!("vshard.registry", "vshard/registry.lua");
     preload!("vshard.replicaset", "vshard/replicaset.lua");
     preload!("vshard.service_info", "vshard/service_info.lua");

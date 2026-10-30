@@ -423,7 +423,9 @@ local function init()
         error("dispatch must be initialized after pico module was set!")
     end
     _G.pico.dispatch = dispatch
-    _G.pico.dispatch.lref = require('vshard.lref')
+    -- The same module instance as vshard's own: a bucket move collects the
+    -- expired refs of one instance only, the one in vshard.registry.
+    _G.pico.dispatch.lref = require('vshard.storage.ref')
     -- Expose the session UUID for the Rust local fast-path so it shares the
     -- same vshard lref session as the normal Lua dispatch path.
     _G.pico.dispatch.session_id = session_current
