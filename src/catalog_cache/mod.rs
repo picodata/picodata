@@ -8,20 +8,19 @@
 //! returned (or the deleted key) right after writing it, DML from the raft log
 //! goes through [`CatalogChange`], the raft snapshot changes the cache
 //! explicitly. `TRUNCATE` of system tables is forbidden by the access check.
-//! Within a transaction nothing yields
-//! between writing a row and changing the cache, so other fibers always see
-//! the cache equal to the tables, including the rows of a transaction waiting
-//! for WAL. Every raft entry up to `applied` is reflected in the cache, so no
-//! separate index is needed.
+//! Within a transaction nothing yields between writing a row and changing the
+//! cache, so other fibers always see the cache equal to the tables, including
+//! the rows of a transaction waiting for WAL. Every raft entry up to `applied`
+//! is reflected in the cache, so no separate index is needed.
 //!
 //! There is no rollback handling. A failed commit of a raft entry or a snapshot
 //! crashes the instance, and the cache is loaded again on restart. Code which
 //! writes the catalog in a transaction which can roll back without a crash must
 //! call [`CatalogCache::full_reload`] on error.
 //!
-//! Writes bypassing picodata (from the console, `pico.cas` into tarantool's
-//! system spaces) aren't reflected until restart. Debug builds compare the
-//! cache with the tables after raft entries ([`may_change_catalog`]).
+//! Writes bypassing sql (from the console) aren't reflected until
+//! restart. Debug builds compare the cache with the tables after raft entries
+//! ([`may_change_catalog`]).
 //!
 //! Rules for readers holding a reference returned by [`CatalogCache::get`]:
 //! - don't yield while holding it (debug builds catch this);

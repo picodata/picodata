@@ -32,7 +32,7 @@ def check_cache(instance: Instance):
         instance.eval("pico._catalog_cache_check()")
 
 
-def test_debug_check_finds_write_bypassing_picodata(instance: Instance):
+def test_debug_check_finds_write_bypassing_sql(instance: Instance):
     # A write from the console bypasses the cache. DDL over another table
     # doesn't touch the row, and the check after applying its entry finds it.
     skip_unless_debug_build(instance)
@@ -156,7 +156,7 @@ def test_wait_index_then_sql_on_other_instance(cluster: Cluster):
 
 
 def test_console_write_then_restart(instance: Instance):
-    # A write bypassing picodata isn't guaranteed to reach the cache before
+    # A write bypassing sql isn't guaranteed to reach the cache before
     # restart. Nothing but DML into other tables gets into the raft log until
     # restart, otherwise the debug check would crash the instance.
     instance.sql("CREATE TABLE g (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY")

@@ -10,6 +10,6 @@
   log entry that writes the row. Before, every query that read the row failed
   ([!3843]).
 - SQL and CaS do not see a write to `_pico_table` or `_pico_index` that
-  bypasses picodata until the instance restarts: a write from the Lua console
+  bypasses sql until the instance restarts: a write from the Lua console
   or through `pico.cas` and `pico.raft_propose` into tarantool system tables
   such as `_truncate`. Before, SQL saw such a write at once ([!3843]).
