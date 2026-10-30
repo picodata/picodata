@@ -1705,18 +1705,6 @@ impl<'a, T> BlockEntryMut<'a, T> {
     {
         f(self.query).map_err(|e| self.location.wrap_error(e))
     }
-
-    /// Thread `state` through a closure that also gets the inner query.
-    /// Errors are prefixed with the location.
-    ///
-    /// # Errors
-    /// Returns the closure's error, location-prefixed.
-    pub fn with_state<S, F>(self, state: S, f: F) -> Result<S, SbroadError>
-    where
-        F: FnOnce(S, &mut T) -> Result<S, SbroadError>,
-    {
-        f(state, self.query).map_err(|e| self.location.wrap_error(e))
-    }
 }
 
 impl Display for StatementLocation {

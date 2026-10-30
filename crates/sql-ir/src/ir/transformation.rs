@@ -468,16 +468,16 @@ impl Plan {
     }
 
     pub fn optimize_subtree(&mut self, top_id: NodeId) -> Result<&mut Self, SbroadError> {
-        let plan = self.optimize_before(top_id, Stage::End)?;
+        self.optimize_before(top_id, Stage::End)?;
 
         // Facts are only used during planning. Afterward they're dead state. Drop them
         // so they don't bloat the plan clones made on the execution/dispatch path.
-        plan.facts = None;
+        self.facts = None;
         // Restrictions are planning-only too. Clear them
         // for the same reason.
-        plan.restrictions = None;
+        self.restrictions = None;
 
-        Ok(plan)
+        Ok(self)
     }
 
     pub fn optimize_block(&mut self) -> Result<&mut Self, SbroadError> {
@@ -635,24 +635,23 @@ impl Plan {
             Ok(())
         }
 
-        let plan = self;
         for entry in BlockEntriesMut::new(&mut statements) {
-            entry.with(|query| optimize_block_subtree(plan, query))?;
+            entry.with(|query| optimize_block_subtree(self, query))?;
         }
 
         // Set block as the top node back.
-        plan.set_top(block_id).expect("block node can't be missed");
+        self.set_top(block_id).expect("block node can't be missed");
 
         // Update statements since as a result of optimizations each subtree can have a new top.
         if let MutBlock::Anonymous(AnonymousBlock {
             statements: ref mut plan_statements,
             ..
-        }) = plan.get_mut_block_node(block_id)?
+        }) = self.get_mut_block_node(block_id)?
         {
             *plan_statements = statements;
         }
 
-        Ok(plan)
+        Ok(self)
     }
 
     fn subtree_has_motions(&self, top_id: NodeId) -> Result<bool, SbroadError> {
