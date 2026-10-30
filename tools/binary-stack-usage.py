@@ -909,6 +909,12 @@ def main():
     parser.add_argument("--quiet", "-q", action="store_true", help="do not print the list, only the --max violations")
     parser.add_argument("--no-demangle", action="store_true", help="print mangled symbol names")
     parser.add_argument(
+        "--address",
+        action="store_true",
+        help="print the address of each function: the demangled names of different functions can be equal, "
+        "e.g. two copies of a generic Rust function",
+    )
+    parser.add_argument(
         "--objdump",
         help="objdump executable (default: objdump for ELF files of the host architecture, "
         "else <arch>-linux-gnu-objdump or llvm-objdump)",
@@ -933,7 +939,10 @@ def main():
     if not args.quiet:
         try:
             for f in result[: args.limit]:
-                print(f"{f.size}\t{f.name}")
+                if args.address:
+                    print(f"{f.size}\t0x{f.address:x}\t{f.name}")
+                else:
+                    print(f"{f.size}\t{f.name}")
             sys.stdout.flush()
         except BrokenPipeError:
             # The output goes to e.g. `head`. Still do the --max check.
