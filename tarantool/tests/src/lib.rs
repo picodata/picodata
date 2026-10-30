@@ -551,6 +551,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                     sql::port_c,
                     sql::port_c_vtab,
                     tuple_picodata::tuple_hash,
+                    tuple_picodata::key_hash,
+                    tuple_picodata::key_hash_matches_tuple_hash,
                 ])
             }
             tests

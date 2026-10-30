@@ -62,6 +62,8 @@
   three-valued semantics.
 - Descending index parts in key definitions. `index::KeyDefOrder::Index`
   follows physical index order, while `KeyDefOrder::Natural` ignores it.
+- `tuple::KeyDef::hash_key_raw` calculates the hash of a raw MsgPack key
+  without creating a tuple.
 
 ### Fixed
 

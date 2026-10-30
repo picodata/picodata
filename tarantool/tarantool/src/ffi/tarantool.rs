@@ -1151,6 +1151,10 @@ extern "C" {
     ) -> c_int;
     #[cfg(feature = "picodata")]
     pub fn box_tuple_hash(tuple: *mut BoxTuple, key_def: *mut BoxKeyDef) -> c_uint;
+    /// Calculate the hash of `key`: MsgPack fields without an array header,
+    /// one per part of `key_def`.
+    #[cfg(feature = "picodata")]
+    pub fn key_hash(key: *const c_char, key_def: *mut BoxKeyDef) -> u32;
     /// Check whether a tuple of the given MsgPack data would fit within the
     /// configured `max_tuple_size` of the space's engine. The check is
     /// constant-time: it adds the engine's per-tuple header and the format's

@@ -949,6 +949,8 @@ impl From<index::FieldType> for FieldType {
 #[derive(Debug)]
 pub struct KeyDef {
     inner: NonNull<ffi::BoxKeyDef>,
+    #[cfg(all(feature = "picodata", debug_assertions))]
+    part_count: u32,
 }
 
 #[derive(Default, Debug, PartialEq, Eq, Hash)]
@@ -1026,7 +1028,11 @@ impl KeyDef {
         let mut tt_parts = parts.into_iter().map(KeyDefPart::as_tt).collect::<Vec<_>>();
         let ptr = unsafe { ffi::box_key_def_new_v2(tt_parts.as_mut_ptr(), tt_parts.len() as _) };
         let inner = NonNull::new(ptr).ok_or_else(TarantoolError::last)?;
-        Ok(KeyDef { inner })
+        Ok(KeyDef {
+            inner,
+            #[cfg(all(feature = "picodata", debug_assertions))]
+            part_count: tt_parts.len() as _,
+        })
     }
 
     /// Compare tuples using the key definition.
@@ -1156,6 +1162,46 @@ impl KeyDef {
     #[cfg(feature = "picodata")]
     pub fn hash(&self, tuple: &Tuple) -> u32 {
         unsafe { ffi::box_tuple_hash(tuple.ptr.as_ptr(), self.inner.as_ptr()) }
+    }
+
+    /// Calculate a key hash for a given key definition without creating a tuple.
+    ///
+    /// Unlike [`Self::hash`], this function never sees a tuple: it reads the key
+    /// fields one after another, so it ignores the field numbers and the paths
+    /// of the key parts. The caller extracts the fields beforehand and puts them
+    /// in the order of the parts; then the result is the same as [`Self::hash`]
+    /// of the tuple they come from. For parts on fields 2 and 0 of the tuple
+    /// `[1, 2, 3]` the key is `3, 1`; for a part with the path `x` on the field
+    /// `{"x": 1}` the key is `1`, not the map. A nullable field missing from the
+    /// tuple is hashed as nil, so the key must hold an explicit nil for it.
+    /// [`Self::hash`] does not support multikey parts (`[*]` in a path), so for
+    /// them there is nothing to compare with.
+    ///
+    /// - `key` - MsgPack fields of the key without an array header, one per key part
+    ///
+    /// Returns:
+    /// - 32-bit murmur3 hash value
+    ///
+    /// # Safety
+    /// `key` must hold exactly one valid MsgPack field for every part of the key
+    /// definition: tarantool reads them without bounds checks. Each field must be
+    /// shorter than `i32::MAX` bytes, as for [`Self::hash`].
+    #[cfg(feature = "picodata")]
+    #[inline]
+    pub unsafe fn hash_key_raw(&self, key: &[u8]) -> u32 {
+        #[cfg(debug_assertions)]
+        {
+            let mut cur = std::io::Cursor::new(key);
+            for _ in 0..self.part_count {
+                crate::msgpack::skip_value(&mut cur).expect("a MsgPack field per key part");
+            }
+            debug_assert_eq!(
+                cur.position(),
+                key.len() as u64,
+                "extra bytes after the key"
+            );
+        }
+        unsafe { ffi::key_hash(key.as_ptr() as _, self.inner.as_ptr()) }
     }
 }
 
