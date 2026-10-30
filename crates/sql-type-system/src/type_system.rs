@@ -122,8 +122,16 @@ type StableHashMap<K, V> = HashMap<K, V, StableHasher>;
 /// It contains information about expression types and required type coercions.
 /// The user must perform coercions in accordance with the report to make original expression match
 /// the inferred types.
+///
+/// The data is on the heap: the analysis recurses for each nested expression, and in debug
+/// builds each level keeps several copies of the report on the stack.
 #[derive(Debug, Clone)]
-pub struct TypeReport<Id: Hash + Eq + Clone> {
+pub struct TypeReport<Id: Hash + Eq + Clone>(Box<TypeReportData<Id>>);
+
+const _: () = assert!(std::mem::size_of::<TypeReport<u32>>() == 8);
+
+#[derive(Debug, Clone)]
+struct TypeReportData<Id: Hash + Eq + Clone> {
     // TODO: consider using smallvec for small reports.
     // TODO: consider using different hash table or different state.
     // The type an expression produces on its own. What it is used as, once a parent has
@@ -140,11 +148,11 @@ pub struct TypeReport<Id: Hash + Eq + Clone> {
 
 impl<Id: Hash + Eq + Clone> TypeReport<Id> {
     fn new() -> Self {
-        Self {
+        Self(Box::new(TypeReportData {
             types: StableHashMap::default(),
             casts: StableHashMap::default(),
             params: Vec::new(),
-        }
+        }))
     }
 
     /// Get the type an expression is used as: the type it produces, or the type a parent
@@ -154,28 +162,32 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
     /// Panics if there is no such id in the report.
     #[track_caller]
     pub fn get_type(&self, id: &Id) -> Type {
-        self.casts.get(id).copied().unwrap_or(self.types[id])
+        self.0.casts.get(id).copied().unwrap_or(self.0.types[id])
     }
 
     /// Try to get expression type.
     pub fn try_get_type(&self, id: &Id) -> Option<Type> {
-        self.casts.get(id).or_else(|| self.types.get(id)).copied()
+        self.0
+            .casts
+            .get(id)
+            .or_else(|| self.0.types.get(id))
+            .copied()
     }
 
     /// Merge 2 reports.
     pub fn extend(&mut self, other: Self) {
-        if self.types.is_empty() && self.casts.is_empty() && self.params.is_empty() {
+        if self.0.types.is_empty() && self.0.casts.is_empty() && self.0.params.is_empty() {
             *self = other;
             return;
         }
-        self.types.extend(other.types);
-        self.casts.extend(other.casts);
-        self.params.extend(other.params);
+        self.0.types.extend(other.0.types);
+        self.0.casts.extend(other.0.casts);
+        self.0.params.extend(other.0.params);
     }
 
     /// Get the type an expression needs to be casted to, if any.
     pub fn get_cast(&self, id: &Id) -> Option<Type> {
-        self.casts.get(id).cloned()
+        self.0.casts.get(id).cloned()
     }
 
     /// Get the type an expression produces, ignoring any coercion a parent applied to it.
@@ -184,33 +196,33 @@ impl<Id: Hash + Eq + Clone> TypeReport<Id> {
     /// Panics if there is no such id in the report.
     #[track_caller]
     pub fn get_return_type(&self, id: &Id) -> Type {
-        self.types[id]
+        self.0.types[id]
     }
 
     /// Try to get the type an expression produces, ignoring any coercion a parent applied to it.
     pub fn try_get_return_type(&self, id: &Id) -> Option<Type> {
-        self.types.get(id).copied()
+        self.0.types.get(id).copied()
     }
 
     /// Report expression type.
     fn report(&mut self, id: &Id, ty: Type) {
-        self.types.insert(id.clone(), ty);
+        self.0.types.insert(id.clone(), ty);
     }
 
     /// Report parameter type by index.
     pub fn report_param(&mut self, idx: u16, ty: Type) {
-        self.params.push((idx, ty))
+        self.0.params.push((idx, ty))
     }
 
     /// Report required coercion for an expression.
     fn cast(&mut self, id: &Id, ty: Type) {
-        self.casts.insert(id.clone(), ty);
+        self.0.casts.insert(id.clone(), ty);
     }
 
     /// Calculate report cost, which equals to the number of required coercions.
     /// Reports with lower costs are preferred by the type inference algorithm.
     fn cost(&self) -> usize {
-        self.casts.len()
+        self.0.casts.len()
     }
 }
 
@@ -317,11 +329,11 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
     /// to persisting types for an overload that hasn't been chosen, resulting in inconsistencies
     /// between the final report and parameter types.
     pub fn update_parameters(&mut self, report: &TypeReport<Id>) -> Result<(), Error> {
-        let max_idx = report.params.iter().map(|x| x.0 + 1).max().unwrap_or(0) as usize;
+        let max_idx = report.0.params.iter().map(|x| x.0 + 1).max().unwrap_or(0) as usize;
         let new_len = std::cmp::max(self.parameters.len(), max_idx);
         self.parameters.resize(new_len, None);
 
-        for (idx, new_type) in &report.params {
+        for (idx, new_type) in &report.0.params {
             let old_type = self.parameters[*idx as usize];
             match old_type {
                 None => {
@@ -392,7 +404,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
 
     fn try_get_cached(&self, expr: &Expr<Id>, desired_type: Type) -> Option<TypeReport<Id>> {
         let report = self.cache.borrow().get(&(expr.id.clone(), desired_type))?;
-        for (idx, report_type) in &report.params {
+        for (idx, report_type) in &report.0.params {
             // Reports include parameters' types used for inference,
             // but these may not be the final chosen types.
             // So we need to verify that our inferred types match those in the report.
@@ -858,7 +870,7 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         report: &mut TypeReport<Id>,
     ) -> Result<Option<NestedType>, Error> {
         let param_type = self.untyped_parameter(array).and_then(|idx| {
-            let (_, ty) = report.params.iter().find(|(i, _)| *i == idx)?;
+            let (_, ty) = report.0.params.iter().find(|(i, _)| *i == idx)?;
             Some(*ty)
         });
         let desired_type = match (param_type, NestedType::try_from(desired_type)) {
@@ -1403,12 +1415,17 @@ impl<'a, Id: Hash + Eq + Clone> TypeAnalyzerCore<'a, Id> {
         exprs: &[impl Borrow<Expr<Id>>],
         desired_types: &[Type],
     ) -> Result<TypeReport<Id>, Error> {
-        let mut united_report = TypeReport::new();
+        // Start from the first report: an empty `TypeReport` is a heap allocation, and
+        // this runs for each candidate overload.
+        let mut united_report: Option<TypeReport<Id>> = None;
         for (expr, desired_type) in zip(exprs, desired_types) {
             let report = self.analyze(expr.borrow(), *desired_type)?;
-            united_report.extend(report);
+            match &mut united_report {
+                Some(united_report) => united_report.extend(report),
+                None => united_report = Some(report),
+            }
         }
-        Ok(united_report)
+        Ok(united_report.unwrap_or_else(TypeReport::new))
     }
 
     #[inline(always)]
