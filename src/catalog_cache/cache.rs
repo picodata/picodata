@@ -14,7 +14,6 @@ use crate::schema::TableDef;
 use crate::sharding::BucketsInfo;
 use crate::sharding::TierBucketsInfo;
 use crate::storage::Catalog;
-use crate::storage::Indexes;
 use crate::storage::SystemTable as _;
 use crate::storage::ToEntryIter;
 use crate::tier::Tier;
@@ -160,16 +159,6 @@ impl CatalogCache {
     /// The row with key `(table_id, id)` was deleted from `_pico_index`.
     pub fn remove_index(&self, table_id: SpaceId, id: IndexId) {
         self.inner.borrow_mut().index.set((table_id, id), None);
-    }
-
-    /// Space `space_id` was truncated.
-    pub fn truncate(&self, space_id: SpaceId) {
-        let mut inner = self.inner.borrow_mut();
-        if space_id == PicoTable::TABLE_ID {
-            inner.table = TableCache::default();
-        } else if space_id == Indexes::TABLE_ID {
-            inner.index = IndexCache::default();
-        }
     }
 
     /// Returns a description of the first difference between the definitions

@@ -64,14 +64,12 @@ def test_raft_propose_dml_into_catalog(instance: Instance):
     instance.eval("pico._catalog_cache_check()")
 
 
-def test_sql_truncate_of_system_table(instance: Instance):
-    instance.sql("TRUNCATE _pico_index")
-    assert instance.eval("return box.space._pico_index:len()") == 0
-    # In debug builds the check after applying the entry has found the cache
-    # empty as well.
-    if is_debug_build(instance):
-        instance.eval("pico._catalog_cache_check()")
-    instance.check_process_alive()
+def test_sql_truncate_of_system_table_is_denied(instance: Instance):
+    for table in ["_pico_table", "_pico_index"]:
+        with pytest.raises(TarantoolError, match=f"TRUNCATE on table '{table}' is denied for all users"):
+            instance.sql(f"TRUNCATE {table}")
+    assert instance.eval("return box.space._pico_index:len()") > 0
+    check_cache(instance)
 
 
 def check_cache(instance: Instance):

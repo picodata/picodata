@@ -563,16 +563,12 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
 // function was implemented, as it requires the least amount of boilerplate and
 // error forwarding code. But this signature is not intuitive, so maybe there's
 // room for improvement.
-pub fn ddl_truncate_space_on_master(
-    space_id: SpaceId,
-    cache: &CatalogCache,
-) -> traft::Result<Option<TntError>> {
+pub fn ddl_truncate_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntError>> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let space = space_by_id_unchecked(space_id);
 
     let res = (|| -> tarantool::Result<()> {
         space.truncate()?;
-        cache.truncate(space_id);
 
         Ok(())
     })();

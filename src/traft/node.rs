@@ -1429,7 +1429,6 @@ impl NodeImpl {
                             v_pending,
                             true,
                             self.catalog_cache.my_tier_name(),
-                            &self.catalog_cache,
                         );
                         match res {
                             Err(rpc::ddl_apply::Error::Other(err)) => {
@@ -1526,9 +1525,8 @@ impl NodeImpl {
                         // directly, because global tables are implemented as
                         // tarantool local tables.
                         if ddl.is_truncate_on_global_table(&self.storage) {
-                            let abort_reason =
-                                ddl_truncate_space_on_master(id, &self.catalog_cache)
-                                    .expect("truncating a local space shouldn't fail");
+                            let abort_reason = ddl_truncate_space_on_master(id)
+                                .expect("truncating a local space shouldn't fail");
                             if let Some(e) = abort_reason {
                                 crate::warn_or_panic!("global table truncate failed: {e}");
                             }

@@ -6,8 +6,9 @@
 //! After that the code which writes the tables changes them: the write methods
 //! of `PicoTable` and `Indexes` take the cache and pass it the row tarantool
 //! returned (or the deleted key) right after writing it, DML from the raft log
-//! goes through [`CatalogChange`], truncation of the tables and the raft
-//! snapshot change the cache explicitly. Within a transaction nothing yields
+//! goes through [`CatalogChange`], the raft snapshot changes the cache
+//! explicitly. `TRUNCATE` of system tables is forbidden by the access check.
+//! Within a transaction nothing yields
 //! between writing a row and changing the cache, so other fibers always see
 //! the cache equal to the tables, including the rows of a transaction waiting
 //! for WAL. Every raft entry up to `applied` is reflected in the cache, so no

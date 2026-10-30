@@ -29,7 +29,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::config::AlterSystemParametersRef;
-use crate::storage::{SystemTable, SPACE_ID_INTERNAL_MAX};
+use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::{
@@ -198,13 +198,16 @@ fn forbid_drop_if_primary_key(index_id: IndexId) -> tarantool::Result<()> {
     Ok(())
 }
 
-fn forbid_truncate_on_db_config(space_id: u32) -> tarantool::Result<()> {
-    if space_id != crate::storage::DbConfig::TABLE_ID {
+fn forbid_truncate_if_system_space(storage: &Catalog, space_id: u32) -> tarantool::Result<()> {
+    if space_id > SPACE_ID_INTERNAL_MAX {
         return Ok(());
     }
 
+    let table = storage
+        .pico_table
+        .get(space_id)?
+        .map_or_else(|| format_smolstr!("id={space_id}"), |table| table.name);
     let code = TarantoolErrorCode::AccessDenied;
-    let table = crate::storage::DbConfig::TABLE_NAME;
     let msg = format!("TRUNCATE on table '{table}' is denied for all users");
     Err(BoxError::new(code, msg).into())
 }
@@ -292,7 +295,7 @@ fn access_check_ddl(storage: &Catalog, ddl: &op::Ddl, as_user: UserId) -> traft:
             )
         }
         op::Ddl::TruncateTable { id, .. } => {
-            forbid_truncate_on_db_config(*id)?;
+            forbid_truncate_if_system_space(storage, *id)?;
 
             let space = space_by_id(*id)?;
             let meta = space.meta()?;
