@@ -10,13 +10,14 @@ use crate::config::{DEFAULT_SQL_PREEMPTION, DYNAMIC_CONFIG};
 use crate::metrics::{observe_sql_local_query_duration, record_sql_local_query_total};
 use crate::schema::ADMIN_ID;
 use crate::sql::lua::{
-    bucket_into_rs, dispatch_session_id, escape_bytes, lua_custom_plan_dispatch,
-    lua_decode_rs_ibufs, lua_single_plan_dispatch, reference_add, reference_del, reference_use,
+    bucket_into_rs, escape_bytes, lua_custom_plan_dispatch, lua_decode_rs_ibufs,
+    lua_single_plan_dispatch, reference_add, reference_del, reference_use, sched_ref_end,
     sql_lua_state, IbufTable,
 };
 use crate::sql::router::catalog_cache;
 use crate::traft::node;
 use crate::util::MpValueAsJson;
+use crate::vshard;
 use ahash::AHashMap;
 use rmp::decode::{read_array_len, read_bool, read_int};
 use rmp::encode::write_uint;
@@ -57,7 +58,7 @@ use sql_protocol::dql::write_dql_packet;
 use sql_protocol::dql_encoder::{DQLDataSource, DQLOptions};
 use sql_protocol::encode::write_metadata;
 use std::borrow::Cow;
-use std::cell::{Cell, LazyCell, OnceCell};
+use std::cell::{Cell, LazyCell};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
@@ -880,39 +881,93 @@ fn local_dispatch_matches_read_preference(
     }
 }
 
+/// The vshard ref session of the refs a storage takes for its own queries.
+///
+/// Routers name their sessions with UUIDs, so neither a router's rids nor its
+/// cleanup after a failed dispatch can touch these refs. One session for all
+/// the queries keeps vshard from collecting a session per query.
+const STORAGE_REF_SESSION: &str = "picodata-storage";
+
 thread_local! {
-    /// Session UUID shared with the Lua dispatch path (pico.dispatch.session_id).
-    /// All local fast-path requests reuse this single vshard lref session so that
-    /// vshard does not accumulate a dead session per request in its session_map.
-    /// Initialized lazily on first use of the local fast-path.
-    static LOCAL_LREF_SESSION_ID: OnceCell<String> = const { OnceCell::new() };
-
-    /// Ref ID counter for vshard lref. Must be unique within LOCAL_LREF_SESSION_ID.
-    /// Stored per-fiber in Tarantool's TX thread — no atomics needed.
-    static LOCAL_LREF_RID: Cell<i64> = const { Cell::new(1) };
+    /// The rid of the next ref in [`STORAGE_REF_SESSION`].
+    static STORAGE_REF_RID: Cell<i64> = const { Cell::new(1) };
 }
 
-/// Returns the vshard lref session UUID, shared with the Lua dispatch path.
-/// Calls pico.dispatch.session_id() once and caches the result.
-fn local_lref_session_id() -> SqlResult<SmolStr> {
-    LOCAL_LREF_SESSION_ID.with(|cell| {
-        if let Some(s) = cell.get() {
-            return Ok(s.as_str().into());
+/// A vshard storage ref: while it lives, no bucket moves to or from this
+/// storage.
+///
+/// When no bucket move runs or waits and all the buckets are writable, the ref
+/// is just a count in the vshard scheduler, taken and released without Lua.
+/// Otherwise it is a ref of the vshard ref module, with its waits, quotas and
+/// errors.
+pub(crate) enum StorageRef {
+    Counted,
+    Session(i64),
+}
+
+pub(crate) enum StorageRefError {
+    Add(tarantool::error::Error),
+    Use(tarantool::error::Error),
+}
+
+impl StorageRef {
+    /// Take a ref, waiting up to `timeout` while buckets move.
+    ///
+    /// `as_admin` switches the session user to admin for `lref.add`, which
+    /// reads `_bucket` when the cached bucket state is reset.
+    pub(crate) fn take(timeout: Duration, as_admin: bool) -> Result<Self, StorageRefError> {
+        let state = vshard::sched_state();
+        // SAFETY: the state is used only in the TX thread, and nothing here
+        // yields between the check and the update.
+        unsafe {
+            // The fast path of `sched.ref_start` plus the bucket wait of
+            // `lref.add`, then the same updates as the success branch of
+            // `sched.ref_start`.
+            if (*state).move_count == 0.0 && (*state).move_queue == 0.0 && (*state).all_rw == 1.0 {
+                (*state).ref_count += 1.0;
+                (*state).ref_strike += 1.0;
+                (*state).move_strike = 0.0;
+                return Ok(Self::Counted);
+            }
         }
-        let id = dispatch_session_id().map_err(|e| SbroadError::DispatchError(e.to_smolstr()))?;
-        let _ = cell.set(id);
-        Ok(cell.get().unwrap().as_str().into())
-    })
+
+        let rid = STORAGE_REF_RID.with(|c| c.replace(c.get() + 1));
+        let add = || reference_add(rid, STORAGE_REF_SESSION, timeout);
+        let added = if as_admin {
+            with_su(ADMIN_ID, add).and_then(|added| added)
+        } else {
+            add()
+        };
+        added.map_err(StorageRefError::Add)?;
+        if let Err(e) = reference_use(rid, STORAGE_REF_SESSION) {
+            // Otherwise the added ref blocks bucket moves until it expires.
+            let _ = reference_del(rid, STORAGE_REF_SESSION);
+            return Err(StorageRefError::Use(e));
+        }
+        Ok(Self::Session(rid))
+    }
 }
 
-fn with_admin_su<T, E>(op: &str, f: impl FnOnce() -> Result<T, E>) -> SqlResult<T>
-where
-    E: std::fmt::Display,
-{
-    let result = with_su(ADMIN_ID, f).map_err(|e| {
-        SbroadError::DispatchError(format_smolstr!("failed to switch user for {op}: {e}"))
-    })?;
-    result.map_err(|e| SbroadError::DispatchError(format_smolstr!("failed to {op}: {e}")))
+impl Drop for StorageRef {
+    fn drop(&mut self) {
+        crate::error_injection!(block "BLOCK_STORAGE_REF_RELEASE");
+        let released = match *self {
+            Self::Counted => {
+                let state = vshard::sched_state();
+                // SAFETY: the state is used only in the TX thread.
+                if unsafe { (*state).move_queue } > 0.0 {
+                    // A bucket move waits: let vshard wake it up.
+                    sched_ref_end(1)
+                } else {
+                    // SAFETY: as above.
+                    unsafe { (*state).ref_count -= 1.0 };
+                    Ok(())
+                }
+            }
+            Self::Session(rid) => reference_del(rid, STORAGE_REF_SESSION),
+        };
+        released.unwrap_or_else(|e| panic!("failed to release a storage reference: {e}"));
+    }
 }
 
 fn with_local_bucket_ref<T>(
@@ -927,27 +982,17 @@ fn with_local_bucket_ref<T>(
 
     debug_assert_ne!(read_preference, "replica");
 
-    let sid = local_lref_session_id()?;
-    let sid = sid.as_str();
-    let rid = LOCAL_LREF_RID.with(|c| {
-        let v = c.get();
-        c.set(v + 1);
-        v
-    });
-    with_admin_su("add local bucket reference", || {
-        reference_add(rid, sid, timeout)
+    let _storage_ref = StorageRef::take(timeout, true).map_err(|e| {
+        let (op, e) = match e {
+            StorageRefError::Add(e) => ("add", e),
+            StorageRefError::Use(e) => ("use", e),
+        };
+        SbroadError::DispatchError(format_smolstr!(
+            "failed to {op} local bucket reference: {e}"
+        ))
     })?;
-
-    if let Err(e) = with_admin_su("use local bucket reference", || reference_use(rid, sid)) {
-        return Err(SbroadError::DispatchError(format_smolstr!(
-            "failed to use local bucket reference: {e}"
-        )));
-    }
-
-    let result = f();
-    with_admin_su("remove local bucket reference", || reference_del(rid, sid))
-        .unwrap_or_else(|e| panic!("failed to delete local bucket reference: {e}"));
-    result
+    crate::error_injection!(block "BLOCK_STORAGE_REF_TAKEN");
+    f()
 }
 
 fn execute_dql_locally<'p>(

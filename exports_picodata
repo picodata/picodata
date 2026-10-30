@@ -18,6 +18,8 @@ pico_ffi_validate_jwt
 pico_ffi_version
 pico_ffi_wait_index
 pico_internal_initialize_dummy
+pico_vshard_sched_state
+pico_vshard_sched_state_size
 proc_apply_backup
 proc_apply_schema_change
 proc_array_cast

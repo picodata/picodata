@@ -349,6 +349,10 @@ local function one_step_dispatch(uuid_to_args, opts, tier)
         f:discard()
         -- Best effort to remove the created refs before exiting. Can help if
         -- the timeout was big and the error happened early.
+        --
+        -- A storage of this version takes the ref of a one-step execution in
+        -- its own session, so this finds nothing there. A storage of an older
+        -- version still takes it with the rid and sid of the router.
         f = replicasets[uuid]:callrw('pico.dispatch.lref.del',
             { rid, sid }, opts_ref)
         if f ~= nil then
@@ -426,8 +430,14 @@ local function init()
     -- The same module instance as vshard's own: a bucket move collects the
     -- expired refs of one instance only, the one in vshard.registry.
     _G.pico.dispatch.lref = require('vshard.storage.ref')
-    -- Expose the session UUID for the Rust local fast-path so it shares the
-    -- same vshard lref session as the normal Lua dispatch path.
+    -- Rust releases a storage ref taken without Lua through it when a bucket
+    -- move waits. The scheduler is looked up on the call: loaded here, before
+    -- vshard.storage, it would let an early lref.add count a ref and then fail
+    -- on the missing storage module, leaving the count behind.
+    _G.pico.dispatch.sched_ref_end = function(count)
+        return require('vshard.registry').storage_sched.ref_end(count)
+    end
+    -- The session of the refs this instance takes on storages as a router.
     _G.pico.dispatch.session_id = session_current
 end
 

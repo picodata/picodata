@@ -704,13 +704,6 @@ where
     }
 }
 
-pub(crate) fn dispatch_session_id() -> Result<String> {
-    let lua = sql_lua_state();
-    let func = sql_lua_function(&lua, SqlLuaFn::SessionId)?;
-    func.call::<String>()
-        .map_err(|e| TarantoolError::new(TarantoolErrorCode::ProcLua, format!("{e}")).into())
-}
-
 pub(crate) fn bucket_into_rs(
     lua: &LuaThread,
     bucket_id: u64,
@@ -818,6 +811,20 @@ pub(crate) fn reference_use(rid: i64, sid: &str) -> Result<()> {
     }
 }
 
+/// Release `count` storage refs taken without Lua, waking up a waiting bucket
+/// move when they were the last ones (`sched.ref_end` of vshard).
+pub(crate) fn sched_ref_end(count: u32) -> Result<()> {
+    let lua = sql_lua_state();
+    let func = sql_lua_function(&lua, SqlLuaFn::SchedRefEnd)?;
+    func.call_with_args::<(), _>(count).map_err(|e| {
+        TarantoolError::new(
+            TarantoolErrorCode::ProcLua,
+            format!("{}", LuaError::from(e)),
+        )
+        .into()
+    })
+}
+
 pub(crate) fn reference_del(rid: i64, sid: &str) -> Result<()> {
     let lua = sql_lua_state();
     let func = sql_lua_function(&lua, SqlLuaFn::RefDel)?;
@@ -858,7 +865,7 @@ impl VshardError {
         SinglePlanDispatch,
         CustomPlanDispatch,
         BucketIntoRs,
-        SessionId,
+        SchedRefEnd,
         RefAdd,
         RefUse,
         RefDel,
@@ -872,7 +879,7 @@ impl SqlLuaFn {
             Self::SinglePlanDispatch => "single_plan_dispatch",
             Self::CustomPlanDispatch => "custom_plan_dispatch",
             Self::BucketIntoRs => "bucket_into_rs",
-            Self::SessionId => "session_id",
+            Self::SchedRefEnd => "sched_ref_end",
             Self::RefAdd => "add",
             Self::RefUse => "use",
             Self::RefDel => "del",
@@ -1187,20 +1194,26 @@ mod tarantool_tests {
     }
 
     const PICO_STUB: &str = "rawset(_G, 'pico', {dispatch = {
-        session_id = function() return 'sid' end,
+        sched_ref_end = function(count)
+            rawset(_G, 'sched_ref_ended', (rawget(_G, 'sched_ref_ended') or 0) + count)
+        end,
         lref = {use = function() return true end},
     }})";
 
     #[tarantool::test]
     fn sql_lua_function_is_called_by_pin() {
         crate::tarantool::exec(PICO_STUB).unwrap();
-        assert_eq!(dispatch_session_id().unwrap(), "sid");
+        crate::tarantool::exec("rawset(_G, 'sched_ref_ended', 0)").unwrap();
+        sched_ref_end(1).unwrap();
         reference_use(1, "sid").unwrap();
 
         // Pinned functions no longer need `pico.dispatch`.
         crate::tarantool::exec("rawset(_G, 'pico', nil)").unwrap();
-        assert_eq!(dispatch_session_id().unwrap(), "sid");
+        sched_ref_end(2).unwrap();
         reference_use(1, "sid").unwrap();
+        // The pinned function ran both times and got the count.
+        let ended: u32 = crate::tarantool::eval("return sched_ref_ended").unwrap();
+        assert_eq!(ended, 3);
 
         // Each call left the stack clean, so one thread served them all.
         let stats = sql_lua_pool_stats();
@@ -1210,13 +1223,13 @@ mod tarantool_tests {
     #[tarantool::test]
     fn sql_lua_function_lookup_failure_is_not_pinned() {
         crate::tarantool::exec("rawset(_G, 'pico', nil)").unwrap();
-        let err = dispatch_session_id().unwrap_err().to_string();
+        let err = sched_ref_end(1).unwrap_err().to_string();
         assert!(err.contains("no module pico"), "{err}");
 
         crate::tarantool::exec(PICO_STUB).unwrap();
         let err = reference_del(1, "sid").unwrap_err().to_string();
         assert!(err.contains("no function 'del'"), "{err}");
-        assert_eq!(dispatch_session_id().unwrap(), "sid");
+        sched_ref_end(1).unwrap();
 
         // Failed lookups left the stack clean too.
         let stats = sql_lua_pool_stats();

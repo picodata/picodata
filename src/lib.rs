@@ -161,7 +161,7 @@ macro_rules! static_ref {
     };
 }
 
-fn preload_vshard() {
+pub(crate) fn preload_vshard() {
     let lua = ::tarantool::lua_state();
 
     macro_rules! preload {

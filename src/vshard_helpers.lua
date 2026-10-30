@@ -103,7 +103,3 @@ function pico.wait_router_discovery_complete(tier_name, timeout)
 
     return true
 end
-
-function pico.vshard_bucket_generation_increment()
-    pico._vshard_storage_internal.bucket_generation_increment()
-end

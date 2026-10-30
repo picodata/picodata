@@ -21,6 +21,7 @@ use ::tarantool::msgpack::ViaMsgpack;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use sql::executor::engine::Vshard;
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::define_str_enum;
@@ -636,6 +637,69 @@ impl BucketRef {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// SchedState
+////////////////////////////////////////////////////////////////////////////////
+
+/// The numbers of the vshard storage scheduler, which decides whether storage
+/// refs or bucket moves go now.
+///
+/// vshard keeps them in this struct instead of a Lua table, so that SQL takes
+/// and releases a storage ref without calling Lua. This is a copy of `struct
+/// vshard_sched_state` from `vshard/storage/sched.lua`, the fields are
+/// described there. `sched_state_is_shared_with_vshard` checks that both agree.
+#[repr(C)]
+#[derive(Debug)]
+pub struct SchedState {
+    pub ref_count: f64,
+    pub ref_queue: f64,
+    pub ref_strike: f64,
+    pub ref_quota: f64,
+    pub move_count: f64,
+    pub move_queue: f64,
+    pub move_strike: f64,
+    pub move_quota: f64,
+    /// Whether all the buckets of the storage are writable: 1 yes, 0 no,
+    /// -1 unknown.
+    pub all_rw: f64,
+}
+
+struct SchedStateCell(UnsafeCell<SchedState>);
+
+// SAFETY: the state is used only in the TX thread.
+unsafe impl Sync for SchedStateCell {}
+
+static SCHED_STATE: SchedStateCell = SchedStateCell(UnsafeCell::new(SchedState {
+    ref_count: 0.0,
+    ref_queue: 0.0,
+    ref_strike: 0.0,
+    ref_quota: 0.0,
+    move_count: 0.0,
+    move_queue: 0.0,
+    move_strike: 0.0,
+    move_quota: 0.0,
+    all_rw: -1.0,
+}));
+
+/// The scheduler state shared with vshard. Lua writes it too, so access the
+/// fields one at a time through the pointer, in the TX thread, and never keep
+/// a reference to the struct across a call into Lua.
+#[inline(always)]
+pub fn sched_state() -> *mut SchedState {
+    SCHED_STATE.0.get()
+}
+
+/// `vshard/storage/sched.lua` takes its state from here.
+#[no_mangle]
+pub extern "C" fn pico_vshard_sched_state() -> *mut SchedState {
+    sched_state()
+}
+
+#[no_mangle]
+pub extern "C" fn pico_vshard_sched_state_size() -> usize {
+    std::mem::size_of::<SchedState>()
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // vshard discovery handling
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -653,4 +717,51 @@ pub fn wait_router_discovery_complete(tier_name: &str, timeout: Duration) -> Res
     }
 
     Ok(())
+}
+
+mod tarantool_tests {
+    use super::*;
+    use std::mem::offset_of;
+
+    #[tarantool::test]
+    fn sched_state_is_shared_with_vshard() {
+        crate::preload_vshard();
+        // Without the exports vshard would make a struct of its own, and every
+        // SQL query would take the storage ref through Lua.
+        let (address, size): (f64, f64) = crate::tarantool::eval(
+            "local ffi = require('ffi')
+            local sched = require('vshard.storage.sched')
+            return tonumber(ffi.cast('uintptr_t', sched.state)),
+                ffi.sizeof('struct vshard_sched_state')",
+        )
+        .unwrap();
+        assert_eq!(address as usize, sched_state() as usize);
+        assert_eq!(size as usize, std::mem::size_of::<SchedState>());
+
+        // The same size could still hide two swapped fields.
+        let offsets: Vec<f64> = crate::tarantool::eval(
+            "local ffi = require('ffi')
+            local offsets = {}
+            for _, field in ipairs({'ref_count', 'ref_queue', 'ref_strike',
+                    'ref_quota', 'move_count', 'move_queue', 'move_strike',
+                    'move_quota', 'all_rw'}) do
+                table.insert(offsets, ffi.offsetof('struct vshard_sched_state', field))
+            end
+            return offsets",
+        )
+        .unwrap();
+        let expected = [
+            offset_of!(SchedState, ref_count),
+            offset_of!(SchedState, ref_queue),
+            offset_of!(SchedState, ref_strike),
+            offset_of!(SchedState, ref_quota),
+            offset_of!(SchedState, move_count),
+            offset_of!(SchedState, move_queue),
+            offset_of!(SchedState, move_strike),
+            offset_of!(SchedState, move_quota),
+            offset_of!(SchedState, all_rw),
+        ];
+        let offsets: Vec<usize> = offsets.into_iter().map(|o| o as usize).collect();
+        assert_eq!(offsets, expected);
+    }
 }

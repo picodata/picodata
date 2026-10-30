@@ -116,7 +116,8 @@ pub mod port;
 pub mod router;
 pub mod storage;
 
-use self::lua::{escape_bytes, reference_add, reference_del, reference_use};
+use self::dispatch::{StorageRef, StorageRefError};
+use self::lua::{escape_bytes, reference_del, reference_use};
 use self::port::PicoPortC;
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use crate::sql::dispatch::build_cache_miss_dql_packet;
@@ -2977,6 +2978,7 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
         Ok(())
     };
 
+    let mut storage_ref_guard = None;
     // References are useless on replicas, so skip ref operations there.
     let is_replica = node::global()
         .map(|node| node.is_readonly())
@@ -2993,21 +2995,29 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
         }
 
         if args.need_ref {
-            if let Err(e) = reference_add(args.rid, sid, args.timeout) {
-                return report("Failed to add a storage reference: ", e.into());
-            };
-        }
-
-        if let Err(e) = reference_use(args.rid, sid) {
+            // The storage owns this ref, so the router's cleanup after a
+            // failed dispatch can not release it while the plan still runs.
+            match StorageRef::take(timeout, false) {
+                Ok(storage_ref) => storage_ref_guard = Some(storage_ref),
+                Err(StorageRefError::Add(e)) => {
+                    return report("Failed to add a storage reference: ", e.into())
+                }
+                Err(StorageRefError::Use(e)) => {
+                    return report("Failed to use a storage reference: ", e.into())
+                }
+            }
+        } else if let Err(e) = reference_use(args.rid, sid) {
+            // The router took this ref on the first step of the dispatch.
             return report("Failed to use a storage reference: ", e.into());
         };
     }
 
     let rc = pcall();
-    if !is_replica {
+    if !is_replica && !args.need_ref {
         // We should always unref the storage reference before exit.
         reference_del(args.rid, sid).expect("Failed to remove reference from the storage");
     }
+    drop(storage_ref_guard);
 
     match rc {
         Ok(()) => 0,

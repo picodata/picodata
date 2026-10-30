@@ -193,6 +193,8 @@ def test_refused_ref_keeps_error_text(instance: Instance):
         local lerror = require('vshard.error')
         local sched = registry.storage_sched
         rawset(_G, 'sql_lua_calls_sched', sched)
+        -- A running move sends the query to the Lua path of the storage ref.
+        assert(sched.move_start(10))
         registry.storage_sched = setmetatable({
             ref_start = function()
                 return nil, lerror.vshard(lerror.code.STORAGE_REF_ADD, 'refused by test')
@@ -212,6 +214,7 @@ def test_refused_ref_keeps_error_text(instance: Instance):
     instance.eval(
         """
         require('vshard.registry').storage_sched = _G.sql_lua_calls_sched
+        _G.sql_lua_calls_sched.move_end(1)
         rawset(_G, 'sql_lua_calls_sched', nil)
         """
     )
