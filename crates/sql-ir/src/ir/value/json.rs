@@ -74,11 +74,6 @@ impl Json {
         Ok(Json(inner))
     }
 
-    /// The `MP_JSON` payload: the document as plain MessagePack.
-    pub fn as_inner(&self) -> &[u8] {
-        &self.0
-    }
-
     /// Compare two documents the way SQL does on storage: PostgreSQL JSONB
     /// order, numbers by value whichever way they are stored. This calls the
     /// comparator storage itself uses, so the router gets the same answer.
@@ -86,6 +81,11 @@ impl Json {
     /// Outside a tarantool runtime (unit tests) the comparator is not linked
     /// and documents compare by bytes.
     pub fn value_cmp(&self, other: &Json) -> Ordering {
+        // Both operands are in normal form, so equal bytes are the same
+        // document: skip the comparator call, which walks both trees.
+        if self.0 == other.0 {
+            return Ordering::Equal;
+        }
         if !tarantool::ffi::has_json() {
             return self.cmp(other);
         }
