@@ -1057,7 +1057,7 @@ fn desugar<'q>(expr: Expr<'q, Raw>) -> AstResult<Expr<'q, Raw>> {
         ExprInner::FunctionCall(call) if call.name() == "json_extract_path" => {
             let (_, FunctionCallArgs::Exprs { exprs, .. }, ()) = call.into_parts() else {
                 return Err(analyze_err(format_smolstr!(
-                    "json_extract_path called with `*`"
+                    "asterisk argument in json_extract_path"
                 )));
             };
             let mut args = exprs.into_iter();
