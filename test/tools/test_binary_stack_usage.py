@@ -107,7 +107,9 @@ def test_decimal_immediates(tmp_path: Path) -> None:
 def check_frame_sizes(build: Build, objdump: str, tmp_path: Path) -> None:
     obj = assemble(build, tmp_path)
 
-    result = run_script(obj, "--objdump", objdump, "--filter", r"^[ea]\d+_")
+    # --min 0: check every function, also the ones that the default
+    # --min omits from the list.
+    result = run_script(obj, "--objdump", objdump, "--filter", r"^[ea]\d+_", "--min", "0")
     assert result.returncode == 0, result.stderr
     actual = {name: int(size) for size, name in (line.split("\t", 1) for line in result.stdout.splitlines())}
 
@@ -135,3 +137,32 @@ def test_max_and_filter(tmp_path: Path) -> None:
     result = run_script(obj, *objdump, "--filter", "no_such_function", "--max", "1")
     assert result.returncode == 1
     assert "no function matches --filter" in result.stderr
+
+
+def test_min(tmp_path: Path) -> None:
+    """--min omits small frames from the list; --max still checks them."""
+    require("llvm-objdump")
+    obj = assemble(BUILDS[0], tmp_path)
+    objdump = ("--objdump", "llvm-objdump")
+
+    def sizes(*args: str | Path) -> dict[str, int]:
+        result = run_script(obj, *objdump, "--filter", r"^[ea]\d+_", *args)
+        assert result.returncode == 0, result.stderr
+        return {name: int(size) for size, name in (line.split("\t", 1) for line in result.stdout.splitlines())}
+
+    expected = expected_sizes(BUILDS[0].source)
+    large = {name: size for name, size in expected.items() if size >= 1024}
+
+    # The default --min of 1024 leaves only the large frames in the list.
+    default = sizes()
+    assert default and all(size >= 1024 for size in default.values())
+    assert {name: default.get(name) for name in large} == large
+    assert all(name not in default for name in expected if expected[name] < 1024)
+    # --min 0 prints every function.
+    full = sizes("--min", "0")
+    assert {name: full.get(name) for name in expected} == expected
+
+    # --max checks also the functions that --min omits from the list.
+    result = run_script(obj, *objdump, "--min", "4096", "--max", "100", "-q")
+    assert result.returncode == 1
+    assert "e328_earlyret" in result.stderr
