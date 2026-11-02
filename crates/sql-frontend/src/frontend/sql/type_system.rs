@@ -501,11 +501,20 @@ fn case_to_type_expr(
 
 static TYPE_SYSTEM: LazyLock<TypeSystem> = LazyLock::new(default_type_system);
 
+/// Each group of functions is built by its own function: in a debug build a
+/// single `vec![...]` literal puts the array of all functions on one stack frame.
 fn default_type_system() -> TypeSystem {
-    use sql_type_system::expr::NestedType;
+    let mut functions = operator_functions();
+    functions.extend(scalar_functions());
+    functions.extend(aggregate_functions());
+    functions.extend(window_functions());
+    TypeSystem::new(functions)
+}
+
+fn operator_functions() -> Vec<Function> {
     use sql_type_system::expr::Type::*;
 
-    let functions = vec![
+    vec![
         // Arithmetic operations.
         // - int
         Function::new_operator("+", [Integer, Integer], Integer),
@@ -550,6 +559,14 @@ fn default_type_system() -> TypeSystem {
         Function::new_operator("||", [Text, Uuid], Text),
         Function::new_operator("||", [Map, Text], Text),
         Function::new_operator("||", [Text, Map], Text),
+    ]
+}
+
+fn scalar_functions() -> Vec<Function> {
+    use sql_type_system::expr::NestedType;
+    use sql_type_system::expr::Type::*;
+
+    vec![
         // Functions.
         Function::new_scalar(
             get_real_function_name("pico_config_file_path").expect("shouldn't fail"),
@@ -631,6 +648,13 @@ fn default_type_system() -> TypeSystem {
         Function::new_scalar("generate_series", [Integer, Integer, Integer], Integer),
         Function::new_scalar("generate_series", [Numeric, Numeric], Numeric),
         Function::new_scalar("generate_series", [Numeric, Numeric, Numeric], Numeric),
+    ]
+}
+
+fn aggregate_functions() -> Vec<Function> {
+    use sql_type_system::expr::Type::*;
+
+    vec![
         // Aggregates.
         // - count
         // TODO: consider adding `any` type
@@ -671,6 +695,13 @@ fn default_type_system() -> TypeSystem {
         Function::new_aggregate("string_agg", [Text, Text], Text),
         Function::new_aggregate("group_concat", [Text], Text),
         Function::new_aggregate("group_concat", [Text, Text], Text),
+    ]
+}
+
+fn window_functions() -> Vec<Function> {
+    use sql_type_system::expr::Type::*;
+
+    vec![
         // Windows.
         // - count
         // TODO: consider adding `any` type
@@ -721,9 +752,7 @@ fn default_type_system() -> TypeSystem {
         Function::new_window("last_value", [Text], Text),
         Function::new_window("last_value", [Boolean], Boolean),
         Function::new_window("last_value", [Datetime], Datetime),
-    ];
-
-    TypeSystem::new(functions)
+    ]
 }
 
 pub fn new_analyzer(param_types: &[DerivedType]) -> TypeAnalyzer {
