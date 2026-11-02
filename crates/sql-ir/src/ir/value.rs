@@ -72,6 +72,8 @@ impl<'de> Decode<'de> for Value {
             return Err(DecodeError::new::<Self>("empty stream on value decode"));
         }
 
+        // The arms are in helpers: this function is recursive for arrays, and
+        // in a debug build its frame holds the temporaries of all arms.
         let marker = Marker::from_u8(r[0]);
         match marker {
             Marker::Null => {
@@ -82,25 +84,16 @@ impl<'de> Decode<'de> for Value {
                 let v = rmp::decode::read_bool(r).map_err(DecodeError::from_vre::<Self>)?;
                 Ok(Value::Boolean(v))
             }
-            Marker::FixPos(val) => {
-                rmp::decode::read_pfix(r).map_err(DecodeError::from_vre::<Self>)?;
-                Ok(Value::from(val as i64))
-            }
-            Marker::FixNeg(val) => {
-                rmp::decode::read_nfix(r).map_err(DecodeError::from_vre::<Self>)?;
-                Ok(Value::from(val as i64))
-            }
-            Marker::U8 => Ok(Value::from(u8::decode(r, context)? as i64)),
-            Marker::U16 => Ok(Value::from(u16::decode(r, context)? as i64)),
-            Marker::U32 => Ok(Value::from(u32::decode(r, context)? as i64)),
-            Marker::U64 => Ok(Value::from(
-                i64::try_from(u64::decode(r, context)?)
-                    .map_err(|err| DecodeError::new::<i64>(err.to_string()))?,
-            )),
-            Marker::I8 => Ok(Value::from(i8::decode(r, context)? as i64)),
-            Marker::I16 => Ok(Value::from(i16::decode(r, context)? as i64)),
-            Marker::I32 => Ok(Value::from(i32::decode(r, context)? as i64)),
-            Marker::I64 => Ok(Value::from(i64::decode(r, context)?)),
+            Marker::FixPos(_)
+            | Marker::FixNeg(_)
+            | Marker::U8
+            | Marker::U16
+            | Marker::U32
+            | Marker::U64
+            | Marker::I8
+            | Marker::I16
+            | Marker::I32
+            | Marker::I64 => Ok(Value::from(decode_integer(r, context, marker)?)),
             Marker::F32 => Ok(Value::from(f32::decode(r, context)? as f64)),
             Marker::F64 => Ok(Value::from(f64::decode(r, context)?)),
             Marker::FixStr(_) | Marker::Str8 | Marker::Str16 | Marker::Str32 => {
@@ -116,41 +109,73 @@ impl<'de> Decode<'de> for Value {
             | Marker::FixExt16
             | Marker::Ext8
             | Marker::Ext16
-            | Marker::Ext32 => {
-                let ext: ExtStruct = Decode::decode(r, context)?;
-
-                match ext.tag {
-                    MP_DECIMAL => {
-                        let value: Decimal = ext.try_into().map_err(DecodeError::new::<Self>)?;
-                        Ok(value.into())
-                    }
-                    MP_UUID => Ok(Value::Uuid(
-                        ext.try_into().map_err(DecodeError::new::<Self>)?,
-                    )),
-                    MP_DATETIME => Ok(Value::Datetime(
-                        ext.try_into().map_err(DecodeError::new::<Self>)?,
-                    )),
-                    tag => Err(DecodeError::new::<Self>(format_smolstr!(
-                        "value with an unknown tag {tag}"
-                    ))),
-                }
-            }
+            | Marker::Ext32 => decode_ext(r, context),
             Marker::FixMap(_)
             | Marker::Map16
             | Marker::Map32
             | Marker::Bin8
             | Marker::Bin16
-            | Marker::Bin32 => {
-                let value = rmpv::decode::read_value(r).map_err(DecodeError::new::<Self>)?;
-                Err(DecodeError::new::<Self>(format_smolstr!(
-                    "unexpected value: {value:?}"
-                )))
-            }
-            Marker::Reserved => {
-                rmp::decode::read_marker(r).map_err(|e| DecodeError::new::<Self>(e.0))?;
-                Err(DecodeError::new::<Self>("shouldn't be used"))
-            }
+            | Marker::Bin32
+            | Marker::Reserved => Err(decode_unsupported(r, marker)),
         }
+    }
+}
+
+fn decode_integer(r: &mut &[u8], context: &Context, marker: Marker) -> Result<i64, DecodeError> {
+    let v = match marker {
+        Marker::FixPos(val) => {
+            rmp::decode::read_pfix(r).map_err(DecodeError::from_vre::<Value>)?;
+            val as i64
+        }
+        Marker::FixNeg(val) => {
+            rmp::decode::read_nfix(r).map_err(DecodeError::from_vre::<Value>)?;
+            val as i64
+        }
+        Marker::U8 => u8::decode(r, context)? as i64,
+        Marker::U16 => u16::decode(r, context)? as i64,
+        Marker::U32 => u32::decode(r, context)? as i64,
+        Marker::U64 => i64::try_from(u64::decode(r, context)?)
+            .map_err(|err| DecodeError::new::<i64>(err.to_string()))?,
+        Marker::I8 => i8::decode(r, context)? as i64,
+        Marker::I16 => i16::decode(r, context)? as i64,
+        Marker::I32 => i32::decode(r, context)? as i64,
+        Marker::I64 => i64::decode(r, context)?,
+        _ => unreachable!("not an integer marker: {marker:?}"),
+    };
+    Ok(v)
+}
+
+fn decode_ext(r: &mut &[u8], context: &Context) -> Result<Value, DecodeError> {
+    let ext: ExtStruct = Decode::decode(r, context)?;
+
+    match ext.tag {
+        MP_DECIMAL => {
+            let value: Decimal = ext.try_into().map_err(DecodeError::new::<Value>)?;
+            Ok(value.into())
+        }
+        MP_UUID => Ok(Value::Uuid(
+            ext.try_into().map_err(DecodeError::new::<Value>)?,
+        )),
+        MP_DATETIME => Ok(Value::Datetime(
+            ext.try_into().map_err(DecodeError::new::<Value>)?,
+        )),
+        tag => Err(DecodeError::new::<Value>(format_smolstr!(
+            "value with an unknown tag {tag}"
+        ))),
+    }
+}
+
+/// Skips a map, binary or reserved value and returns the error for it.
+fn decode_unsupported(r: &mut &[u8], marker: Marker) -> DecodeError {
+    if let Marker::Reserved = marker {
+        if let Err(e) = rmp::decode::read_marker(r) {
+            return DecodeError::new::<Value>(e.0);
+        }
+        return DecodeError::new::<Value>("shouldn't be used");
+    }
+    match rmpv::decode::read_value(r) {
+        Ok(value) => DecodeError::new::<Value>(format_smolstr!("unexpected value: {value:?}")),
+        Err(e) => DecodeError::new::<Value>(e),
     }
 }
 
