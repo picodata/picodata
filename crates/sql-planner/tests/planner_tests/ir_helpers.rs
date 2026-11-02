@@ -1,4 +1,4 @@
-use sql::{helpers::sql_to_optimized_ir, ir::node::ArenaType, ir::node::NodeId};
+use sql::{helpers::sql_to_optimized_ir, ir::node::NodeId};
 
 #[test]
 fn simple_select() {
@@ -174,10 +174,7 @@ fn simple_join_subtree() {
     let plan = sql_to_optimized_ir(query, vec![]);
 
     // Taken from the expected arena output in the `simple_join` test.
-    let inner_join_inner_child_id = NodeId {
-        offset: 0,
-        arena_type: ArenaType::Arena136,
-    };
+    let inner_join_inner_child_id = NodeId::new136(0);
     let actual_arena_subtree = plan
         .formatted_arena_subtree(inner_join_inner_child_id)
         .unwrap();

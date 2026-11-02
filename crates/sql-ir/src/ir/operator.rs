@@ -25,7 +25,7 @@ use sql_type_system::expr::ComparisonOperator;
 use super::expression::{ColumnPositionMap, ExpressionId};
 use super::node::expression::{Expression, MutExpression};
 use super::node::relational::{MutRelational, Relational};
-use super::node::{ArenaType, Limit, Node, NodeAligned, SelectWithoutScan};
+use super::node::{Limit, Node, NodeAligned, SelectWithoutScan};
 use super::transformation::redistribution::{MotionPolicy, Program};
 use super::types::{DerivedType, UnrestrictedType};
 use crate::collection;
@@ -2032,10 +2032,7 @@ impl Plan {
     /// - Plan has no top
     pub fn find_parent_rel(&self, target_id: NodeId) -> Result<Option<NodeId>, SbroadError> {
         for (id, _) in self.nodes.arena32.iter().enumerate() {
-            let parent_id = NodeId {
-                offset: u32::try_from(id).unwrap(),
-                arena_type: ArenaType::Arena32,
-            };
+            let parent_id = NodeId::new32(u32::try_from(id).unwrap());
 
             if !matches!(self.get_node(parent_id)?, Node::Relational(_)) {
                 continue;
@@ -2049,10 +2046,7 @@ impl Plan {
         }
 
         for (id, _) in self.nodes.arena64.iter().enumerate() {
-            let parent_id = NodeId {
-                offset: u32::try_from(id).unwrap(),
-                arena_type: ArenaType::Arena64,
-            };
+            let parent_id = NodeId::new64(u32::try_from(id).unwrap());
 
             if !matches!(self.get_node(parent_id)?, Node::Relational(_)) {
                 continue;
@@ -2066,10 +2060,7 @@ impl Plan {
         }
 
         for (id, _) in self.nodes.arena96.iter().enumerate() {
-            let parent_id = NodeId {
-                offset: u32::try_from(id).unwrap(),
-                arena_type: ArenaType::Arena96,
-            };
+            let parent_id = NodeId::new96(u32::try_from(id).unwrap());
 
             if !matches!(self.get_node(parent_id)?, Node::Relational(_)) {
                 continue;
@@ -2083,10 +2074,7 @@ impl Plan {
         }
 
         for (id, _) in self.nodes.arena136.iter().enumerate() {
-            let parent_id = NodeId {
-                offset: u32::try_from(id).unwrap(),
-                arena_type: ArenaType::Arena136,
-            };
+            let parent_id = NodeId::new136(u32::try_from(id).unwrap());
 
             if !matches!(self.get_node(parent_id)?, Node::Relational(_)) {
                 continue;
@@ -2100,10 +2088,7 @@ impl Plan {
         }
 
         for (id, _) in self.nodes.arena224.iter().enumerate() {
-            let parent_id = NodeId {
-                offset: u32::try_from(id).unwrap(),
-                arena_type: ArenaType::Arena232,
-            };
+            let parent_id = NodeId::new232(u32::try_from(id).unwrap());
 
             if !matches!(self.get_node(parent_id)?, Node::Relational(_)) {
                 continue;

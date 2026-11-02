@@ -1,6 +1,6 @@
 use crate::ir::node::{
-    BlockEntries, BlockEntriesMut, BlockEntryKind, BlockStatement, IfBranch, Node136, Node232,
-    Node32, Node64, Node96,
+    ArenaType, BlockEntries, BlockEntriesMut, BlockEntryKind, BlockStatement, IfBranch, Node136,
+    Node232, Node32, Node64, Node96, NodeId,
 };
 
 #[test]
@@ -10,6 +10,40 @@ fn test_node_size() {
     assert_eq!(std::mem::size_of::<Node96>(), 96);
     assert_eq!(std::mem::size_of::<Node136>(), 112);
     assert_eq!(std::mem::size_of::<Node232>(), 208);
+}
+
+#[test]
+fn test_node_id_packing() {
+    let arenas = [
+        ArenaType::Arena32,
+        ArenaType::Arena64,
+        ArenaType::Arena96,
+        ArenaType::Arena136,
+        ArenaType::Arena232,
+    ];
+    for arena_type in arenas {
+        for offset in [0, 1, 42, u32::MAX] {
+            let id = NodeId::new(offset, arena_type);
+            assert_eq!(id.offset(), offset);
+            assert_eq!(id.arena_type(), arena_type);
+        }
+    }
+}
+
+/// The plan id hash and the plans sent to the storages use this form, so it
+/// must not depend on the packing of `NodeId`.
+#[test]
+fn test_node_id_serialized_form() {
+    let id = NodeId::new96(300);
+    let bytes = rmp_serde::to_vec_named(&id).unwrap();
+    let mut expected = vec![0x82, 0xa6];
+    expected.extend_from_slice(b"offset");
+    expected.extend_from_slice(&[0xcd, 0x01, 0x2c, 0xaa]);
+    expected.extend_from_slice(b"arena_type");
+    expected.push(0xa7);
+    expected.extend_from_slice(b"Arena96");
+    assert_eq!(bytes, expected);
+    assert_eq!(rmp_serde::from_slice::<NodeId>(&bytes).unwrap(), id);
 }
 
 /// A block whose IFs nest two levels deep, none of them with an ELSE branch.

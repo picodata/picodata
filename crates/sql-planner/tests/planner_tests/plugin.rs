@@ -387,10 +387,7 @@ fn test_plugin_parsing() {
         let metadata = &RouterConfigurationMock::new();
         let plan: Plan = transform_into_plan(tc.sql, &[], metadata).unwrap();
         let node = plan
-            .get_plugin_node(NodeId {
-                offset: 0,
-                arena_type: tc.arena_type,
-            })
+            .get_plugin_node(NodeId::new(0, tc.arena_type))
             .unwrap()
             .get_plugin_owned();
         let node = if let PluginOwned::ChangeConfig(ChangeConfig {

@@ -40,11 +40,7 @@ fn get_node_oor() {
     let plan = Plan::default();
     assert_eq!(
         SbroadError::NotFound(Entity::Node, "from Arena32 with index 42".into()),
-        plan.get_node(NodeId {
-            offset: 42,
-            arena_type: ArenaType::Arena32
-        })
-        .unwrap_err()
+        plan.get_node(NodeId::new32(42)).unwrap_err()
     );
 }
 

@@ -293,7 +293,7 @@ mod tests {
     use crate::executor::ir::SerializeAsEmptyState;
     use crate::executor::vtable::VirtualTable;
     use crate::ir::node::relational::Relational;
-    use crate::ir::node::{ArenaType, Node136};
+    use crate::ir::node::Node136;
     use crate::ir::node::{Motion, NodeId};
     use crate::ir::transformation::redistribution::MotionOpcode;
     use crate::ir::tree::Snapshot;
@@ -307,10 +307,9 @@ mod tests {
             .iter136()
             .enumerate()
             .filter_map(|(offset, node)| {
-                matches!(node, Node136::Motion(_)).then_some(NodeId {
-                    offset: offset.try_into().expect("node offset must fit into u32"),
-                    arena_type: ArenaType::Arena136,
-                })
+                matches!(node, Node136::Motion(_)).then_some(NodeId::new136(
+                    offset.try_into().expect("node offset must fit into u32"),
+                ))
             })
             .collect()
     }

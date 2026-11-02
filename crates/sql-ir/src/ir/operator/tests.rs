@@ -32,10 +32,7 @@ fn scan_rel() {
     .unwrap();
     plan.add_rel(t);
 
-    let scan_node = NodeId {
-        offset: 0,
-        arena_type: ArenaType::Arena96,
-    };
+    let scan_node = NodeId::new96(0);
 
     let scan_id = plan.add_scan("t", None).unwrap();
     assert_eq!(scan_node, scan_id);
@@ -94,10 +91,7 @@ fn projection() {
     );
 
     // Try to build projection from the non-existing node
-    let test_node = NodeId {
-        offset: 42,
-        arena_type: ArenaType::Arena32,
-    };
+    let test_node = NodeId::new32(42);
     assert_eq!(
         SbroadError::NotFound(Entity::Node, "from Arena32 with index 42".to_smolstr()),
         plan.add_proj(test_node, vec![], &["a"], false, false)

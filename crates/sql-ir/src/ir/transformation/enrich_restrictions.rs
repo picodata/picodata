@@ -271,8 +271,8 @@ impl Plan {
         // Sort by stable sources because ClassId order depends on hashing.
         candidates.sort_unstable_by_key(|(_, class, _)| {
             (
-                class.anchor.arena_type,
-                class.anchor.offset,
+                class.anchor.arena_type(),
+                class.anchor.offset(),
                 class.members.as_ref(),
                 class.params.as_ref(),
             )
@@ -670,7 +670,7 @@ impl Plan {
         }
         // Any order works, each merge is one join; the ids keep it repeatable.
         let mut order: Vec<NodeId> = joins.keys().copied().collect();
-        order.sort_unstable_by_key(|join| (join.arena_type, join.offset));
+        order.sort_unstable_by_key(|join| (join.arena_type(), join.offset()));
 
         #[cfg(debug_assertions)]
         let cross_before = pairs.len();

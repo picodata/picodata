@@ -151,7 +151,7 @@ pub struct Nodes {
 fn node_not_found(id: NodeId) -> SbroadError {
     SbroadError::NotFound(
         Entity::Node,
-        format_smolstr!("from {:?} with index {}", id.arena_type, id.offset),
+        format_smolstr!("from {:?} with index {}", id.arena_type(), id.offset()),
     )
 }
 
@@ -188,106 +188,123 @@ impl Nodes {
     }
 
     pub(crate) fn get(&self, id: NodeId) -> Option<Node<'_>> {
-        match id.arena_type {
-            ArenaType::Arena32 => self.arena32.get(id.offset as usize).map(|node| match node {
-                Node32::Alias(alias) => Node::Expression(Expression::Alias(alias)),
-                Node32::Arithmetic(arithm) => Node::Expression(Expression::Arithmetic(arithm)),
-                Node32::Bool(bool) => Node::Expression(Expression::Bool(bool)),
-                Node32::Concat(concat) => Node::Expression(Expression::Concat(concat)),
-                Node32::Cast(cast) => Node::Expression(Expression::Cast(cast)),
-                Node32::CountAsterisk(count) => Node::Expression(Expression::CountAsterisk(count)),
-                Node32::Like(like) => Node::Expression(Expression::Like(like)),
-                Node32::Except(except) => Node::Relational(Relational::Except(except)),
-                Node32::Intersect(intersect) => Node::Relational(Relational::Intersect(intersect)),
-                Node32::Invalid(inv) => Node::Invalid(inv),
-                Node32::Limit(limit) => Node::Relational(Relational::Limit(limit)),
-                Node32::SelectWithoutScan(select) => {
-                    Node::Relational(Relational::SelectWithoutScan(select))
-                }
-                Node32::Trim(trim) => Node::Expression(Expression::Trim(trim)),
-                Node32::Unary(unary) => Node::Expression(Expression::Unary(unary)),
-                Node32::Union(un) => Node::Relational(Relational::Union(un)),
-                Node32::UnionAll(union_all) => Node::Relational(Relational::UnionAll(union_all)),
-                Node32::Deallocate(deallocate) => Node::Deallocate(deallocate),
-                Node32::Tcl(tcl) => match *tcl {
-                    Tcl::Begin => Node::Tcl(Tcl::Begin),
-                    Tcl::Commit => Node::Tcl(Tcl::Commit),
-                    Tcl::Rollback => Node::Tcl(Tcl::Rollback),
-                },
-                Node32::Discard(discard) => Node::Discard(*discard),
-                Node32::CreateSchema => Node::Ddl(Ddl::CreateSchema),
-                Node32::DropSchema => Node::Ddl(Ddl::DropSchema),
-                Node32::SubQueryReference(sq_reference) => {
-                    Node::Expression(Expression::SubQueryReference(sq_reference))
-                }
-                Node32::Constant(constant) => Node::Expression(Expression::Constant(constant)),
-                Node32::Parameter(param) => Node::Expression(Expression::Parameter(param)),
-                Node32::LetVarRef(let_var_ref) => {
-                    Node::Expression(Expression::LetVarRef(let_var_ref))
-                }
-                Node32::Timestamp(lt) => Node::Expression(Expression::Timestamp(lt)),
-                Node32::CurrentUser(cu) => Node::Expression(Expression::CurrentUser(cu)),
-                Node32::Backup(backup) => Node::Ddl(Ddl::Backup(backup)),
-                Node32::ArrayLiteral(arr) => Node::Expression(Expression::ArrayLiteral(arr)),
-            }),
-            ArenaType::Arena64 => self.arena64.get(id.offset as usize).map(|node| match node {
-                Node64::Over(over) => Node::Expression(Expression::Over(over)),
-                Node64::Index(index) => Node::Expression(Expression::Index(index)),
-                Node64::Case(case) => Node::Expression(Expression::Case(case)),
-                Node64::Invalid(invalid) => Node::Invalid(invalid),
-                Node64::CreateRole(create_role) => Node::Acl(Acl::CreateRole(create_role)),
-                Node64::Delete(delete) => Node::Relational(Relational::Delete(delete)),
-                Node64::DropIndex(drop_index) => Node::Ddl(Ddl::DropIndex(drop_index)),
-                Node64::DropRole(drop_role) => Node::Acl(Acl::DropRole(drop_role)),
-                Node64::DropTable(drop_table) => Node::Ddl(Ddl::DropTable(drop_table)),
-                Node64::TruncateTable(truncate_table) => {
-                    Node::Ddl(Ddl::TruncateTable(truncate_table))
-                }
-                Node64::Row(row) => Node::Expression(Expression::Row(row)),
-                Node64::DropUser(drop_user) => Node::Acl(Acl::DropUser(drop_user)),
-                Node64::Having(having) => Node::Relational(Relational::Having(having)),
-                Node64::CallProcedure(proc) => Node::Block(Block::CallProcedure(proc)),
-                Node64::ScanCte(scan_cte) => Node::Relational(Relational::ScanCte(scan_cte)),
-                Node64::ScanSubQuery(scan_squery) => {
-                    Node::Relational(Relational::ScanSubQuery(scan_squery))
-                }
-                Node64::Selection(sel) => Node::Relational(Relational::Selection(sel)),
-                Node64::SetParam(set_param) => Node::Ddl(Ddl::SetParam(set_param)),
-                Node64::SetTransaction(set_trans) => Node::Ddl(Ddl::SetTransaction(set_trans)),
-                Node64::Values(values) => Node::Relational(Relational::Values(values)),
-                Node64::AlterSystemLocal(alter_system) => {
-                    Node::Ddl(Ddl::AlterSystemLocal(alter_system))
-                }
-            }),
-            ArenaType::Arena96 => self.arena96.get(id.offset as usize).map(|node| match node {
-                Node96::AnonymousBlock(block) => Node::Block(Block::Anonymous(block)),
-                Node96::Projection(proj) => Node::Relational(Relational::Projection(proj)),
-                Node96::Join(join) => Node::Relational(Relational::Join(join)),
-                Node96::GroupBy(group_by) => Node::Relational(Relational::GroupBy(group_by)),
-                Node96::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
-                Node96::Reference(reference) => Node::Expression(Expression::Reference(reference)),
-                Node96::DropProc(drop_proc) => Node::Ddl(Ddl::DropProc(drop_proc)),
-                Node96::Insert(insert) => Node::Relational(Relational::Insert(insert)),
-                Node96::Invalid(inv) => Node::Invalid(inv),
-                Node96::ScalarFunction(stable_func) => {
-                    Node::Expression(Expression::ScalarFunction(stable_func))
-                }
-                Node96::CreatePlugin(create) => Node::Plugin(Plugin::Create(create)),
-                Node96::EnablePlugin(enable) => Node::Plugin(Plugin::Enable(enable)),
-                Node96::DisablePlugin(disable) => Node::Plugin(Plugin::Disable(disable)),
-                Node96::DropPlugin(drop) => Node::Plugin(Plugin::Drop(drop)),
-                Node96::ScanRelation(scan_rel) => {
-                    Node::Relational(Relational::ScanRelation(scan_rel))
-                }
-                Node96::ScanFunction(scan_func) => {
-                    Node::Relational(Relational::ScanFunction(scan_func))
-                }
-                Node96::AuditPolicy(audit_policy) => Node::Acl(Acl::AuditPolicy(audit_policy)),
-                Node96::RenameIndex(rename) => Node::Ddl(Ddl::RenameIndex(rename)),
-            }),
+        match id.arena_type() {
+            ArenaType::Arena32 => self
+                .arena32
+                .get(id.offset() as usize)
+                .map(|node| match node {
+                    Node32::Alias(alias) => Node::Expression(Expression::Alias(alias)),
+                    Node32::Arithmetic(arithm) => Node::Expression(Expression::Arithmetic(arithm)),
+                    Node32::Bool(bool) => Node::Expression(Expression::Bool(bool)),
+                    Node32::Concat(concat) => Node::Expression(Expression::Concat(concat)),
+                    Node32::Cast(cast) => Node::Expression(Expression::Cast(cast)),
+                    Node32::CountAsterisk(count) => {
+                        Node::Expression(Expression::CountAsterisk(count))
+                    }
+                    Node32::Like(like) => Node::Expression(Expression::Like(like)),
+                    Node32::Except(except) => Node::Relational(Relational::Except(except)),
+                    Node32::Intersect(intersect) => {
+                        Node::Relational(Relational::Intersect(intersect))
+                    }
+                    Node32::Invalid(inv) => Node::Invalid(inv),
+                    Node32::Limit(limit) => Node::Relational(Relational::Limit(limit)),
+                    Node32::SelectWithoutScan(select) => {
+                        Node::Relational(Relational::SelectWithoutScan(select))
+                    }
+                    Node32::Trim(trim) => Node::Expression(Expression::Trim(trim)),
+                    Node32::Unary(unary) => Node::Expression(Expression::Unary(unary)),
+                    Node32::Union(un) => Node::Relational(Relational::Union(un)),
+                    Node32::UnionAll(union_all) => {
+                        Node::Relational(Relational::UnionAll(union_all))
+                    }
+                    Node32::Deallocate(deallocate) => Node::Deallocate(deallocate),
+                    Node32::Tcl(tcl) => match *tcl {
+                        Tcl::Begin => Node::Tcl(Tcl::Begin),
+                        Tcl::Commit => Node::Tcl(Tcl::Commit),
+                        Tcl::Rollback => Node::Tcl(Tcl::Rollback),
+                    },
+                    Node32::Discard(discard) => Node::Discard(*discard),
+                    Node32::CreateSchema => Node::Ddl(Ddl::CreateSchema),
+                    Node32::DropSchema => Node::Ddl(Ddl::DropSchema),
+                    Node32::SubQueryReference(sq_reference) => {
+                        Node::Expression(Expression::SubQueryReference(sq_reference))
+                    }
+                    Node32::Constant(constant) => Node::Expression(Expression::Constant(constant)),
+                    Node32::Parameter(param) => Node::Expression(Expression::Parameter(param)),
+                    Node32::LetVarRef(let_var_ref) => {
+                        Node::Expression(Expression::LetVarRef(let_var_ref))
+                    }
+                    Node32::Timestamp(lt) => Node::Expression(Expression::Timestamp(lt)),
+                    Node32::CurrentUser(cu) => Node::Expression(Expression::CurrentUser(cu)),
+                    Node32::Backup(backup) => Node::Ddl(Ddl::Backup(backup)),
+                    Node32::ArrayLiteral(arr) => Node::Expression(Expression::ArrayLiteral(arr)),
+                }),
+            ArenaType::Arena64 => self
+                .arena64
+                .get(id.offset() as usize)
+                .map(|node| match node {
+                    Node64::Over(over) => Node::Expression(Expression::Over(over)),
+                    Node64::Index(index) => Node::Expression(Expression::Index(index)),
+                    Node64::Case(case) => Node::Expression(Expression::Case(case)),
+                    Node64::Invalid(invalid) => Node::Invalid(invalid),
+                    Node64::CreateRole(create_role) => Node::Acl(Acl::CreateRole(create_role)),
+                    Node64::Delete(delete) => Node::Relational(Relational::Delete(delete)),
+                    Node64::DropIndex(drop_index) => Node::Ddl(Ddl::DropIndex(drop_index)),
+                    Node64::DropRole(drop_role) => Node::Acl(Acl::DropRole(drop_role)),
+                    Node64::DropTable(drop_table) => Node::Ddl(Ddl::DropTable(drop_table)),
+                    Node64::TruncateTable(truncate_table) => {
+                        Node::Ddl(Ddl::TruncateTable(truncate_table))
+                    }
+                    Node64::Row(row) => Node::Expression(Expression::Row(row)),
+                    Node64::DropUser(drop_user) => Node::Acl(Acl::DropUser(drop_user)),
+                    Node64::Having(having) => Node::Relational(Relational::Having(having)),
+                    Node64::CallProcedure(proc) => Node::Block(Block::CallProcedure(proc)),
+                    Node64::ScanCte(scan_cte) => Node::Relational(Relational::ScanCte(scan_cte)),
+                    Node64::ScanSubQuery(scan_squery) => {
+                        Node::Relational(Relational::ScanSubQuery(scan_squery))
+                    }
+                    Node64::Selection(sel) => Node::Relational(Relational::Selection(sel)),
+                    Node64::SetParam(set_param) => Node::Ddl(Ddl::SetParam(set_param)),
+                    Node64::SetTransaction(set_trans) => Node::Ddl(Ddl::SetTransaction(set_trans)),
+                    Node64::Values(values) => Node::Relational(Relational::Values(values)),
+                    Node64::AlterSystemLocal(alter_system) => {
+                        Node::Ddl(Ddl::AlterSystemLocal(alter_system))
+                    }
+                }),
+            ArenaType::Arena96 => self
+                .arena96
+                .get(id.offset() as usize)
+                .map(|node| match node {
+                    Node96::AnonymousBlock(block) => Node::Block(Block::Anonymous(block)),
+                    Node96::Projection(proj) => Node::Relational(Relational::Projection(proj)),
+                    Node96::Join(join) => Node::Relational(Relational::Join(join)),
+                    Node96::GroupBy(group_by) => Node::Relational(Relational::GroupBy(group_by)),
+                    Node96::OrderBy(order_by) => Node::Relational(Relational::OrderBy(order_by)),
+                    Node96::Reference(reference) => {
+                        Node::Expression(Expression::Reference(reference))
+                    }
+                    Node96::DropProc(drop_proc) => Node::Ddl(Ddl::DropProc(drop_proc)),
+                    Node96::Insert(insert) => Node::Relational(Relational::Insert(insert)),
+                    Node96::Invalid(inv) => Node::Invalid(inv),
+                    Node96::ScalarFunction(stable_func) => {
+                        Node::Expression(Expression::ScalarFunction(stable_func))
+                    }
+                    Node96::CreatePlugin(create) => Node::Plugin(Plugin::Create(create)),
+                    Node96::EnablePlugin(enable) => Node::Plugin(Plugin::Enable(enable)),
+                    Node96::DisablePlugin(disable) => Node::Plugin(Plugin::Disable(disable)),
+                    Node96::DropPlugin(drop) => Node::Plugin(Plugin::Drop(drop)),
+                    Node96::ScanRelation(scan_rel) => {
+                        Node::Relational(Relational::ScanRelation(scan_rel))
+                    }
+                    Node96::ScanFunction(scan_func) => {
+                        Node::Relational(Relational::ScanFunction(scan_func))
+                    }
+                    Node96::AuditPolicy(audit_policy) => Node::Acl(Acl::AuditPolicy(audit_policy)),
+                    Node96::RenameIndex(rename) => Node::Ddl(Ddl::RenameIndex(rename)),
+                }),
             ArenaType::Arena136 => self
                 .arena136
-                .get(id.offset as usize)
+                .get(id.offset() as usize)
                 .map(|node| match node {
                     Node136::AlterUser(alter_user) => Node::Acl(Acl::AlterUser(alter_user)),
                     Node136::AlterTable(alter_table) => Node::Ddl(Ddl::AlterTable(alter_table)),
@@ -316,7 +333,7 @@ impl Nodes {
                 }),
             ArenaType::Arena232 => self
                 .arena224
-                .get(id.offset as usize)
+                .get(id.offset() as usize)
                 .map(|node| match node {
                     Node232::CreateIndex(create_index) => Node::Ddl(Ddl::CreateIndex(create_index)),
                     Node232::CreateTable(create_table) => Node::Ddl(Ddl::CreateTable(create_table)),
@@ -334,9 +351,9 @@ impl Nodes {
     #[allow(clippy::too_many_lines)]
     pub(crate) fn get_mut(&mut self, id: NodeId) -> Option<MutNode<'_>> {
         self.columns_len_memo.clear();
-        match id.arena_type {
+        match id.arena_type() {
             ArenaType::Arena32 => Rc::make_mut(&mut self.arena32)
-                .get_mut(id.offset as usize)
+                .get_mut(id.offset() as usize)
                 .map(|node| match node {
                     Node32::Alias(alias) => MutNode::Expression(MutExpression::Alias(alias)),
                     Node32::Arithmetic(arithm) => {
@@ -393,7 +410,7 @@ impl Nodes {
                     }
                 }),
             ArenaType::Arena64 => Rc::make_mut(&mut self.arena64)
-                .get_mut(id.offset as usize)
+                .get_mut(id.offset() as usize)
                 .map(|node| match node {
                     Node64::Over(over) => MutNode::Expression(MutExpression::Over(over)),
                     Node64::Index(index) => MutNode::Expression(MutExpression::Index(index)),
@@ -430,7 +447,7 @@ impl Nodes {
                     }
                 }),
             ArenaType::Arena96 => Rc::make_mut(&mut self.arena96)
-                .get_mut(id.offset as usize)
+                .get_mut(id.offset() as usize)
                 .map(|node| match node {
                     Node96::AnonymousBlock(block) => MutNode::Block(MutBlock::Anonymous(block)),
                     Node96::Projection(proj) => {
@@ -468,7 +485,7 @@ impl Nodes {
                     }
                 }),
             ArenaType::Arena136 => Rc::make_mut(&mut self.arena136)
-                .get_mut(id.offset as usize)
+                .get_mut(id.offset() as usize)
                 .map(|node| match node {
                     Node136::AlterUser(alter_user) => MutNode::Acl(MutAcl::AlterUser(alter_user)),
                     Node136::AlterTable(alter_table) => {
@@ -502,7 +519,7 @@ impl Nodes {
                     Node136::Window(window) => MutNode::Expression(MutExpression::Window(window)),
                 }),
             ArenaType::Arena232 => Rc::make_mut(&mut self.arena224)
-                .get_mut(id.offset as usize)
+                .get_mut(id.offset() as usize)
                 .map(|node| match node {
                     Node232::CreateIndex(create_index) => {
                         MutNode::Ddl(MutDdl::CreateIndex(create_index))
@@ -526,26 +543,11 @@ impl Nodes {
     #[must_use]
     pub fn next_id(&self, arena_type: ArenaType) -> NodeId {
         match arena_type {
-            ArenaType::Arena32 => NodeId {
-                offset: u32::try_from(self.arena32.len()).unwrap(),
-                arena_type: ArenaType::Arena32,
-            },
-            ArenaType::Arena64 => NodeId {
-                offset: u32::try_from(self.arena64.len()).unwrap(),
-                arena_type: ArenaType::Arena64,
-            },
-            ArenaType::Arena96 => NodeId {
-                offset: u32::try_from(self.arena96.len()).unwrap(),
-                arena_type: ArenaType::Arena96,
-            },
-            ArenaType::Arena136 => NodeId {
-                offset: u32::try_from(self.arena136.len()).unwrap(),
-                arena_type: ArenaType::Arena136,
-            },
-            ArenaType::Arena232 => NodeId {
-                offset: u32::try_from(self.arena224.len()).unwrap(),
-                arena_type: ArenaType::Arena232,
-            },
+            ArenaType::Arena32 => NodeId::new32(u32::try_from(self.arena32.len()).unwrap()),
+            ArenaType::Arena64 => NodeId::new64(u32::try_from(self.arena64.len()).unwrap()),
+            ArenaType::Arena96 => NodeId::new96(u32::try_from(self.arena96.len()).unwrap()),
+            ArenaType::Arena136 => NodeId::new136(u32::try_from(self.arena136.len()).unwrap()),
+            ArenaType::Arena232 => NodeId::new232(u32::try_from(self.arena224.len()).unwrap()),
         }
     }
 
@@ -582,7 +584,7 @@ impl Nodes {
     ) -> impl Iterator<Item = (NodeId, T)> {
         nodes.enumerate().map(move |(offset, node)| {
             let offset = offset.try_into().expect("node offset must fit into u32");
-            (NodeId { offset, arena_type }, node)
+            (NodeId::new(offset, arena_type), node)
         })
     }
 
@@ -623,50 +625,35 @@ impl Nodes {
     pub fn push(&mut self, node: NodeAligned) -> NodeId {
         match node {
             NodeAligned::Node32(node32) => {
-                let new_node_id = NodeId {
-                    offset: u32::try_from(self.arena32.len()).unwrap(),
-                    arena_type: ArenaType::Arena32,
-                };
+                let new_node_id = NodeId::new32(u32::try_from(self.arena32.len()).unwrap());
 
                 Rc::make_mut(&mut self.arena32).push(node32);
 
                 new_node_id
             }
             NodeAligned::Node64(node64) => {
-                let new_node_id = NodeId {
-                    offset: u32::try_from(self.arena64.len()).unwrap(),
-                    arena_type: ArenaType::Arena64,
-                };
+                let new_node_id = NodeId::new64(u32::try_from(self.arena64.len()).unwrap());
 
                 Rc::make_mut(&mut self.arena64).push(node64);
 
                 new_node_id
             }
             NodeAligned::Node96(node96) => {
-                let new_node_id = NodeId {
-                    offset: u32::try_from(self.arena96.len()).unwrap(),
-                    arena_type: ArenaType::Arena96,
-                };
+                let new_node_id = NodeId::new96(u32::try_from(self.arena96.len()).unwrap());
 
                 Rc::make_mut(&mut self.arena96).push(node96);
 
                 new_node_id
             }
             NodeAligned::Node136(node136) => {
-                let new_node_id = NodeId {
-                    offset: u32::try_from(self.arena136.len()).unwrap(),
-                    arena_type: ArenaType::Arena136,
-                };
+                let new_node_id = NodeId::new136(u32::try_from(self.arena136.len()).unwrap());
 
                 Rc::make_mut(&mut self.arena136).push(node136);
 
                 new_node_id
             }
             NodeAligned::Node232(node224) => {
-                let new_node_id = NodeId {
-                    offset: u32::try_from(self.arena224.len()).unwrap(),
-                    arena_type: ArenaType::Arena232,
-                };
+                let new_node_id = NodeId::new232(u32::try_from(self.arena224.len()).unwrap());
 
                 Rc::make_mut(&mut self.arena224).push(node224);
 
@@ -680,9 +667,9 @@ impl Nodes {
     /// # Errors
     /// - The node with the given position doesn't exist.
     pub fn replace32(&mut self, id: NodeId, node: Node32) -> Result<Node32, SbroadError> {
-        let offset = id.offset as usize;
+        let offset = id.offset() as usize;
 
-        match id.arena_type {
+        match id.arena_type() {
             ArenaType::Arena32 => {
                 if offset >= self.arena32.len() {
                     return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
@@ -918,7 +905,7 @@ impl SubtreeShape {
     /// The order of `sorted_node_ids` and of the virtual tables in the plan id.
     #[must_use]
     pub fn order_key(node_id: &NodeId) -> (u32, ArenaType) {
-        (node_id.offset, node_id.arena_type)
+        (node_id.offset(), node_id.arena_type())
     }
 
     #[must_use]
@@ -1055,10 +1042,10 @@ impl Plan {
     #[must_use]
     pub fn replace_with_stub(&mut self, dst_id: NodeId) -> NodeOwned {
         self.nodes.columns_len_memo.clear();
-        match dst_id.arena_type {
+        match dst_id.arena_type() {
             ArenaType::Arena32 => {
                 let node32 = Rc::make_mut(&mut self.nodes.arena32)
-                    .get_mut(usize::try_from(dst_id.offset).unwrap())
+                    .get_mut(usize::try_from(dst_id.offset()).unwrap())
                     .unwrap();
                 let stub = Node32::Invalid(Invalid {});
                 let node32 = std::mem::replace(node32, stub);
@@ -1066,7 +1053,7 @@ impl Plan {
             }
             ArenaType::Arena64 => {
                 let node64 = Rc::make_mut(&mut self.nodes.arena64)
-                    .get_mut(usize::try_from(dst_id.offset).unwrap())
+                    .get_mut(usize::try_from(dst_id.offset()).unwrap())
                     .unwrap();
                 let stub = Node64::Invalid(Invalid {});
                 let node64 = std::mem::replace(node64, stub);
@@ -1074,7 +1061,7 @@ impl Plan {
             }
             ArenaType::Arena96 => {
                 let node96 = Rc::make_mut(&mut self.nodes.arena96)
-                    .get_mut(usize::try_from(dst_id.offset).unwrap())
+                    .get_mut(usize::try_from(dst_id.offset()).unwrap())
                     .unwrap();
                 let stub = Node96::Invalid(Invalid {});
                 let node96 = std::mem::replace(node96, stub);
@@ -1082,7 +1069,7 @@ impl Plan {
             }
             ArenaType::Arena136 => {
                 let node136 = Rc::make_mut(&mut self.nodes.arena136)
-                    .get_mut(usize::try_from(dst_id.offset).unwrap())
+                    .get_mut(usize::try_from(dst_id.offset()).unwrap())
                     .unwrap();
                 let stub = Node136::Invalid(Invalid {});
                 let node136 = std::mem::replace(node136, stub);
@@ -1090,7 +1077,7 @@ impl Plan {
             }
             ArenaType::Arena232 => {
                 let node224 = Rc::make_mut(&mut self.nodes.arena224)
-                    .get_mut(usize::try_from(dst_id.offset).unwrap())
+                    .get_mut(usize::try_from(dst_id.offset()).unwrap())
                     .unwrap();
                 let stub = Node232::Invalid(Invalid {});
                 let node224 = std::mem::replace(node224, stub);

@@ -135,10 +135,7 @@ enum Privileges {
 // Collect data access nodes from the plan, i.e. nodes referring to tables.
 fn find_data_access_nodes(plan: &IrPlan) -> impl Iterator<Item = NodeId> + use<'_> {
     fn node_id(offset: usize, arena_type: ArenaType) -> NodeId {
-        NodeId {
-            offset: offset.try_into().unwrap(),
-            arena_type,
-        }
+        NodeId::new(offset.try_into().unwrap(), arena_type)
     }
 
     let delete = plan

@@ -1,7 +1,6 @@
 use pretty_assertions::assert_eq;
 use sql::helpers::get_motion_id;
 use sql::helpers::sql_to_ir;
-use sql::ir::node::ArenaType;
 use sql::ir::node::NodeId;
 use sql::ir::transformation::redistribution::MotionPolicy;
 use sql::ir::transformation::PlanningState;
@@ -35,10 +34,7 @@ fn not_in2() {
     plan.add_motions(&mut PlanningState::default()).unwrap();
     assert_eq!(
         Slices::from(vec![Slice {
-            slice: vec![NodeId {
-                offset: 0,
-                arena_type: ArenaType::Arena136,
-            }]
+            slice: vec![NodeId::new136(0)]
         }]),
         *plan.slices()
     );

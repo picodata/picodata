@@ -324,9 +324,9 @@ impl PartialOrd<Self> for SlotKey {
 impl Ord for SlotKey {
     fn cmp(&self, other: &Self) -> Ordering {
         self.rel_id
-            .arena_type
-            .cmp(&other.rel_id.arena_type)
-            .then_with(|| self.rel_id.offset.cmp(&other.rel_id.offset))
+            .arena_type()
+            .cmp(&other.rel_id.arena_type())
+            .then_with(|| self.rel_id.offset().cmp(&other.rel_id.offset()))
             .then_with(|| self.output_idx.cmp(&other.output_idx))
     }
 }
@@ -518,9 +518,9 @@ impl Ord for Slot {
     /// minus the domain tag, which is internal-only.
     fn cmp(&self, other: &Self) -> Ordering {
         self.rel_id
-            .arena_type
-            .cmp(&other.rel_id.arena_type)
-            .then_with(|| self.rel_id.offset.cmp(&other.rel_id.offset))
+            .arena_type()
+            .cmp(&other.rel_id.arena_type())
+            .then_with(|| self.rel_id.offset().cmp(&other.rel_id.offset()))
             .then_with(|| self.pos.cmp(&other.pos))
     }
 }
@@ -849,7 +849,7 @@ impl EqualityFacts {
                     .any(|check| check.kind == DomainCheckKind::AlwaysFalse)
                 {
                     checks.retain(|check| check.kind == DomainCheckKind::AlwaysFalse);
-                    checks.sort_by_key(|check| (check.host.arena_type, check.host.offset));
+                    checks.sort_by_key(|check| (check.host.arena_type(), check.host.offset()));
                     checks.dedup_by_key(|check| check.host);
                 } else {
                     let param = |check: &DomainCheck| match check.kind {
@@ -1198,7 +1198,7 @@ impl EqualityFactsBuilder {
         mut dead_rels: Vec<NodeId>,
     ) -> EqualityFacts {
         // Keep a stable order and remove duplicate visits.
-        dead_rels.sort_unstable_by_key(|rel| (rel.arena_type, rel.offset));
+        dead_rels.sort_unstable_by_key(|rel| (rel.arena_type(), rel.offset()));
         dead_rels.dedup();
         let groups = self.members.groups_number();
         // Resolve each source's group before `into_groups` consumes the

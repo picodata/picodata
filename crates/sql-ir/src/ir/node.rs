@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::iter::{Chain, Enumerate};
+use std::num::NonZeroU64;
 use std::slice::{Iter, IterMut};
 
 use super::options::Timeout;
@@ -81,25 +82,125 @@ impl Display for ArenaType {
     }
 }
 
+/// A position of a node in the plan arenas.
+///
+/// It is one non-zero integer: the offset in the high bits and the arena
+/// type plus one in the low byte. So `Result<NodeId, SbroadError>` is returned
+/// in two registers, not through the stack, and `Option<NodeId>` is 8 bytes.
 #[allow(clippy::module_name_repetitions)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize, Hash, Copy)]
-pub struct NodeId {
-    pub offset: u32,
-    pub arena_type: ArenaType,
+#[derive(Clone, PartialEq, Eq, Hash, Copy)]
+pub struct NodeId(NonZeroU64);
+
+impl NodeId {
+    #[inline]
+    #[must_use]
+    pub const fn new(offset: u32, arena_type: ArenaType) -> Self {
+        let value = ((offset as u64) << 8) | (arena_type as u64 + 1);
+        match NonZeroU64::new(value) {
+            Some(value) => Self(value),
+            None => unreachable!(),
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn new32(offset: u32) -> Self {
+        Self::new(offset, ArenaType::Arena32)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn new64(offset: u32) -> Self {
+        Self::new(offset, ArenaType::Arena64)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn new96(offset: u32) -> Self {
+        Self::new(offset, ArenaType::Arena96)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn new136(offset: u32) -> Self {
+        Self::new(offset, ArenaType::Arena136)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn new232(offset: u32) -> Self {
+        Self::new(offset, ArenaType::Arena232)
+    }
+
+    /// The id of the node at `offset` in the same arena.
+    #[inline]
+    #[must_use]
+    pub const fn with_offset(self, offset: u32) -> Self {
+        Self::new(offset, self.arena_type())
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn offset(self) -> u32 {
+        (self.0.get() >> 8) as u32
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn arena_type(self) -> ArenaType {
+        match (self.0.get() & 0xff) - 1 {
+            0 => ArenaType::Arena32,
+            1 => ArenaType::Arena64,
+            2 => ArenaType::Arena96,
+            3 => ArenaType::Arena136,
+            _ => ArenaType::Arena232,
+        }
+    }
+}
+
+impl std::fmt::Debug for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NodeId")
+            .field("offset", &self.offset())
+            .field("arena_type", &self.arena_type())
+            .finish()
+    }
+}
+
+/// The serialized form of `NodeId`: it does not depend on the packing.
+#[derive(Deserialize, Serialize)]
+#[serde(rename = "NodeId")]
+struct NodeIdRepr {
+    offset: u32,
+    arena_type: ArenaType,
+}
+
+impl Serialize for NodeId {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        NodeIdRepr {
+            offset: self.offset(),
+            arena_type: self.arena_type(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for NodeId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let repr = NodeIdRepr::deserialize(deserializer)?;
+        Ok(NodeId::new(repr.offset, repr.arena_type))
+    }
 }
 
 impl Display for NodeId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.offset, self.arena_type)
+        write!(f, "{}{}", self.offset(), self.arena_type())
     }
 }
 
 impl Default for NodeId {
     fn default() -> Self {
-        NodeId {
-            offset: 0,
-            arena_type: ArenaType::Arena32,
-        }
+        NodeId::new32(0)
     }
 }
 

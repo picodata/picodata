@@ -171,7 +171,7 @@ impl Plan {
             return Ok(planned);
         };
         let mut owners: Vec<NodeId> = restrictions.by_rel.keys().copied().collect();
-        owners.sort_unstable_by_key(|owner| (owner.arena_type, owner.offset));
+        owners.sort_unstable_by_key(|owner| (owner.arena_type(), owner.offset()));
         let mut fan_in: Option<AHashMap<NodeId, usize>> = None;
         for owner in owners {
             let clauses = restrictions.by_rel[&owner].clauses();
@@ -488,7 +488,7 @@ impl Plan {
             }
             let mut children: SmallVec<[NodeId; 4]> = self.nodes.rel_iter(node).collect();
             // A node listing one child twice (a self-join) is still one parent.
-            children.sort_unstable_by_key(|child| (child.arena_type, child.offset));
+            children.sort_unstable_by_key(|child| (child.arena_type(), child.offset()));
             children.dedup();
             for child in children {
                 *fan_in.entry(child).or_default() += 1;

@@ -45,9 +45,9 @@ impl AliasGenerator {
             ArenaType::Arena136,
             ArenaType::Arena232,
         ] {
-            let len = plan.nodes.next_id(arena_type).offset;
+            let len = plan.nodes.next_id(arena_type).offset();
             for offset in 0..len {
-                let id = NodeId { offset, arena_type };
+                let id = NodeId::new(offset, arena_type);
                 let alias = match plan.nodes.get(id) {
                     Some(Node::Relational(rel)) => match rel {
                         Relational::ScanRelation(scan) => scan.alias.as_ref(),

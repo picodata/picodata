@@ -781,7 +781,7 @@ pub fn build_dql_protocol_for_top(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::node::{ArenaType, Node136, NodeId};
+    use crate::ir::node::{Node136, NodeId};
     use crate::test_helpers::{sql_to_optimized_ir, vcolumn_integer_user_non_null};
     use pretty_assertions::assert_eq;
 
@@ -798,10 +798,9 @@ mod tests {
             .iter136()
             .enumerate()
             .filter_map(|(offset, node)| {
-                matches!(node, Node136::Motion(_)).then_some(NodeId {
-                    offset: u32::try_from(offset).expect("node offset must fit into u32"),
-                    arena_type: ArenaType::Arena136,
-                })
+                matches!(node, Node136::Motion(_)).then_some(NodeId::new136(
+                    u32::try_from(offset).expect("node offset must fit into u32"),
+                ))
             })
             .collect();
         assert_eq!(2, motions.len(), "expected exactly two motions");

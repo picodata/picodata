@@ -7,7 +7,7 @@ use crate::executor::engine::mock::TEMPLATE;
 use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
 use crate::ir::node::block::BlockOwned;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{ArenaType, Motion, Node, Over, Projection, ReferenceTarget, Window};
+use crate::ir::node::{Motion, Node, Over, Projection, ReferenceTarget, Window};
 use crate::ir::operator::{OrderByElement, OrderByEntity};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::Snapshot;
@@ -1874,13 +1874,7 @@ fn syntax_plan_projection_windows_stay_in_original_plan() {
             panic!("should be at least one window")
         };
 
-        assert_eq!(
-            *window,
-            NodeId {
-                offset: 0,
-                arena_type: ArenaType::Arena136
-            }
-        );
+        assert_eq!(*window, NodeId::new136(0));
     }
 
     let execution_plan = ExecutionPlan::new(plan);
@@ -1897,13 +1891,7 @@ fn syntax_plan_projection_windows_stay_in_original_plan() {
             panic!("should be at least one window")
         };
 
-        assert_eq!(
-            *window,
-            NodeId {
-                offset: 0,
-                arena_type: ArenaType::Arena136
-            }
-        );
+        assert_eq!(*window, NodeId::new136(0));
     }
 }
 
@@ -1920,10 +1908,9 @@ fn two_motion_exec_plan() -> (ExecutionPlan, NodeId, NodeId) {
         .iter136()
         .enumerate()
         .filter_map(|(offset, node)| {
-            matches!(node, crate::ir::node::Node136::Motion(_)).then_some(NodeId {
-                offset: u32::try_from(offset).expect("node offset must fit into u32"),
-                arena_type: ArenaType::Arena136,
-            })
+            matches!(node, crate::ir::node::Node136::Motion(_)).then_some(NodeId::new136(
+                u32::try_from(offset).expect("node offset must fit into u32"),
+            ))
         })
         .collect();
     assert_eq!(2, motions.len(), "expected exactly two motions");

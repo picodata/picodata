@@ -69,7 +69,7 @@ fn assert_selections_keep_input_classes(plan: &Plan, top: NodeId, state: &Planni
 /// references, each once.
 #[track_caller]
 fn assert_subquery_lists_match_conditions(plan: &Plan, top: NodeId) {
-    let key = |id: &NodeId| (id.arena_type, id.offset);
+    let key = |id: &NodeId| (id.arena_type(), id.offset());
     for id in rel_nodes(plan, top) {
         let rel = plan.get_relation_node(id).unwrap();
         let condition = match rel {

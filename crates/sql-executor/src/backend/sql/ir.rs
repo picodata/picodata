@@ -645,7 +645,7 @@ fn to_subtree_node_id(
     let Some(offset) = node_positions.get(&id) else {
         return Err(outside_plan_id_subtree(id));
     };
-    Ok(subtree_node_id(id, *offset))
+    Ok(id.with_offset(*offset))
 }
 
 fn outside_plan_id_subtree(id: NodeId) -> SbroadError {
@@ -657,13 +657,6 @@ fn outside_plan_id_subtree(id: NodeId) -> SbroadError {
     )
 }
 
-fn subtree_node_id(id: NodeId, offset: u32) -> NodeId {
-    NodeId {
-        offset,
-        arena_type: id.arena_type,
-    }
-}
-
 // Reference targets may point to a wrapper node omitted from the SQL subtree.
 // Hash such wrappers through their visible output or child, never through raw id.
 fn to_subtree_reference_node_id(
@@ -672,24 +665,24 @@ fn to_subtree_reference_node_id(
     node_positions: &AHashMap<NodeId, u32>,
 ) -> Result<NodeId, SbroadError> {
     if let Some(offset) = node_positions.get(&id) {
-        return Ok(subtree_node_id(id, *offset));
+        return Ok(id.with_offset(*offset));
     }
     let Node::Relational(rel) = ir.get_node(id)? else {
         return Err(outside_plan_id_subtree(id));
     };
     if let Some(output) = rel.explicit_output() {
         if let Some(offset) = node_positions.get(&output) {
-            return Ok(subtree_node_id(id, *offset));
+            return Ok(id.with_offset(*offset));
         }
     }
     for child in rel.children().iter() {
         if let Some(offset) = node_positions.get(child) {
-            return Ok(subtree_node_id(id, *offset));
+            return Ok(id.with_offset(*offset));
         }
     }
     for subquery in rel.subqueries().iter() {
         if let Some(offset) = node_positions.get(subquery) {
-            return Ok(subtree_node_id(id, *offset));
+            return Ok(id.with_offset(*offset));
         }
     }
     Err(outside_plan_id_subtree(id))

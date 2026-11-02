@@ -118,10 +118,7 @@ fn inner_join3() {
         .iter96()
         .enumerate()
         .find_map(|(offset, node)| {
-            matches!(node, Node96::Join(_)).then_some(NodeId {
-                offset: u32::try_from(offset).unwrap(),
-                arena_type: sql::ir::node::ArenaType::Arena96,
-            })
+            matches!(node, Node96::Join(_)).then_some(NodeId::new96(u32::try_from(offset).unwrap()))
         })
         .unwrap();
 

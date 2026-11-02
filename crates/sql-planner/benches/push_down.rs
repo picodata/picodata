@@ -258,7 +258,7 @@ fn check_shape(
         .copied()
         .collect();
     assert_eq!(listed.len(), bodies);
-    listed.sort_unstable_by_key(|id| (id.arena_type, id.offset));
+    listed.sort_unstable_by_key(|id| (id.arena_type(), id.offset()));
     listed.dedup();
     assert_eq!(listed.len(), bodies, "a body is listed twice");
     let gained = moved_state
