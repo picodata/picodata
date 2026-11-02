@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 # Prints the static stack frame size of each function in an x86_64 or
-# aarch64 binary (ELF or Mach-O), largest first. With `--max`, exits with
-# code 1 if a function has a larger frame.
+# aarch64 binary (ELF or Mach-O), largest first. The functions with a frame
+# smaller than --min bytes (1024 by default) are omitted; --min 0 prints all
+# of them. With `--max`, exits with code 1 if a function has a larger frame.
 #
 # The size comes from the disassembly (`objdump -d`). The script walks the
 # instructions of each function in address order and keeps the stack depth.
@@ -895,6 +896,14 @@ def main():
         help="exit with code 1 if a function has a frame larger than BYTES",
     )
     parser.add_argument(
+        "--min",
+        type=int,
+        metavar="BYTES",
+        default=1024,
+        help="omit the functions with a frame smaller than BYTES from the list "
+        "(default: 1024; 0 prints all functions; --max still checks all functions)",
+    )
+    parser.add_argument(
         "--filter",
         type=re.compile,
         metavar="REGEX",
@@ -937,8 +946,10 @@ def main():
     result.sort(key=lambda f: (-f.size, f.name))
 
     if not args.quiet:
+        # --max checks all functions, also the ones that --min omits.
+        shown = [f for f in result if f.size >= args.min][: args.limit]
         try:
-            for f in result[: args.limit]:
+            for f in shown:
                 if args.address:
                     print(f"{f.size}\t0x{f.address:x}\t{f.name}")
                 else:
