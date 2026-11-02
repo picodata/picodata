@@ -184,9 +184,7 @@ impl FromStr for Json {
 
     #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let inner = tarantool::json::parse(s.as_bytes())
-            .map_err(|e| -> Box<DynError> { e.to_string().into() })?;
-        Ok(Self(SbroadJson::from_inner(inner)?))
+        Ok(Self(SbroadJson::parse_text(s)?))
     }
 }
 
