@@ -507,50 +507,8 @@ impl ColExpr {
 
         for (id, current_node) in dft_post.expressions() {
             match &current_node {
-                Expression::Window(Window {
-                    partition,
-                    ordering,
-                    frame,
-                }) => {
-                    let frame = frame.as_ref().map(|f| FrameExplain::from_ir(f, &mut stack));
-
-                    let mut o_elems = Vec::new();
-                    if let Some(ordering) = ordering {
-                        for o_elem in ordering {
-                            let expr = match o_elem.entity {
-                                OrderByEntity::Expression { .. } => {
-                                    let expr = stack.pop_expr(Some(id));
-                                    OrderByExpr::Expr { expr }
-                                }
-                                OrderByEntity::Index { value } => OrderByExpr::Index { value },
-                            };
-                            o_elems.push(OrderByPair {
-                                expr,
-                                order_type: o_elem.order_type,
-                            });
-                        }
-                        o_elems.reverse();
-                    };
-
-                    let mut p_elems = Vec::new();
-                    if let Some(partition) = partition {
-                        p_elems.reserve(partition.len());
-                        for _ in partition {
-                            let expr = stack.pop_expr(Some(id));
-                            p_elems.push(expr)
-                        }
-                        p_elems.reverse();
-                    }
-
-                    let window = WindowExplain {
-                        partition: p_elems,
-                        ordering: o_elems,
-                        frame,
-                        should_fmt,
-                    };
-
-                    let expr = ColExpr::Window(window.into());
-                    stack.push((expr, id));
+                Expression::Window(window) => {
+                    Self::from_window(window, id, &mut stack, should_fmt)?
                 }
                 Expression::Over(Over { filter, .. }) => {
                     let window = stack.pop_expr(Some(id)).into();
@@ -573,40 +531,13 @@ impl ColExpr {
                     let expr = ColExpr::Cast(child_expr, *to);
                     stack.push((expr, id));
                 }
-                Expression::Case(Case {
-                    search_expr,
-                    when_blocks,
-                    else_expr,
-                }) => {
-                    let else_expr = else_expr.map(|_| stack.pop_expr(Some(id)).into());
-
-                    let mut match_exprs = Vec::with_capacity(when_blocks.len());
-                    for _ in when_blocks {
-                        let res_expr = stack.pop_expr(Some(id));
-                        let cond_expr = stack.pop_expr(Some(id));
-                        match_exprs.push((cond_expr, res_expr));
-                    }
-                    match_exprs.reverse();
-
-                    let search_expr = search_expr.map(|_| stack.pop_expr(Some(id)).into());
-
-                    let expr = ColExpr::Case(search_expr, match_exprs, else_expr, should_fmt);
-                    stack.push((expr, id));
-                }
+                Expression::Case(case) => Self::from_case(case, id, &mut stack, should_fmt)?,
                 Expression::CountAsterisk(_) => {
                     let expr = ColExpr::Asterisk;
                     stack.push((expr, id));
                 }
-                Expression::Reference(Reference { position, .. }) => {
-                    let rel_id = plan.get_relational_from_reference_node(id)?;
-                    let (tbl_name, col_name) = ColExpr::scan_column_name(
-                        plan,
-                        RelColumn::new(rel_id, *position),
-                        &current_node,
-                    )?;
-                    let expr =
-                        ColExpr::Column(tbl_name, col_name, current_node.calculate_type(plan)?);
-                    stack.push((expr, id));
+                Expression::Reference(reference) => {
+                    Self::from_reference(reference, plan, id, &current_node, &mut stack)?
                 }
                 Expression::SubQueryReference(SubQueryReference {
                     position, rel_id, ..
@@ -638,26 +569,8 @@ impl ColExpr {
                     let expr = ColExpr::Trim(kind.clone(), pattern, target);
                     stack.push((expr, id));
                 }
-                Expression::ScalarFunction(ScalarFunction {
-                    name,
-                    children,
-                    feature,
-                    func_type,
-                    ..
-                }) => {
-                    let mut args = Vec::with_capacity(children.len());
-                    for _ in children {
-                        args.push(stack.pop_expr(Some(id)));
-                    }
-                    args.reverse();
-                    let func_expr = ColExpr::ScalarFunction(
-                        name.clone(),
-                        args,
-                        feature.clone(),
-                        *func_type,
-                        should_fmt,
-                    );
-                    stack.push((func_expr, id));
+                Expression::ScalarFunction(scalar_function) => {
+                    Self::from_scalar_function(scalar_function, id, &mut stack, should_fmt)?
                 }
                 Expression::Row(RowExpr { list, .. }) => {
                     let mut row = ColExprStack::new(plan, should_fmt);
@@ -704,17 +617,7 @@ impl ColExpr {
                     };
                     stack.push((expr, id));
                 }
-                Expression::Unary(UnaryExpr { op, .. }) => {
-                    let child = stack.pop_expr(Some(id)).into();
-                    let op_name = op.to_smolstr();
-                    let expr = match op {
-                        Unary::Not | Unary::Exists => ColExpr::PrefixOp(op_name, child),
-                        Unary::IsNull | Unary::IsTrue | Unary::IsFalse => {
-                            ColExpr::SuffixOp(child, op_name)
-                        }
-                    };
-                    stack.push((expr, id));
-                }
+                Expression::Unary(unary) => Self::from_unary(unary, id, &mut stack)?,
                 Expression::Timestamp(timestamp) => {
                     let name = match timestamp {
                         Timestamp::Date => "Date",
@@ -749,6 +652,143 @@ impl ColExpr {
 
         let expr = stack.pop_expr(None);
         Ok(expr)
+    }
+
+    fn from_window(
+        window: &Window,
+        id: NodeId,
+        stack: &mut ColExprStack<'_>,
+        should_fmt: bool,
+    ) -> Result<(), SbroadError> {
+        let Window {
+            partition,
+            ordering,
+            frame,
+        } = window;
+        let frame = frame.as_ref().map(|f| FrameExplain::from_ir(f, stack));
+
+        let mut o_elems = Vec::new();
+        if let Some(ordering) = ordering {
+            for o_elem in ordering {
+                let expr = match o_elem.entity {
+                    OrderByEntity::Expression { .. } => {
+                        let expr = stack.pop_expr(Some(id));
+                        OrderByExpr::Expr { expr }
+                    }
+                    OrderByEntity::Index { value } => OrderByExpr::Index { value },
+                };
+                o_elems.push(OrderByPair {
+                    expr,
+                    order_type: o_elem.order_type,
+                });
+            }
+            o_elems.reverse();
+        };
+
+        let mut p_elems = Vec::new();
+        if let Some(partition) = partition {
+            p_elems.reserve(partition.len());
+            for _ in partition {
+                let expr = stack.pop_expr(Some(id));
+                p_elems.push(expr)
+            }
+            p_elems.reverse();
+        }
+
+        let window = WindowExplain {
+            partition: p_elems,
+            ordering: o_elems,
+            frame,
+            should_fmt,
+        };
+
+        let expr = ColExpr::Window(window.into());
+        stack.push((expr, id));
+        Ok(())
+    }
+
+    fn from_case(
+        case: &Case,
+        id: NodeId,
+        stack: &mut ColExprStack<'_>,
+        should_fmt: bool,
+    ) -> Result<(), SbroadError> {
+        let Case {
+            search_expr,
+            when_blocks,
+            else_expr,
+        } = case;
+        let else_expr = else_expr.map(|_| stack.pop_expr(Some(id)).into());
+
+        let mut match_exprs = Vec::with_capacity(when_blocks.len());
+        for _ in when_blocks {
+            let res_expr = stack.pop_expr(Some(id));
+            let cond_expr = stack.pop_expr(Some(id));
+            match_exprs.push((cond_expr, res_expr));
+        }
+        match_exprs.reverse();
+
+        let search_expr = search_expr.map(|_| stack.pop_expr(Some(id)).into());
+
+        let expr = ColExpr::Case(search_expr, match_exprs, else_expr, should_fmt);
+        stack.push((expr, id));
+        Ok(())
+    }
+
+    fn from_reference(
+        reference: &Reference,
+        plan: &Plan,
+        id: NodeId,
+        current_node: &Expression,
+        stack: &mut ColExprStack<'_>,
+    ) -> Result<(), SbroadError> {
+        let Reference { position, .. } = reference;
+        let rel_id = plan.get_relational_from_reference_node(id)?;
+        let (tbl_name, col_name) =
+            ColExpr::scan_column_name(plan, RelColumn::new(rel_id, *position), current_node)?;
+        let expr = ColExpr::Column(tbl_name, col_name, current_node.calculate_type(plan)?);
+        stack.push((expr, id));
+        Ok(())
+    }
+
+    fn from_scalar_function(
+        scalar_function: &ScalarFunction,
+        id: NodeId,
+        stack: &mut ColExprStack<'_>,
+        should_fmt: bool,
+    ) -> Result<(), SbroadError> {
+        let ScalarFunction {
+            name,
+            children,
+            feature,
+            func_type,
+            ..
+        } = scalar_function;
+        let mut args = Vec::with_capacity(children.len());
+        for _ in children {
+            args.push(stack.pop_expr(Some(id)));
+        }
+        args.reverse();
+        let func_expr =
+            ColExpr::ScalarFunction(name.clone(), args, feature.clone(), *func_type, should_fmt);
+        stack.push((func_expr, id));
+        Ok(())
+    }
+
+    fn from_unary(
+        unary: &UnaryExpr,
+        id: NodeId,
+        stack: &mut ColExprStack<'_>,
+    ) -> Result<(), SbroadError> {
+        let UnaryExpr { op, .. } = unary;
+        let child = stack.pop_expr(Some(id)).into();
+        let op_name = op.to_smolstr();
+        let expr = match op {
+            Unary::Not | Unary::Exists => ColExpr::PrefixOp(op_name, child),
+            Unary::IsNull | Unary::IsTrue | Unary::IsFalse => ColExpr::SuffixOp(child, op_name),
+        };
+        stack.push((expr, id));
+        Ok(())
     }
 }
 
