@@ -2753,45 +2753,7 @@ impl Plan {
                 continue;
             }
 
-            // Before processing the node itself we ensure that each of its children that is a
-            // `Values` node is covered with a `Motion::Full`.
-            //
-            // A `ScanCte` whose direct child is a `Values` is materialized in
-            // `resolve_cte_conflicts`.
-            if !matches!(self.get_relation_node(id)?, Relational::ScanCte(_)) {
-                let children = self.get_relation_children(id)?;
-
-                let mut strategy = Strategy::new(id);
-                for child_id in children.iter().copied() {
-                    if values_covered.contains(&child_id) {
-                        continue;
-                    }
-                    let child_rel = self.get_relation_node(child_id)?;
-                    if let Relational::Values(_) = child_rel {
-                        strategy.upsert_child(child_id, MotionPolicy::Full, Program::default());
-                        values_covered.insert(child_id);
-                    }
-                }
-                if !strategy.children_policy.is_empty() {
-                    self.insert_motion_nodes(strategy)?;
-                }
-            }
-
-            // We clone it because immutable reference won't allow us to change plan later.
-            let node = self.get_relation_node(id)?.get_rel_owned();
-
-            // Some transformations (Union) need to add new nodes above
-            // themselves, because we don't store parent references,
-            // we update child reference when DFS reaches parent node.
-            for child_id in &node.children() {
-                if let Some(new_id) = old_new.get(child_id) {
-                    self.change_child(id, *child_id, *new_id)?;
-                    if let Some(output) = self.get_relation_node(id)?.explicit_output() {
-                        self.replace_target_in_subtree(output, *child_id, *new_id)?;
-                    }
-                    old_new.remove(child_id);
-                }
-            }
+            let node = self.prepare_node_for_motions(id, &mut values_covered, &mut old_new)?;
 
             match node {
                 RelOwned::Motion { .. } => {
@@ -2814,41 +2776,12 @@ impl Plan {
                     // (native or resulted from children).
                     self.set_rel_output_distribution(id)?;
                 }
-                RelOwned::Values(Values { rows, .. }) => {
-                    let mut correct_nodes = AHashSet::new();
-                    for row in rows {
-                        let row_strategy = self.resolve_sq_conflicts(id, row)?;
-                        correct_nodes.extend(row_strategy.get_rel_ids());
-                        self.insert_motion_nodes(row_strategy)?;
-                    }
-                    self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
-
-                    self.set_rel_distr(id, Distribution::Global)?;
-                }
+                RelOwned::Values(Values { rows, .. }) => self.add_motions_for_values(id, &rows)?,
                 RelOwned::GroupBy(GroupBy { gr_exprs, .. }) => {
-                    let colocated =
-                        self.colocated_subqueries(id, &gathered_by_windows, &mut cache)?;
-                    let mut correct_nodes = colocated.clone();
-                    for gr_expr in gr_exprs {
-                        let mut gr_expr_strategy = self.resolve_sq_conflicts(id, gr_expr)?;
-                        gr_expr_strategy.keep_in_place(&colocated);
-                        correct_nodes.extend(gr_expr_strategy.get_rel_ids());
-                        self.insert_motion_nodes(gr_expr_strategy)?;
-                    }
-                    self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
-
-                    self.try_dist_from_subqueries(id)?;
+                    self.add_motions_for_group_by(id, &gr_exprs, &gathered_by_windows, &mut cache)?;
                 }
                 RelOwned::Selection(Selection { filter: data, .. }) => {
-                    let colocated =
-                        self.colocated_subqueries(id, &gathered_by_windows, &mut cache)?;
-                    let mut strategy = self.resolve_sq_conflicts(id, data)?;
-                    strategy.keep_in_place(&colocated);
-                    let correct_rel_ids = strategy.get_rel_ids();
-                    self.insert_motion_nodes(strategy)?;
-                    self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
-
-                    self.try_dist_from_subqueries(id)?;
+                    self.add_motions_for_selection(id, data, &gathered_by_windows, &mut cache)?;
                 }
                 RelOwned::OrderBy(OrderBy {
                     order_by_elements, ..
@@ -2880,11 +2813,7 @@ impl Plan {
                 RelOwned::ScanFunction(ScanFunction { function, .. }) => {
                     // Every instance must compute the same rows, so the
                     // subqueries in the arguments are brought to every instance.
-                    let strategy = self.resolve_sq_conflicts(id, function)?;
-                    let correct_rel_ids = strategy.get_rel_ids();
-                    self.insert_motion_nodes(strategy)?;
-                    self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
-                    self.set_rel_distr(id, Distribution::Global)?;
+                    self.add_motions_for_global(id, function)?;
                 }
                 RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. })
                     if in_place.contains(&id)
@@ -2897,11 +2826,7 @@ impl Plan {
                     self.set_rel_distr(id, Distribution::Any)?;
                 }
                 RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
-                    let strategy = self.resolve_sq_conflicts(id, output)?;
-                    let correct_rel_ids = strategy.get_rel_ids();
-                    self.insert_motion_nodes(strategy)?;
-                    self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
-                    self.set_rel_distr(id, Distribution::Global)?;
+                    self.add_motions_for_global(id, output)?;
                 }
                 RelOwned::Join(Join {
                     condition, kind, ..
@@ -2930,33 +2855,12 @@ impl Plan {
                     self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::Union(Union { .. }) => {
-                    let strategy = self.resolve_union_conflicts(id, &mut cache)?;
-                    // Both branches are on one bucket: the local UNION removes
-                    // the duplicates. Read the current children: `node` was
-                    // copied before `old_new` and `resolve_union_conflicts`
-                    // relinked them, so its `left` may be a nested UNION
-                    // below its motion.
-                    let moves_nothing = strategy
-                        .children_policy
-                        .values()
-                        .all(|(policy, _)| matches!(policy, MotionPolicy::None));
-                    let local = moves_nothing && in_place.contains(&id) && {
-                        let left = self.get_rel_child(id, 0)?;
-                        let right = self.get_rel_child(id, 1)?;
-                        self.single_node_buckets(left, &mut cache)?
-                            .disjunct(&self.single_node_buckets(right, &mut cache)?)
-                            .is_single_node_filtered()
-                    };
-                    self.insert_motion_nodes(strategy)?;
-                    self.set_rel_output_distribution(id)?;
-                    if !local {
-                        let new_top_id = self.add_motion_with_domain_checks(
-                            id,
-                            &MotionPolicy::Full,
-                            Program::new(vec![MotionOpcode::RemoveDuplicates]),
-                        )?;
-                        old_new.insert(id, new_top_id);
-                    }
+                    self.add_motions_for_union(
+                        id,
+                        in_place.contains(&id),
+                        &mut old_new,
+                        &mut cache,
+                    )?;
                 }
                 RelOwned::UnionAll(UnionAll { .. }) => {
                     let strategy = self.resolve_union_conflicts(id, &mut cache)?;
@@ -2990,6 +2894,152 @@ impl Plan {
         let slices = self.calculate_slices(top_id)?;
         self.slices = slices.into();
         Ok(self)
+    }
+
+    /// Covers the `Values` children of `id` with motions and relinks the
+    /// children that were replaced above them. Returns a copy of the node.
+    fn prepare_node_for_motions(
+        &mut self,
+        id: NodeId,
+        values_covered: &mut AHashSet<NodeId>,
+        old_new: &mut AHashMap<NodeId, NodeId>,
+    ) -> Result<RelOwned, SbroadError> {
+        // Before processing the node itself we ensure that each of its children that is a
+        // `Values` node is covered with a `Motion::Full`.
+        //
+        // A `ScanCte` whose direct child is a `Values` is materialized in
+        // `resolve_cte_conflicts`.
+        if !matches!(self.get_relation_node(id)?, Relational::ScanCte(_)) {
+            let children = self.get_relation_children(id)?;
+
+            let mut strategy = Strategy::new(id);
+            for child_id in children.iter().copied() {
+                if values_covered.contains(&child_id) {
+                    continue;
+                }
+                let child_rel = self.get_relation_node(child_id)?;
+                if let Relational::Values(_) = child_rel {
+                    strategy.upsert_child(child_id, MotionPolicy::Full, Program::default());
+                    values_covered.insert(child_id);
+                }
+            }
+            if !strategy.children_policy.is_empty() {
+                self.insert_motion_nodes(strategy)?;
+            }
+        }
+
+        // We clone it because immutable reference won't allow us to change plan later.
+        let node = self.get_relation_node(id)?.get_rel_owned();
+
+        // Some transformations (Union) need to add new nodes above
+        // themselves, because we don't store parent references,
+        // we update child reference when DFS reaches parent node.
+        for child_id in &node.children() {
+            if let Some(new_id) = old_new.get(child_id) {
+                self.change_child(id, *child_id, *new_id)?;
+                if let Some(output) = self.get_relation_node(id)?.explicit_output() {
+                    self.replace_target_in_subtree(output, *child_id, *new_id)?;
+                }
+                old_new.remove(child_id);
+            }
+        }
+        Ok(node)
+    }
+
+    fn add_motions_for_values(&mut self, id: NodeId, rows: &[NodeId]) -> Result<(), SbroadError> {
+        let mut correct_nodes = AHashSet::new();
+        for row in rows {
+            let row_strategy = self.resolve_sq_conflicts(id, *row)?;
+            correct_nodes.extend(row_strategy.get_rel_ids());
+            self.insert_motion_nodes(row_strategy)?;
+        }
+        self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
+
+        self.set_rel_distr(id, Distribution::Global)
+    }
+
+    fn add_motions_for_group_by(
+        &mut self,
+        id: NodeId,
+        gr_exprs: &[NodeId],
+        gathered_by_windows: &AHashSet<NodeId>,
+        cache: &mut MotionsCache,
+    ) -> Result<(), SbroadError> {
+        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
+        let mut correct_nodes = colocated.clone();
+        for gr_expr in gr_exprs {
+            let mut gr_expr_strategy = self.resolve_sq_conflicts(id, *gr_expr)?;
+            gr_expr_strategy.keep_in_place(&colocated);
+            correct_nodes.extend(gr_expr_strategy.get_rel_ids());
+            self.insert_motion_nodes(gr_expr_strategy)?;
+        }
+        self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
+
+        self.try_dist_from_subqueries(id)
+    }
+
+    fn add_motions_for_selection(
+        &mut self,
+        id: NodeId,
+        data: NodeId,
+        gathered_by_windows: &AHashSet<NodeId>,
+        cache: &mut MotionsCache,
+    ) -> Result<(), SbroadError> {
+        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
+        let mut strategy = self.resolve_sq_conflicts(id, data)?;
+        strategy.keep_in_place(&colocated);
+        let correct_rel_ids = strategy.get_rel_ids();
+        self.insert_motion_nodes(strategy)?;
+        self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+
+        self.try_dist_from_subqueries(id)
+    }
+
+    /// Brings the subqueries of `expr_id` to every instance: the node
+    /// `id` has the `Global` distribution.
+    fn add_motions_for_global(&mut self, id: NodeId, expr_id: NodeId) -> Result<(), SbroadError> {
+        let strategy = self.resolve_sq_conflicts(id, expr_id)?;
+        let correct_rel_ids = strategy.get_rel_ids();
+        self.insert_motion_nodes(strategy)?;
+        self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+        self.set_rel_distr(id, Distribution::Global)
+    }
+
+    fn add_motions_for_union(
+        &mut self,
+        id: NodeId,
+        in_place: bool,
+        old_new: &mut AHashMap<NodeId, NodeId>,
+        cache: &mut MotionsCache,
+    ) -> Result<(), SbroadError> {
+        let strategy = self.resolve_union_conflicts(id, cache)?;
+        // Both branches are on one bucket: the local UNION removes
+        // the duplicates. Read the current children: the caller copied
+        // the node before `old_new` and `resolve_union_conflicts`
+        // relinked them, so the copy's `left` may be a nested UNION
+        // below its motion.
+        let moves_nothing = strategy
+            .children_policy
+            .values()
+            .all(|(policy, _)| matches!(policy, MotionPolicy::None));
+        let local = moves_nothing && in_place && {
+            let left = self.get_rel_child(id, 0)?;
+            let right = self.get_rel_child(id, 1)?;
+            self.single_node_buckets(left, cache)?
+                .disjunct(&self.single_node_buckets(right, cache)?)
+                .is_single_node_filtered()
+        };
+        self.insert_motion_nodes(strategy)?;
+        self.set_rel_output_distribution(id)?;
+        if !local {
+            let new_top_id = self.add_motion_with_domain_checks(
+                id,
+                &MotionPolicy::Full,
+                Program::new(vec![MotionOpcode::RemoveDuplicates]),
+            )?;
+            old_new.insert(id, new_top_id);
+        }
+        Ok(())
     }
 
     fn add_motions_for_limit(
