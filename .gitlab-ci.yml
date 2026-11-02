@@ -478,6 +478,33 @@ build-linux:
       - test/plugins/plug_*/target/cov/x86_64-unknown-linux-gnu/debug/libplug_*.so
     expire_in: 3 days
 
+check-sql-stack:
+  stage: test
+  extends:
+    - .test_rules
+  needs:
+    # The debug binary of the coverage build; the instrumentation does not
+    # change the frame sizes.
+    - job: build-linux
+      artifacts: true
+      parallel:
+        matrix:
+          - BUILD_PROFILE: dev
+            TARGET: debug
+  variables:
+    KUBERNETES_CPU_REQUEST: 2
+    KUBERNETES_MEMORY_REQUEST: "4Gi"
+  cache:
+    - <<: *cache_git
+      policy: pull
+  script:
+    - tools/ensure_checkout.sh
+    - |
+      ci-log-section start "check-sql-stack" Check SQL stack frames
+      make check-sql-stack \
+        SQL_STACK_BINARY=target/cov/x86_64-unknown-linux-gnu/debug/picodata
+      ci-log-section end "check-sql-stack"
+
 test-rs-linux:
   stage: test
   extends:

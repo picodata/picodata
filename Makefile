@@ -206,6 +206,16 @@ bench-sql-check:
 		$(CARGO_FLAGS_EXTRA) \
 		$(SQL_CRATES) --no-run
 
+# The SQL code recurses over the query on a fiber stack of 512 KiB, so the
+# debug stack frames of the SQL crates must stay small.
+SQL_STACK_BINARY ?= target/debug/picodata
+SQL_STACK_MAX ?= 8192
+
+.PHONY: check-sql-stack
+check-sql-stack:
+	tools/binary-stack-usage.py $(SQL_STACK_BINARY) \
+		--filter '^<?sql_\w+::' --max $(SQL_STACK_MAX) --quiet
+
 .PHONY: test-py
 test-py:
 	uv run pytest $(PYTEST_NUMPROCESSES) $(PYTEST_SELECT) $(PYTEST_FLAGS) -vv --color=yes
