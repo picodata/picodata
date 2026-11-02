@@ -2,7 +2,7 @@ from decimal import Decimal
 from uuid import UUID
 
 import pytest
-from conftest import Cluster, Instance, TarantoolError
+from conftest import Cluster, Instance, TarantoolError, create_legacy_map_table
 from tarantool import Datetime  # type: ignore[attr-defined]
 
 _PLUGIN = "testplug"
@@ -85,23 +85,8 @@ def test_msgpack_extensions_over_iproto(cluster: Cluster):
     assert bloom_fpr == Decimal("0.023")
 
     # Uuids & datetimes never land in an `any` column on their own, so put them
-    # into a map column via lua. The SQL `JSON` type is native json now, which
-    # cannot hold them, and SQL has no `map` type, so the table is created
-    # through the internal DDL path.
-    i1.propose_create_space(
-        dict(
-            id=902,
-            name="t_json",
-            format=[
-                dict(name="id", type="integer", is_nullable=False),
-                dict(name="j", type="map", is_nullable=True),
-            ],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="global"),
-            engine="memtx",
-            owner=0,
-        ),
-    )
+    # into a map column via lua: native json cannot hold them.
+    create_legacy_map_table(i1, name="t_json", space_id=902, column="j")
     i1.eval(
         """
         box.space.t_json:replace{1, {

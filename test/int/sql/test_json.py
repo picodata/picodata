@@ -4,7 +4,7 @@ import psycopg
 import pytest
 from psycopg.types.json import Json, Jsonb
 from psycopg.types.string import TextLoader
-from conftest import Cluster, TarantoolError
+from conftest import Cluster, TarantoolError, create_legacy_map_table
 
 PG_PASSWORD = "Passw0rd"
 
@@ -29,27 +29,6 @@ def _json_values(conn, query):
     with conn.cursor() as cur:
         cur.execute(query, binary=False)
         return {row[0]: row[1] for row in cur.fetchall()}
-
-
-def _create_legacy_map_table(instance, name: str = "legacy", space_id: int = 901):
-    """Create a table with a `map`-typed column, mirroring a legacy `json`
-    column that predates the native json type (persisted as `field_type =
-    "map"`). The SQL grammar has no user-facing `map` type, so the table is
-    created through the internal DDL path."""
-    instance.propose_create_space(
-        dict(
-            id=space_id,
-            name=name,
-            format=[
-                dict(name="id", type="integer", is_nullable=False),
-                dict(name="m", type="map", is_nullable=True),
-            ],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="global"),
-            engine="memtx",
-            owner=0,
-        ),
-    )
 
 
 class TestJson:
@@ -151,7 +130,7 @@ class TestJson:
         map-backed column, which keeps behaving as object-only, and a json literal
         INSERT into it fails with the natural cast-mismatch error."""
         i1 = cluster.leader()
-        _create_legacy_map_table(i1)
+        create_legacy_map_table(i1, name="legacy", space_id=901, column="m")
 
         i1.eval("""box.space.legacy:insert{1, require('json').decode('{"a":{"b":"c"},"d":{"e":[1,2,3]},"f":42}')}""")
         i1.eval("""box.space.legacy:insert{2, require('json').decode('{"a":2}')}""")

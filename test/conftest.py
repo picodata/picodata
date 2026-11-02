@@ -79,6 +79,28 @@ def _decode_mp_json(data, unpacker=None):
 
 tarantool.msgpack_ext.unpacker.decoders[_MP_JSON_EXT_CODE] = _decode_mp_json  # type: ignore
 
+
+def create_legacy_map_table(instance, name: str, space_id: int, column: str) -> None:
+    """Create a table with a `map`-typed column, mirroring a legacy `json`
+    column that predates the native json type (persisted as `field_type =
+    "map"`). The SQL grammar has no user-facing `map` type, so the table is
+    created through the internal DDL path."""
+    instance.propose_create_space(
+        dict(
+            id=space_id,
+            name=name,
+            format=[
+                dict(name="id", type="integer", is_nullable=False),
+                dict(name=column, type="map", is_nullable=True),
+            ],
+            primary_key=[dict(field="id")],
+            distribution=dict(kind="global"),
+            engine="memtx",
+            owner=0,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Timeout scaling for slow environments (e.g. ASan-instrumented builds)
 # ---------------------------------------------------------------------------

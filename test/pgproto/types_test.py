@@ -6,7 +6,7 @@ import msgpack  # type: ignore
 import pg8000.native as pg8000  # type: ignore
 import psycopg
 import pytest
-from conftest import Postgres
+from conftest import Postgres, create_legacy_map_table
 from framework.pgwire import PgClient
 from psycopg.types.json import Json, Jsonb
 
@@ -690,23 +690,8 @@ def test_map_with_msgpack_extensions(postgres: Postgres):
     i1 = postgres.instance
 
     i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
-    # A map column: the SQL `JSON` type is native json now, which cannot hold
-    # uuids or datetimes, and SQL has no `map` type, so the table is created
-    # through the internal DDL path.
-    i1.propose_create_space(
-        dict(
-            id=902,
-            name="t",
-            format=[
-                dict(name="id", type="integer", is_nullable=False),
-                dict(name="j", type="map", is_nullable=True),
-            ],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="global"),
-            engine="memtx",
-            owner=0,
-        ),
-    )
+    # A map column: native json cannot hold uuids or datetimes.
+    create_legacy_map_table(i1, name="t", space_id=902, column="j")
     i1.sql(f'GRANT READ ON TABLE "t" TO "{user}"', sudo=True)
 
     # Decimals, uuids & datetimes can't be written in a json literal, so put
