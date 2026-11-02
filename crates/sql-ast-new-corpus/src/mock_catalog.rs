@@ -39,6 +39,14 @@ fn user_columns(columns: &[ColumnSpec]) -> Vec<Column> {
         .collect()
 }
 
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+fn primary_key_name(table: &Table) -> SmolStr {
+    format_smolstr!("{}_pkey", table.id)
+}
+
 /// An index registered by [`MockCatalog::add_index`].
 struct MockIndex {
     name: SmolStr,
@@ -113,7 +121,13 @@ impl MockCatalog {
     /// # Panics
     /// - the name is already registered. Silently replacing would leave the
     ///   catalog disagreeing with the DDL [`ddl`](Self::ddl) renders.
+    /// - the generated primary-key index name is already used by a user index.
     fn register(&mut self, table: Table) {
+        let pkey = primary_key_name(&table);
+        assert!(
+            self.indexes.iter().all(|index| index.name != pkey),
+            "index '{pkey}' already exists"
+        );
         let name = table.name.clone();
         assert!(
             self.tables.insert(name.clone(), table).is_none(),
@@ -172,14 +186,16 @@ impl MockCatalog {
 
     /// Register an index on a registered table.
     ///
-    /// Index names are global, as in picodata, and ids count per table past the
-    /// implicit indexes a default `CREATE TABLE` creates: 0 for the primary key,
-    /// and 1 for `bucket_id` on a sharded table.
+    /// Index names are global, as in picodata, and ids follow the table's maximum
+    /// existing id. Implicit indexes are 0 for the primary key, and 1 for
+    /// `bucket_id` on a sharded table unless it is a primary-key prefix.
     ///
     /// # Panics
     /// - the table is not registered, `columns` is empty, or a column is absent
     ///   from the table;
     /// - the index name is already registered, on any table.
+    /// - the name conflicts with an implicit primary-key index or the table's
+    ///   implicit `bucket_id` index.
     pub fn add_index(&mut self, name: &str, table: &str, columns: &[&str]) {
         let table = self
             .tables
@@ -197,14 +213,28 @@ impl MockCatalog {
             self.indexes.iter().all(|index| index.name != name),
             "index '{name}' is already registered"
         );
+        assert!(
+            self.tables
+                .values()
+                .all(|table| primary_key_name(table) != name),
+            "index '{name}' already exists"
+        );
 
-        let implicit = if table.get_sk().is_ok() { 2 } else { 1 };
-        let registered = self
+        let has_bucket_index = table.is_sharded() && !table.has_bucket_id_primary_key_prefix();
+        assert!(
+            !(has_bucket_index && name == "bucket_id"),
+            "index '{name}' already exists"
+        );
+        let first_user_id = if has_bucket_index { 2 } else { 1 };
+        let id = self
             .indexes
             .iter()
             .filter(|index| index.table == table.name)
-            .count();
-        let id = implicit + u32::try_from(registered).expect("index count must fit u32");
+            .map(|index| index.id)
+            .max()
+            .map_or(first_user_id, |id| {
+                id.checked_add(1).expect("index id must fit u32")
+            });
         self.indexes.push(MockIndex {
             name: name.to_smolstr(),
             table: table.name.clone(),
@@ -230,13 +260,14 @@ impl MockCatalog {
                     let columns = index
                         .columns
                         .iter()
-                        .map(|column| format!("\"{column}\""))
+                        .map(|column| quote_ident(column))
                         .collect::<Vec<_>>()
                         .join(", ");
                     let _ = write!(
                         ddl,
-                        "\nCREATE INDEX \"{}\" ON \"{}\" ({columns});",
-                        index.name, index.table
+                        "\nCREATE INDEX {} ON {} ({columns});",
+                        quote_ident(&index.name),
+                        quote_ident(&index.table)
                     );
                 }
                 ddl
@@ -261,12 +292,12 @@ impl MockCatalog {
         let key_columns = |positions: &[usize]| {
             positions
                 .iter()
-                .map(|&pos| format!("\"{}\"", table.columns[pos].name))
+                .map(|&pos| quote_ident(&table.columns[pos].name))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
 
-        let mut ddl = format!("CREATE TABLE \"{}\" (\n", table.name);
+        let mut ddl = format!("CREATE TABLE {} (\n", quote_ident(&table.name));
         for column in &table.columns {
             if *column.get_role() != ColumnRole::User {
                 continue;
@@ -279,8 +310,9 @@ impl MockCatalog {
             // `DerivedType`'s `Display` is the `::type` suffix spelling.
             let _ = writeln!(
                 ddl,
-                "    \"{}\" {} {nullability},",
-                column.name, column.r#type
+                "    {} {} {nullability},",
+                quote_ident(&column.name),
+                column.r#type
             );
         }
         let _ = writeln!(
@@ -304,7 +336,7 @@ impl MockCatalog {
                     key_columns(sharding_key)
                 );
                 if let Some(tier) = &table.tier {
-                    let _ = write!(ddl, " IN TIER \"{tier}\"");
+                    let _ = write!(ddl, " IN TIER {}", quote_ident(tier));
                 }
                 ddl.push(';');
             }
@@ -324,18 +356,25 @@ impl Metadata for MockCatalog {
     /// Answers as picodata's catalog does: by the global index name, then
     /// checked against the table.
     fn get_index_id(&self, index_name: &str, table_name: &str) -> Result<u32, SbroadError> {
-        let index = self
+        let (owner, id) = self
             .indexes
             .iter()
             .find(|index| index.name == index_name)
+            .map(|index| (index.table.as_str(), index.id))
+            .or_else(|| {
+                self.tables
+                    .values()
+                    .find(|table| primary_key_name(table) == index_name)
+                    .map(|table| (table.name.as_str(), 0))
+            })
             .ok_or_else(|| SbroadError::NotFound(Entity::Index, index_name.to_smolstr()))?;
-        if index.table != table_name {
+        if owner != table_name {
             return Err(SbroadError::NotFound(
                 Entity::Index,
                 format_smolstr!("'{index_name}' for table '{table_name}'"),
             ));
         }
-        Ok(index.id)
+        Ok(id)
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
@@ -429,6 +468,106 @@ CREATE INDEX "global_id" ON "global" ("id");"#
         assert_eq!(id("sharded_a", "sharded"), 2);
         assert_eq!(id("sharded_b", "sharded"), 3);
         assert_eq!(id("global_a", "global"), 1);
+    }
+
+    #[test]
+    fn primary_key_indexes_resolve_by_global_name() {
+        let catalog = indexed_catalog();
+        assert_eq!(catalog.get_index_id("1000_pkey", "sharded").unwrap(), 0);
+        assert_eq!(catalog.get_index_id("1001_pkey", "global").unwrap(), 0);
+        assert_eq!(
+            catalog
+                .get_index_id("1000_pkey", "global")
+                .unwrap_err()
+                .to_string(),
+            "index '1000_pkey' for table 'global' not found"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "index '1000_pkey' already exists")]
+    fn user_index_cannot_take_existing_primary_key_name() {
+        let mut catalog = indexed_catalog();
+        catalog.add_index("1000_pkey", "global", &["a"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "index '1002_pkey' already exists")]
+    fn table_cannot_take_existing_user_index_name() {
+        let mut catalog = indexed_catalog();
+        catalog.add_index("1002_pkey", "global", &["a"]);
+        catalog.add_global("next", &[("a", UnrestrictedType::Integer, false)], &["a"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "index 'bucket_id' already exists")]
+    fn implicit_bucket_id_index_name_is_reserved() {
+        let mut catalog = indexed_catalog();
+        catalog.add_index("bucket_id", "sharded", &["a"]);
+    }
+
+    #[test]
+    fn bucket_id_index_name_is_available_without_implicit_index() {
+        for embedded_bucket_id in [false, true] {
+            let mut catalog = MockCatalog::new();
+            let columns = &[("a", UnrestrictedType::Integer, false)];
+            if embedded_bucket_id {
+                catalog.add_sharded("t", columns, &["a"], &["bucket_id", "a"]);
+            } else {
+                catalog.add_global("t", columns, &["a"]);
+            }
+            catalog.add_index("bucket_id", "t", &["a"]);
+            catalog.add_index("next", "t", &["a"]);
+            assert_eq!(catalog.get_index_id("bucket_id", "t").unwrap(), 1);
+            assert_eq!(catalog.get_index_id("next", "t").unwrap(), 2);
+        }
+    }
+
+    #[test]
+    fn index_ids_follow_maximum_remaining_id() {
+        let mut catalog = indexed_catalog();
+        // Simulate drops without adding a DDL mutation API to the fixture builder.
+        catalog.indexes.retain(|index| index.name != "sharded_a");
+        catalog.add_index("after_gap", "sharded", &["a"]);
+        assert_eq!(catalog.get_index_id("sharded_b", "sharded").unwrap(), 3);
+        assert_eq!(catalog.get_index_id("after_gap", "sharded").unwrap(), 4);
+
+        catalog.indexes.retain(|index| index.name != "after_gap");
+        catalog.add_index("after_max_drop", "sharded", &["a"]);
+        assert_eq!(
+            catalog.get_index_id("after_max_drop", "sharded").unwrap(),
+            4
+        );
+
+        catalog.indexes.retain(|index| index.table != "sharded");
+        catalog.add_index("after_all_dropped", "sharded", &["a"]);
+        assert_eq!(
+            catalog
+                .get_index_id("after_all_dropped", "sharded")
+                .unwrap(),
+            2
+        );
+        assert_eq!(catalog.get_index_id("global_a", "global").unwrap(), 1);
+    }
+
+    #[test]
+    fn ddl_escapes_quotes_in_identifiers() {
+        let mut catalog = MockCatalog::new().on_storage(SpaceEngine::Memtx, "tier\"q");
+        catalog.add_sharded(
+            "t\"q",
+            &[("a\"q", UnrestrictedType::Integer, false)],
+            &["a\"q"],
+            &["a\"q"],
+        );
+        catalog.add_index("ix\"q", "t\"q", &["a\"q"]);
+        assert_eq!(
+            catalog.ddl(),
+            r#"CREATE TABLE "t""q" (
+    "a""q" int NOT NULL,
+    PRIMARY KEY ("a""q")
+) USING MEMTX DISTRIBUTED BY ("a""q") IN TIER "tier""q";
+CREATE INDEX "ix""q" ON "t""q" ("a""q");"#
+        );
     }
 
     /// The same errors picodata's catalog gives: an unknown name, and a known

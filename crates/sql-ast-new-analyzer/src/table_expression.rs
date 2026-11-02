@@ -34,6 +34,7 @@ use sql_ast_new_nodes::table_expression::{
     TableFactorInner, TableFunction,
 };
 use sql_ast_new_nodes::{Analyzed, Ident, NamedEntity, Raw};
+use sql_ir::errors::{Entity, SbroadError};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::{Column, ColumnRole};
 use sql_ir::ir::table_function::{find_table_function, TableFunctionCall};
@@ -171,9 +172,11 @@ impl<'q> Binder<'q> for TableFactor<'q, Raw> {
                 Some(IndexedBy { name, index_id })
             }
             (Some(_), _) => {
-                return Err(semantic_err(format_smolstr!(
-                    "INDEXED BY clause is only supported for tables"
-                )))
+                return Err(SbroadError::Invalid(
+                    Entity::Index,
+                    Some("INDEXED BY clause is only supported for tables".into()),
+                )
+                .into())
             }
         };
         Ok(Self::BoundNode::from_parts(inner, alias, indexed_by))
@@ -199,9 +202,9 @@ fn bind_table_function<'q, M: Metadata>(
     debug_assert!(frame.from.is_empty());
     frame.from = partial_from;
     let saved_stage = frame.set_stage(Stage::FunctionInFrom);
-    meta.binder.binding_table_function = true;
+    meta.binder.binding_table_function = Some(registered);
     let bound = func.call.bind(meta);
-    meta.binder.binding_table_function = false;
+    meta.binder.binding_table_function = None;
     let frame = meta.binder.top_frame_mut()?;
     frame.set_stage(saved_stage);
     meta.binder.curr_from = std::mem::take(&mut frame.from);

@@ -24,6 +24,7 @@
 //! | [`expr`] | column references, expression types |
 //! | [`aggregate`] | where an aggregate may sit, nesting, its semantic level |
 //! | [`asterisk`] | `*` and `t.*` expansion |
+//! | [`corpus`] | real-world queries against the corpus catalog |
 //! | [`window`] | window functions, the named `WINDOW` clause, frames |
 //!
 //! A query exercises more than one of them at once, so the module is chosen by
@@ -37,6 +38,7 @@
 
 mod aggregate;
 mod asterisk;
+mod corpus;
 mod expr;
 mod multiset;
 mod select;

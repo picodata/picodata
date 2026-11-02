@@ -25,7 +25,10 @@
 //! condition pins that boundary from both directions: what a subquery inside ON
 //! can see, and what it must not.
 
-use sql_ast_new_nodes::{AbstractSyntaxTree, Node};
+use sql_ast_new_nodes::expr::{ExprInner, ResolvedFn};
+use sql_ast_new_nodes::multiset::{MultisetInner, MultisetStmt};
+use sql_ast_new_nodes::table_expression::TableFactorInner;
+use sql_ast_new_nodes::{AbstractSyntaxTree, Analyzed, Node};
 use sql_frontend::frontend::sql::Ast;
 
 use super::{analyze_error, analyzed, catalog};
@@ -91,38 +94,110 @@ fn indexed_by_other_tables_index() {
     insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: index 't2_idx' for table 't1' not found");
 }
 
-/// Rendering does not show the index id, so read it off the bound factor:
-/// `t1_idx` is the first index of sharded `t1`, after the primary key (0) and
-/// `bucket_id` (1).
+fn index_id(stmt: &MultisetStmt<'_, Analyzed>) -> Option<u32> {
+    stmt.from_ref().expect("expected a FROM clause").entries()[0]
+        .tbl_factor()
+        .indexed_by
+        .as_ref()
+        .map(|indexed_by| indexed_by.index_id)
+}
+
+/// Rendering does not show the index id; sharded tables reserve bucket_id (1).
 #[test]
 fn indexed_by_table_carries_index_id() {
+    let mut catalog = catalog();
+    catalog.add_global(
+        "global_t",
+        &[("a", UnrestrictedType::Integer, false)],
+        &["a"],
+    );
+    catalog.add_index("global_idx", "global_t", &["a"]);
+    catalog.add_index("MixedCase", "t1", &["a"]);
+    for (query, expected_id) in [
+        ("SELECT a FROM t1 INDEXED BY t1_idx", 2),
+        (r#"SELECT a FROM t1 INDEXED BY "1000_pkey""#, 0),
+        ("SELECT a FROM global_t INDEXED BY global_idx", 1),
+        (r#"SELECT a FROM t1 INDEXED BY "MixedCase""#, 3),
+    ] {
+        let ast = AbstractSyntaxTree::new(query)
+            .expect("expected to build AST")
+            .analyze(&catalog, &[])
+            .expect("expected to analyze AST");
+        let Node::DqlStmt(dql) = &ast.root else {
+            panic!("expected a DQL statement");
+        };
+        assert_eq!(index_id(&dql.stmt), Some(expected_id), "{query}");
+    }
+    let error = AbstractSyntaxTree::new("SELECT a FROM t1 INDEXED BY MixedCase")
+        .unwrap()
+        .analyze(&catalog, &[])
+        .err()
+        .expect("unquoted index names must be folded to lowercase");
+    assert_eq!(
+        error.to_string(),
+        "semantic error: index mixedcase not found"
+    );
+}
+
+#[test]
+fn indexed_by_inside_subquery_carries_index_id() {
     let catalog = catalog();
-    let ast = AbstractSyntaxTree::new("SELECT a FROM t1 INDEXED BY t1_idx")
+    let ast = AbstractSyntaxTree::new("SELECT a FROM (SELECT a FROM t1 INDEXED BY t1_idx) AS s")
         .expect("expected to build AST")
         .analyze(&catalog, &[])
         .expect("expected to analyze AST");
     let Node::DqlStmt(dql) = &ast.root else {
         panic!("expected a DQL statement");
     };
-    let from = dql.stmt.from_ref().expect("expected a FROM clause");
-    let index_id = from.entries()[0]
-        .tbl_factor()
-        .indexed_by
-        .as_ref()
-        .map(|indexed_by| indexed_by.index_id);
-    assert_eq!(index_id, Some(2));
+    assert_eq!(index_id(&dql.stmt), None);
+    let from = dql.stmt.from_ref().unwrap();
+    let TableFactorInner::SubQuery(inner) = &from.entries()[0].tbl_factor().inner else {
+        panic!("expected a subquery");
+    };
+    assert_eq!(index_id(inner), Some(2));
+}
+
+#[test]
+fn indexed_by_union_branches_carry_independent_index_ids() {
+    let catalog = catalog();
+    for (query, expected_ids) in [
+        (
+            "SELECT a FROM t1 INDEXED BY t1_idx UNION ALL SELECT a FROM t1",
+            (Some(2), None),
+        ),
+        (
+            "SELECT a FROM t1 UNION ALL SELECT a FROM t1 INDEXED BY t1_idx",
+            (None, Some(2)),
+        ),
+    ] {
+        let ast = AbstractSyntaxTree::new(query)
+            .unwrap()
+            .analyze(&catalog, &[])
+            .unwrap();
+        let Node::DqlStmt(dql) = &ast.root else {
+            panic!("expected a DQL statement");
+        };
+        let MultisetInner::Operation(operation) = &dql.stmt.inner else {
+            panic!("expected a UNION");
+        };
+        assert_eq!(
+            (index_id(&operation.left), index_id(&operation.right)),
+            expected_ids,
+            "{query}"
+        );
+    }
 }
 
 #[test]
 fn indexed_by_subquery() {
     let query = "SELECT a FROM (SELECT a FROM t1) AS s INDEXED BY t1_idx";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: INDEXED BY clause is only supported for tables");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"invalid index: INDEXED BY clause is only supported for tables");
 }
 
 #[test]
 fn indexed_by_cte() {
     let query = "WITH c AS (SELECT 1 AS a) SELECT a FROM c INDEXED BY t1_idx";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: INDEXED BY clause is only supported for tables");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"invalid index: INDEXED BY clause is only supported for tables");
 }
 
 /// The CTE wins name resolution over the same-named table, so there is no
@@ -130,7 +205,7 @@ fn indexed_by_cte() {
 #[test]
 fn indexed_by_cte_shadowing_table() {
     let query = "WITH t1 AS (SELECT 1 AS a) SELECT a FROM t1 INDEXED BY t1_idx";
-    insta::assert_snapshot!(analyze_error(query, &[]), @"semantic error: INDEXED BY clause is only supported for tables");
+    insta::assert_snapshot!(analyze_error(query, &[]), @"invalid index: INDEXED BY clause is only supported for tables");
 }
 
 // ------------- JOIN -------------
@@ -202,6 +277,34 @@ fn table_function_several_arrays() {
 fn table_function_repeated_parameter() {
     let query = "SELECT * FROM unnest($1, $1::int[])";
     insta::assert_snapshot!(analyzed(query, &[DerivedType::unknown()]), @"SELECT unnest.value_1::int, unnest.value_2::int FROM unnest($1::int[], $1::int[])");
+}
+
+#[test]
+fn table_function_resolves_to_registry_entry() {
+    let catalog = catalog();
+    for (query, expected_name) in [
+        ("SELECT * FROM generate_series(1, 3)", "generate_series"),
+        ("SELECT * FROM unnest(ARRAY[1, 2])", "unnest"),
+    ] {
+        let ast = AbstractSyntaxTree::new(query)
+            .unwrap()
+            .analyze(&catalog, &[])
+            .unwrap();
+        let Node::DqlStmt(dql) = &ast.root else {
+            panic!("expected a DQL statement");
+        };
+        let from = dql.stmt.from_ref().unwrap();
+        let TableFactorInner::Function(function) = &from.entries()[0].tbl_factor().inner else {
+            panic!("expected a table function");
+        };
+        let ExprInner::FunctionCall(call) = function.call.inner_ref() else {
+            panic!("expected a function call");
+        };
+        let ResolvedFn::Table(registered) = call.resolved_fn() else {
+            panic!("expected a resolved table function");
+        };
+        assert_eq!(registered.name, expected_name, "{query}");
+    }
 }
 
 /// The arguments of a joined function see the FROM entries before it.

@@ -1218,7 +1218,7 @@ fn count_distinct_type() {
 
 #[test]
 fn scalar_fn_and_coalesce_type() {
-    // COALESCE is not a registry function: it types as a homogeneous group.
+    // COALESCE resolves through the catalog but types as a homogeneous group.
     insta::assert_snapshot!(
         analyzed("SELECT lower(e), coalesce(a, 1) FROM t1", &[]),
         @"SELECT lower(t1.e::text)::text, coalesce(t1.a::int, 1::int)::int FROM t1"
@@ -1406,6 +1406,30 @@ fn scalar_fn_resolves_to_catalog_function() {
 }
 
 #[test]
+fn volatile_fn_resolves_to_catalog_procedure() {
+    insta::assert_snapshot!(
+        resolved_fn("SELECT pico_instance_uuid()"),
+        @"scalar .proc_instance_uuid, Volatile, is_system: false"
+    );
+}
+
+#[test]
+fn exposed_fn_with_argument_resolves_and_types() {
+    insta::assert_snapshot!(
+        resolved_fn("SELECT pico_instance_name('uuid')"),
+        @"scalar .proc_instance_name, Volatile, is_system: false"
+    );
+    insta::assert_snapshot!(
+        analyzed("SELECT pico_instance_name('uuid')", &[]),
+        @"SELECT pico_instance_name('uuid'::text)::text"
+    );
+    insta::assert_snapshot!(
+        analyze_error("SELECT pico_instance_uuid('uuid')", &[]),
+        @"could not resolve function overload for .proc_instance_uuid(text)"
+    );
+}
+
+#[test]
 fn aggregate_resolves_by_name() {
     insta::assert_snapshot!(resolved_fn("SELECT count(*) FROM t1"), @"aggregate count");
     insta::assert_snapshot!(resolved_fn("SELECT count(DISTINCT a) FROM t1"), @"aggregate count");
@@ -1491,11 +1515,23 @@ fn quoted_fn_name_is_case_sensitive() {
     );
 }
 
-/// The arguments are bound before the function is looked up.
+/// Argument binding errors precede unknown function errors.
 #[test]
 fn unknown_fn_argument_error_comes_first() {
+    for call in ["foo(nosuch)", "lower(nosuch)", "foo(lower(nosuch))"] {
+        let query = format!("SELECT {call} FROM t1");
+        assert_eq!(
+            analyze_error(&query, &[]),
+            "semantic error: cannot resolve column reference 'nosuch'",
+            "{query}",
+        );
+    }
+}
+
+#[test]
+fn volatile_fn_error_precedes_argument_errors() {
     insta::assert_snapshot!(
-        analyze_error("SELECT foo(nosuch) FROM t1", &[]),
-        @"semantic error: cannot resolve column reference 'nosuch'"
+        analyze_error("SELECT a FROM t1 WHERE pico_instance_uuid(nosuch) = 'x'", &[]),
+        @"semantic error: volatile functions are not allowed in this expression"
     );
 }

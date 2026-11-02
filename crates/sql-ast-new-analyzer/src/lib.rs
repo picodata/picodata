@@ -135,6 +135,7 @@ use frame::{GroupingKeyMark, Stage, Stmt};
 use sql_ir::ir::function::{get_real_function_name, Function};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::relation::Table;
+use sql_ir::ir::table_function::TableFunction;
 use sql_ir::ir::types::DerivedType;
 use sql_type_system::expr::Type as TypeSystemType;
 
@@ -206,15 +207,6 @@ impl<'q, M: Metadata> AnalyzerCtx<'q, M> {
 
     pub(crate) fn table(&self, name: &str) -> AstResult<Table> {
         self.metadata.table(name).map_err(AstErr::from)
-    }
-
-    /// Whether the function `name` is volatile. An unknown function is not:
-    /// the type analysis reports it.
-    pub(crate) fn is_volatile_function(&self, name: &str) -> bool {
-        let name = get_real_function_name(name).unwrap_or(name);
-        self.metadata
-            .function(name)
-            .is_ok_and(|function| function.is_volatile())
     }
 
     pub(crate) fn index_id(&self, index_name: &str, table_name: &str) -> AstResult<u32> {
@@ -371,10 +363,9 @@ pub(crate) struct BinderCtx<'q> {
     /// Target tuple source for ORDER BY
     stmt_body: Option<MultisetInner<'q, Analyzed>>,
 
-    /// True while [`bind_table_function`](crate::table_expression) binds
-    /// the call of a table function in FROM. The call takes the flag, so
-    /// that a table function in its arguments is rejected as anywhere else.
-    pub(crate) binding_table_function: bool,
+    /// The registered table function being bound in FROM. The call takes it
+    /// before binding its arguments, so nested table functions are rejected.
+    pub(crate) binding_table_function: Option<&'static TableFunction>,
 }
 
 const EMPTY_FRAME_STACK_ERR: &str = "expected non-empty stack of statement frames";

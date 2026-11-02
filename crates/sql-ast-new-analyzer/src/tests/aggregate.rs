@@ -6,6 +6,39 @@
 
 use super::{analyze_error, analyzed};
 
+// ------------- GROUP_CONCAT delimiters -------------
+
+#[test]
+fn group_concat_valid_arguments() {
+    for name in ["group_concat", "string_agg"] {
+        for args in ["e", "DISTINCT e", "e, ','", "e, (',')", "e, NULL"] {
+            let _ = analyzed(&format!("SELECT {name}({args}) FROM t1"), &[]);
+        }
+    }
+}
+
+#[test]
+fn group_concat_invalid_delimiters() {
+    for name in ["group_concat", "string_agg"] {
+        for args in ["DISTINCT e, ','", "DISTINCT e, f"] {
+            let query = format!("SELECT {name}({args}) FROM t1");
+            assert_eq!(
+                analyze_error(&query, &[]),
+                "invalid query: distinct GROUP_CONCAT aggregate function has only one argument. Got: 2 arguments",
+                "{query}",
+            );
+        }
+        for args in ["e, f", "e, ',' || '.'", "e, $1", "e, CAST(',' AS TEXT)"] {
+            let query = format!("SELECT {name}({args}) FROM t1");
+            assert_eq!(
+                analyze_error(&query, &[]),
+                "invalid query: GROUP_CONCAT aggregate function second argument must be a string literal.",
+                "{query}",
+            );
+        }
+    }
+}
+
 // ------------- Aggregate placement -------------
 
 #[test]

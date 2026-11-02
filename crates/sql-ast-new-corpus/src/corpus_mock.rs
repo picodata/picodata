@@ -511,19 +511,130 @@ pub fn corpus_catalog() -> MockCatalog {
         &["cv", "ay"],
     );
 
-    // The indexes the corpus names in `INDEXED BY`. Only the names come from
-    // the corpus; the columns are inferred from the predicates at each hint
-    // site, and every corpus query has run against them on a live instance.
-    // `ix_d`, `ix_h` and `ix_i` duplicate their table's primary key.
+    // Mirror test/int/sql/corpus_explain.sql, including unhinted indexes:
+    // their creation order determines the IDs carried by INDEXED BY.
+    catalog.add_index("ix_c", "a", &["cv", "aw", "cq", "a"]);
+    catalog.add_index("ix_j", "a", &["cv", "ay"]);
+    catalog.add_index("ix_k", "a", &["cv", "aw", "ay"]);
+    catalog.add_index("ix_l", "a", &["cv", "a"]);
     catalog.add_index("ix_a", "a", &["cv", "aw", "a"]);
+    catalog.add_index("ix_m", "a", &["cv", "aw", "bm", "bk"]);
     catalog.add_index("ix_b", "a", &["cv", "aw", "bm", "bk", "cq"]);
-    catalog.add_index("ix_c", "a", &["cv", "aw", "a", "cq"]);
-    catalog.add_index("ix_d", "l", &["ag"]);
-    catalog.add_index("ix_e", "n", &["h"]);
-    catalog.add_index("ix_f", "v", &["b"]);
-    catalog.add_index("ix_g", "w", &["x"]);
-    catalog.add_index("ix_h", "x", &["b"]);
-    catalog.add_index("ix_i", "y", &["ag"]);
+    catalog.add_index("ix_n", "b", &["cv", "aw", "bm"]);
+    catalog.add_index("ix_o", "b", &["cv", "aw", "bm", "cq", "bk", "bl", "f", "e"]);
+    catalog.add_index("ix_p", "c", &["cv", "bm"]);
+    catalog.add_index("ix_q", "c", &["cv", "ay"]);
+    catalog.add_index("ix_r", "d", &["cv", "ay"]);
+    catalog.add_index("ix_s", "d", &["cv", "a"]);
+    catalog.add_index("ix_t", "e", &["cv", "cq", "bm", "bl", "bk"]);
+    catalog.add_index("ix_u", "e", &["cv", "ay"]);
+    catalog.add_index("ix_v", "l", &["cv"]);
+    catalog.add_index("ix_d", "l", &["cv", "ag"]);
+    catalog.add_index("ix_w", "l", &["v"]);
+    catalog.add_index("ix_x", "l", &["bb"]);
+    catalog.add_index("ix_y", "l", &["au", "cv"]);
+    catalog.add_index("ix_z", "l", &["cv", "cs"]);
+    catalog.add_index("ix_aa", "l", &["cv", "a"]);
+    catalog.add_index("ix_ab", "l", &["cv", "cw"]);
+    catalog.add_index("ix_ac", "l", &["cv", "cw", "cs"]);
+    catalog.add_index("ix_ad", "l", &["cv", "cw", "a"]);
+    catalog.add_index("ix_ae", "m", &["cv"]);
+    catalog.add_index("ix_af", "m", &["cv", "w"]);
+    catalog.add_index("ix_ag", "m", &["cv", "aw"]);
+    catalog.add_index("ix_ah", "m", &["cv", "cr"]);
+    catalog.add_index("ix_ai", "m", &["cv", "ay"]);
+    catalog.add_index("ix_aj", "m", &["cv", "ag"]);
+    catalog.add_index("ix_ak", "m", &["cv", "aw", "w"]);
+    catalog.add_index("ix_al", "n", &["cv"]);
+    catalog.add_index("ix_am", "n", &["cv", "ag"]);
+    catalog.add_index("ix_an", "n", &["au", "cv"]);
+    catalog.add_index("ix_ao", "n", &["cv", "ay"]);
+    catalog.add_index("ix_ap", "n", &["cv", "cu"]);
+    catalog.add_index("ix_aq", "n", &["cv", "cs"]);
+    catalog.add_index("ix_ar", "n", &["cv", "a"]);
+    catalog.add_index("ix_e", "n", &["cv", "h"]);
+    catalog.add_index("ix_as", "n", &["h"]);
+    catalog.add_index("ix_at", "o", &["cv"]);
+    catalog.add_index("ix_au", "o", &["cv", "s"]);
+    catalog.add_index("ix_av", "p", &["cv"]);
+    catalog.add_index("ix_aw", "p", &["l"]);
+    catalog.add_index("ix_ax", "p", &["cv", "l"]);
+    catalog.add_index("ix_ay", "q", &["cv"]);
+    catalog.add_index("ix_az", "q", &["j"]);
+    catalog.add_index("ix_ba", "q", &["cv", "j"]);
+    catalog.add_index("ix_bb", "r", &["cv"]);
+    catalog.add_index("ix_bc", "r", &["k"]);
+    catalog.add_index("ix_bd", "r", &["cv", "k"]);
+    catalog.add_index("ix_be", "s", &["cv"]);
+    catalog.add_index("ix_bf", "s", &["cv", "ay"]);
+    catalog.add_index("ix_bg", "t", &["cv"]);
+    catalog.add_index("ix_bh", "u", &["cv"]);
+    catalog.add_index("ix_bi", "u", &["cv", "ar"]);
+    catalog.add_index("ix_bj", "u", &["cv", "ag"]);
+    catalog.add_index("ix_bk", "v", &["cv"]);
+    catalog.add_index("ix_bl", "v", &["cv", "ag"]);
+    catalog.add_index("ix_bm", "v", &["v"]);
+    catalog.add_index("ix_bn", "v", &["ai"]);
+    catalog.add_index("ix_bo", "v", &["au", "cv"]);
+    catalog.add_index("ix_f", "v", &["b", "cv"]);
+    catalog.add_index("ix_bp", "w", &["cv"]);
+    catalog.add_index("ix_bq", "w", &["bs", "cv", "al"]);
+    catalog.add_index("ix_br", "w", &["c", "cv"]);
+    catalog.add_index("ix_bs", "w", &["bt"]);
+    catalog.add_index("ix_bt", "w", &["cv", "ag"]);
+    catalog.add_index("ix_g", "w", &["x", "cv", "al"]);
+    catalog.add_index("ix_bu", "x", &["cv"]);
+    catalog.add_index("ix_h", "x", &["cv", "b"]);
+    catalog.add_index("ix_bv", "y", &["cv", "ay"]);
+    catalog.add_index("ix_bw", "y", &["bg"]);
+    catalog.add_index("ix_bx", "y", &["cv", "aw"]);
+    catalog.add_index("ix_by", "y", &["cv", "cu"]);
+    catalog.add_index("ix_bz", "y", &["cv", "cq"]);
+    catalog.add_index("ix_ca", "y", &["cv", "ay", "aw"]);
+    catalog.add_index("ix_i", "y", &["cv", "ag"]);
+    catalog.add_index("ix_cb", "ad", &["cv", "ay", "cx"]);
 
     catalog
+}
+
+#[cfg(test)]
+mod tests {
+    use super::corpus_catalog;
+    use sql_ir::ir::metadata::Metadata;
+
+    #[test]
+    fn indexes_match_explain_schema() {
+        let schema = include_str!("../../../test/int/sql/corpus_explain.sql");
+        let expected: Vec<_> = schema
+            .lines()
+            .filter(|line| line.starts_with("CREATE INDEX "))
+            .collect();
+        // The reference schema uses bare identifiers; the renderer always quotes them.
+        let actual: Vec<_> = corpus_catalog()
+            .ddl()
+            .lines()
+            .filter(|line| line.starts_with("CREATE INDEX "))
+            .map(|line| line.replace('"', ""))
+            .collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn hinted_index_ids_match_explain_schema() {
+        let catalog = corpus_catalog();
+        // IDs follow each table's CREATE INDEX order, after the two implicit indexes.
+        for (index, table, id) in [
+            ("ix_a", "a", 6),
+            ("ix_b", "a", 8),
+            ("ix_c", "a", 2),
+            ("ix_d", "l", 3),
+            ("ix_e", "n", 9),
+            ("ix_f", "v", 7),
+            ("ix_g", "w", 7),
+            ("ix_h", "x", 3),
+            ("ix_i", "y", 8),
+        ] {
+            assert_eq!(catalog.get_index_id(index, table).unwrap(), id, "{index}");
+        }
+    }
 }

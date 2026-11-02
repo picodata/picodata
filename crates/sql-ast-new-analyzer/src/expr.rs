@@ -34,6 +34,7 @@ use sql_ast_new_nodes::expr::{
 use sql_ast_new_nodes::scope::{Depth, Scope};
 use sql_ast_new_nodes::table_expression::{BoundJoinUsingVar, BoundVar, ColumnRoute};
 use sql_ast_new_nodes::{Analyzed, AnalyzedExprMeta, AstNodeId, Raw};
+use sql_ir::errors::{Entity, SbroadError};
 use sql_ir::ir::metadata::Metadata;
 use sql_ir::ir::table_function::find_table_function;
 use sql_ir::ir::types::{CastType, DerivedType, UnrestrictedType};
@@ -554,12 +555,11 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                 let (name, args, ()) = call.into_parts();
 
                 // A table function gives rows, so it is a source in FROM
-                // only. The binding of that call sets the flag; a call in an
-                // expression, also in the arguments of a table function, is
-                // an error.
-                let is_table_function = std::mem::take(&mut meta.binder.binding_table_function);
-                let table_fn = find_table_function(name.as_str());
-                if !is_table_function && table_fn.is_some() {
+                // only. Its binding supplies the registry entry; calls in
+                // expressions, including table function arguments, are errors.
+                let from_fn = meta.binder.binding_table_function.take();
+                let table_fn = from_fn.or_else(|| find_table_function(name.as_str()));
+                if from_fn.is_none() && table_fn.is_some() {
                     return Err(semantic_err(format_smolstr!(
                         r#"table function "{}" can only be used in FROM"#,
                         name.as_str()
@@ -582,6 +582,15 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                     )));
                 }
 
+                // Defer lookup errors until after binding the arguments.
+                let resolved_fn = match aggr_kind {
+                    Some(kind) => Ok(ResolvedFn::Aggregate(kind)),
+                    None => match table_fn {
+                        Some(table_fn) => Ok(ResolvedFn::Table(table_fn)),
+                        None => meta.function(&name).map(ResolvedFn::Scalar),
+                    },
+                };
+
                 // Every instance computes the same rows of a table function, so
                 // its arguments cannot call a volatile function, not even in a
                 // subquery: a subquery without tables is computed on every instance.
@@ -590,7 +599,8 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                     .frames
                     .iter()
                     .any(|frame| matches!(frame.stage, Stage::FunctionInFrom));
-                if meta.is_volatile_function(name.as_str()) {
+                if matches!(&resolved_fn, Ok(ResolvedFn::Scalar(function)) if function.is_volatile())
+                {
                     if in_function_in_from {
                         return Err(semantic_err(format_smolstr!(
                             "volatile functions are not allowed in functions in FROM"
@@ -634,14 +644,31 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                             .map(|expr| expr.bind(meta))
                             .collect::<AstResult<(Vec<_>, Vec<_>)>>()?;
 
-                        // Resolved after the arguments, so an error inside them is reported first.
-                        let resolved_fn = match aggr_kind {
-                            Some(kind) => ResolvedFn::Aggregate(kind),
-                            None => match table_fn {
-                                Some(table_fn) => ResolvedFn::Table(table_fn),
-                                None => ResolvedFn::Scalar(meta.function(&name)?),
-                            },
-                        };
+                        // Keep the old pipeline's delimiter restrictions before implicit casts.
+                        if aggr_kind == Some(AggregateKind::GRCONCAT) {
+                            match bound_args.get(1) {
+                                Some(_) if distinct => {
+                                    return Err(SbroadError::Invalid(
+                                        Entity::Query,
+                                        Some(format_smolstr!(
+                                            "distinct GROUP_CONCAT aggregate function has only one argument. Got: {} arguments",
+                                            bound_args.len()
+                                        )),
+                                    )
+                                    .into());
+                                }
+                                Some(arg) if !matches!(arg.inner, ExprInner::Literal(_)) => {
+                                    return Err(SbroadError::Invalid(
+                                        Entity::Query,
+                                        Some("GROUP_CONCAT aggregate function second argument must be a string literal.".into()),
+                                    )
+                                    .into());
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        let resolved_fn = resolved_fn?;
 
                         // A scalar is typed under its catalog name: the
                         // names picodata exposes for its procedures
@@ -651,11 +678,9 @@ impl<'q> Binder<'q> for Expr<'q, Raw> {
                             ResolvedFn::Scalar(function) => function.name.as_str(),
                             ResolvedFn::Aggregate(_) | ResolvedFn::Table(_) => name.as_str(),
                         };
-                        // COALESCE and JSON_EXTRACT_PATH are not registry
-                        // functions, and UNNEST is a table function: they
-                        // map to dedicated type-expression kinds
-                        // (old-pipeline parity). DISTINCT does not affect
-                        // typing and stays in the node.
+                        // Catalog resolution applies to COALESCE and JSON_EXTRACT_PATH;
+                        // they and UNNEST use dedicated kinds in the type-system mirror.
+                        // DISTINCT does not affect typing and stays in the node.
                         let t_expr_kind = match name.as_str() {
                             "coalesce" => AstTypeExprKind::Coalesce(arg_t_exprs),
                             "json_extract_path" => AstTypeExprKind::JsonExtractPath(arg_t_exprs),
