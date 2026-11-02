@@ -309,12 +309,6 @@ impl<'q> AbstractSyntaxTree<'q> {
                 )?,
 
                 // DDL.
-                Rule::CreateIndex => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_create_index(ast, node)?);
-                }
-                Rule::CreateSchema => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, DdlOwned::CreateSchema);
-                }
                 Rule::AlterSystem => build_alter_system_ir(
                     ast,
                     id,
@@ -325,90 +319,6 @@ impl<'q> AbstractSyntaxTree<'q> {
                     &mut worker,
                     &mut plan,
                 )?,
-                Rule::CreateProc => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_create_proc(ast, node)?);
-                }
-                Rule::CreateTable => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_create_table(ast, node)?);
-                }
-                Rule::CreatePartition => {
-                    return Err(SbroadError::NotImplemented(
-                        Entity::Rule,
-                        format_smolstr!("PARTITION OF logic is not supported yet."),
-                    ));
-                }
-                Rule::DropIndex => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_drop_index(ast, node)?);
-                }
-                Rule::RenameIndex => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_rename_index(ast, node)?);
-                }
-                Rule::DropSchema => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, DdlOwned::DropSchema);
-                }
-                Rule::DropTable => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_drop_table(ast, node)?);
-                }
-                Rule::Backup => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_backup(ast, node)?);
-                }
-                Rule::TruncateTable => {
-                    push_mapped_plan_node(
-                        &mut plan,
-                        &mut map,
-                        id,
-                        parse_truncate_table(ast, node)?,
-                    );
-                }
-                Rule::DropProc => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_drop_proc(ast, node)?);
-                }
-                Rule::RenameProc => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_rename_proc(ast, node)?);
-                }
-                Rule::AlterTable => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_alter_table(ast, node)?);
-                }
-                Rule::CreatePlugin => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_create_plugin(ast, node)?);
-                }
-                Rule::DropPlugin => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_drop_plugin(ast, node)?);
-                }
-                Rule::AlterPlugin => {
-                    if let Some(node_id) = parse_alter_plugin(ast, &mut plan, node)? {
-                        map.add(id, node_id);
-                    }
-                }
-                Rule::SetParam => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_set_param(ast, node)?);
-                }
-                Rule::SetTransaction => {
-                    push_mapped_plan_node(
-                        &mut plan,
-                        &mut map,
-                        id,
-                        SetTransaction {
-                            timeout: get_default_timeout(),
-                        },
-                    );
-                }
-
-                // ACL.
-                Rule::GrantPrivilege => {
-                    build_grant_privilege_ir(ast, id, node, &mut map, &mut plan)?
-                }
-                Rule::RevokePrivilege => {
-                    build_revoke_privilege_ir(ast, id, node, &mut map, &mut plan)?;
-                }
-                Rule::CreateRole => build_create_role_ir(ast, id, node, &mut map, &mut plan)?,
-                Rule::DropRole => build_drop_role_ir(ast, id, node, &mut map, &mut plan)?,
-                Rule::CreateUser => build_create_user_ir(ast, id, node, &mut map, &mut plan)?,
-                Rule::AlterUser => build_alter_user_ir(ast, id, node, &mut map, &mut plan)?,
-                Rule::DropUser => build_drop_user_ir(ast, id, node, &mut map, &mut plan)?,
-                Rule::AuditPolicy => {
-                    push_mapped_plan_node(&mut plan, &mut map, id, parse_audit_policy(ast, node)?);
-                }
 
                 // Explain.
                 Rule::Explain => build_explain_ir(ast, node, &mut map, &mut plan)?,
@@ -530,7 +440,11 @@ impl<'q> AbstractSyntaxTree<'q> {
                 Rule::Rollback => {
                     push_mapped_plan_node(&mut plan, &mut map, id, Tcl::Rollback);
                 }
-                _ => {}
+                // DDL, ACL and the rules without a plan node.
+                _ => {
+                    build_ddl_ir(ast, id, node, &mut map, &mut plan)?;
+                    build_acl_ir(ast, id, node, &mut map, &mut plan)?;
+                }
             }
         }
 
@@ -635,6 +549,119 @@ impl<'q> Ast<'q> for AbstractSyntaxTree<'q> {
     ) -> Result<Self::AnalyzedAst, SbroadError> {
         Ok(self)
     }
+}
+
+/// Builds the IR of a DDL statement. It is a separate function: in a debug
+/// build each arm keeps the parsed statement on the stack, and `build_ir` has
+/// many arms.
+fn build_ddl_ir(
+    ast: &AstCore,
+    id: usize,
+    node: &ParseNode,
+    map: &mut Translation,
+    plan: &mut Plan,
+) -> Result<(), SbroadError> {
+    match &node.rule {
+        Rule::CreateIndex => {
+            push_mapped_plan_node(plan, map, id, parse_create_index(ast, node)?);
+        }
+        Rule::CreateSchema => {
+            push_mapped_plan_node(plan, map, id, DdlOwned::CreateSchema);
+        }
+        Rule::CreateProc => {
+            push_mapped_plan_node(plan, map, id, parse_create_proc(ast, node)?);
+        }
+        Rule::CreateTable => {
+            push_mapped_plan_node(plan, map, id, parse_create_table(ast, node)?);
+        }
+        Rule::CreatePartition => {
+            return Err(SbroadError::NotImplemented(
+                Entity::Rule,
+                format_smolstr!("PARTITION OF logic is not supported yet."),
+            ));
+        }
+        Rule::DropIndex => {
+            push_mapped_plan_node(plan, map, id, parse_drop_index(ast, node)?);
+        }
+        Rule::RenameIndex => {
+            push_mapped_plan_node(plan, map, id, parse_rename_index(ast, node)?);
+        }
+        Rule::DropSchema => {
+            push_mapped_plan_node(plan, map, id, DdlOwned::DropSchema);
+        }
+        Rule::DropTable => {
+            push_mapped_plan_node(plan, map, id, parse_drop_table(ast, node)?);
+        }
+        Rule::Backup => {
+            push_mapped_plan_node(plan, map, id, parse_backup(ast, node)?);
+        }
+        Rule::TruncateTable => {
+            push_mapped_plan_node(plan, map, id, parse_truncate_table(ast, node)?);
+        }
+        Rule::DropProc => {
+            push_mapped_plan_node(plan, map, id, parse_drop_proc(ast, node)?);
+        }
+        Rule::RenameProc => {
+            push_mapped_plan_node(plan, map, id, parse_rename_proc(ast, node)?);
+        }
+        Rule::AlterTable => {
+            push_mapped_plan_node(plan, map, id, parse_alter_table(ast, node)?);
+        }
+        Rule::CreatePlugin => {
+            push_mapped_plan_node(plan, map, id, parse_create_plugin(ast, node)?);
+        }
+        Rule::DropPlugin => {
+            push_mapped_plan_node(plan, map, id, parse_drop_plugin(ast, node)?);
+        }
+        Rule::AlterPlugin => {
+            if let Some(node_id) = parse_alter_plugin(ast, plan, node)? {
+                map.add(id, node_id);
+            }
+        }
+        Rule::SetParam => {
+            push_mapped_plan_node(plan, map, id, parse_set_param(ast, node)?);
+        }
+        Rule::SetTransaction => {
+            push_mapped_plan_node(
+                plan,
+                map,
+                id,
+                SetTransaction {
+                    timeout: get_default_timeout(),
+                },
+            );
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Builds the IR of an ACL statement. It is a separate function: in a debug
+/// build each arm keeps the parsed statement on the stack, and `build_ir` has
+/// many arms.
+fn build_acl_ir(
+    ast: &AstCore,
+    id: usize,
+    node: &ParseNode,
+    map: &mut Translation,
+    plan: &mut Plan,
+) -> Result<(), SbroadError> {
+    match &node.rule {
+        Rule::GrantPrivilege => build_grant_privilege_ir(ast, id, node, map, plan)?,
+        Rule::RevokePrivilege => {
+            build_revoke_privilege_ir(ast, id, node, map, plan)?;
+        }
+        Rule::CreateRole => build_create_role_ir(ast, id, node, map, plan)?,
+        Rule::DropRole => build_drop_role_ir(ast, id, node, map, plan)?,
+        Rule::CreateUser => build_create_user_ir(ast, id, node, map, plan)?,
+        Rule::AlterUser => build_alter_user_ir(ast, id, node, map, plan)?,
+        Rule::DropUser => build_drop_user_ir(ast, id, node, map, plan)?,
+        Rule::AuditPolicy => {
+            push_mapped_plan_node(plan, map, id, parse_audit_policy(ast, node)?);
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn push_mapped_plan_node<N>(
