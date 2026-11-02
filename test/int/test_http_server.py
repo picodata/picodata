@@ -886,6 +886,8 @@ def test_jwt_session_login_success(instance: Instance):
     assert isinstance(response_data["refresh"], str)
     assert len(response_data["auth"].split(".")) == 3
     assert len(response_data["refresh"].split(".")) == 3
+    assert decode_jwt_claims(response_data["auth"])["privileges"] == ["login"]
+    assert "privileges" not in decode_jwt_claims(response_data["refresh"])
 
 
 def test_jwt_session_login_invalid_credentials(instance: Instance):
@@ -920,6 +922,8 @@ def test_jwt_session_refresh_success(instance: Instance):
     assert isinstance(new_tokens["refresh"], str)
     assert len(new_tokens["auth"].split(".")) == 3
     assert len(new_tokens["refresh"].split(".")) == 3
+    assert decode_jwt_claims(new_tokens["auth"])["privileges"] == ["login"]
+    assert "privileges" not in decode_jwt_claims(new_tokens["refresh"])
 
 
 def test_jwt_rejects_missing_token(instance: Instance):

@@ -213,13 +213,17 @@ fn authenticate_user(username: &str, password: Option<&str>) -> AuthResult<Vec<S
         .map_err(|e| AuthError::UserLookup(e.to_string()))?
         .ok_or(AuthError::InvalidCredentials)?;
 
-    let privileges = storage
+    let mut privileges = storage
         .privileges
         .by_grantee_id(user.id)
         .map_err(|e| AuthError::PrivilegesLookup(e.to_string()))?
         .map(|p| p.map(|p| p.privilege().as_str().to_string()))
         .collect::<Result<Vec<String>, _>>()
         .map_err(|e| AuthError::PrivilegesLookup(e.to_string()))?;
+
+    // Other privileges are granted on specific objects and are useless in claims
+    // without specifying those objects
+    privileges.retain(|privilege| privilege == "login");
 
     if !privileges.contains(&"login".to_string()) {
         return Err(AuthError::InsufficientPrivileges);
