@@ -132,14 +132,14 @@ fn skip_value_inner(cur: &mut (impl Read + Seek)) -> Result<()> {
         }
         Marker::Map16 => {
             // Multiply by 2, because we skip key, value pairs.
-            let len = read_be!(cur, u16)? * 2;
+            let len = u32::from(read_be!(cur, u16)?) * 2;
             for _ in 0..len {
                 skip_value(cur)?;
             }
         }
         Marker::Map32 => {
             // Multiply by 2, because we skip key, value pairs.
-            let len = read_be!(cur, u32)? * 2;
+            let len = u64::from(read_be!(cur, u32)?) * 2;
             for _ in 0..len {
                 skip_value(cur)?;
             }
@@ -857,6 +857,24 @@ mod test {
             err.to_string(),
             "IO error while reading marker: failed to fill whole buffer"
         );
+    }
+
+    #[test]
+    fn skip_big_map() {
+        // Twice the number of pairs overflows the 16-bit length of the map.
+        for pairs in [32767_u16, 32768, u16::MAX] {
+            let mut bytes = vec![0xde];
+            bytes.extend_from_slice(&pairs.to_be_bytes());
+            for _ in 0..pairs {
+                bytes.extend_from_slice(b"\x01\xc2");
+            }
+            let mut reader = Cursor::new(&bytes);
+            super::skip_value(&mut reader).unwrap();
+            assert_eq!(reader.position(), bytes.len() as u64, "pairs: {pairs}");
+        }
+        // The same for a 32-bit length: 2^31 pairs without the data must fail.
+        let mut reader = Cursor::new(b"\xdf\x80\x00\x00\x00");
+        assert!(super::skip_value(&mut reader).is_err());
     }
 
     #[test]

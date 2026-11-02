@@ -74,6 +74,8 @@
   still be used with caution as incorrect usage may lead to undefined behavior.
 - `CDataOnStack::{data, data_mut, try_as_bytes, try_as_bytes_mut, try_downcast, try_downcast_mut}`
   methods' return values now have a less strict lifetime requirement.
+- `msgpack::skip_value` no longer overflows the number of elements of a map
+  with 32768 or more pairs.
 
 ### Fixed (picodata)
 
