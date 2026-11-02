@@ -1246,102 +1246,7 @@ pub fn dispatch_impl<'p>(
     }
 
     if plan.get_ir_plan().top_is(PlanKind::BLOCK)? {
-        let tier = {
-            match plan.get_ir_plan().tier.as_ref() {
-                None => coordinator.get_current_tier_name()?,
-                tier => tier.cloned(),
-            }
-        };
-
-        let request_id = plan.get_request_id().to_owned();
-
-        let BlockOwned::Anonymous(block) = plan.get_ir_plan().get_owned_block_node(top_id)? else {
-            unreachable!("plan.is_block() returned true");
-        };
-
-        let metadata = block
-            .return_columns
-            .iter()
-            .map(|(name, ty)| MetadataColumn::of_type(name.to_string(), ty))
-            .collect();
-
-        let use_colon_params = !plan.get_ir_plan().is_raw_explain();
-        let cache_key: Option<u64> = if use_colon_params {
-            Some(block_pattern_key(plan, &block.statements)?)
-        } else {
-            None
-        };
-        let cached_patterns: Option<(u64, Rc<Vec<BlockStatement<BlockQuery>>>)> = match cache_key {
-            Some(key) => {
-                let cached = BLOCK_PATTERN_CACHE.with(|c| -> Result<_, SbroadError> {
-                    Ok(c.borrow_mut().get(&key)?.cloned())
-                })?;
-                if cached.is_some() {
-                    fire_block_pattern_cache_hook(|h| h.on_hit);
-                } else {
-                    fire_block_pattern_cache_hook(|h| h.on_miss);
-                }
-                cached.map(|c| (key, c))
-            }
-            None => None,
-        };
-
-        let mut params: Vec<Vec<Value>> = Vec::new();
-        let statements: Rc<Vec<BlockStatement<BlockQuery>>> =
-            if let Some((_, cached)) = &cached_patterns {
-                for entry in BlockEntries::new(&block.statements) {
-                    entry.with(|id| {
-                        let query_params = generate_params_for_block_query(plan, *id)?;
-                        params.push(query_params);
-                        Ok(())
-                    })?
-                }
-                Rc::clone(cached)
-            } else {
-                let mut statements = Vec::with_capacity(block.statements.len());
-                // FIXME: add error location tracing,
-                // (e.g. Statement 1 (RETURN QUERY): some shit happened)
-                for stmt in block.statements {
-                    let mapped = stmt.try_map(|id| -> Result<BlockQuery, SbroadError> {
-                        let (query, stmt_params) =
-                            generate_pattern_with_params_for_block(plan, id, use_colon_params)?;
-                        params.push(stmt_params);
-                        Ok(query)
-                    })?;
-                    statements.push(mapped);
-                }
-                let statements = Rc::new(statements);
-                if let Some(key) = cache_key {
-                    BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
-                        c.borrow_mut().put(key, Rc::clone(&statements))?;
-                        Ok(())
-                    })?;
-                    fire_block_pattern_cache_hook(|h| h.on_added);
-                }
-                statements
-            };
-
-        let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;
-        let table_versions = (*plan.get_ir_plan().table_version_map).clone();
-        let index_versions = (*plan.get_ir_plan().index_version_map).clone();
-        let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
-        let exec_block = BlockExecData {
-            statements,
-            params,
-            table_versions,
-            index_versions,
-            vdbe_max_steps,
-            returns_rows: !block.return_columns.is_empty(),
-            explain_options: plan.get_ir_plan().explain_options,
-            bucket_count: tier_runtime.bucket_count(),
-        };
-        return tier_runtime.exec_block_on_buckets(
-            metadata,
-            exec_block,
-            buckets,
-            &request_id,
-            port,
-        );
+        return dispatch_block(coordinator, plan, top_id, buckets, port);
     }
 
     let tier = {
@@ -1361,17 +1266,7 @@ pub fn dispatch_impl<'p>(
                 // Each dispatch may mark the motion subtree as already materialized.
                 // We should not return an error because the child motion may have been
                 // removed from the effective execution view by a previous dispatch call.
-                let restored = Rc::try_unwrap(frozen_plan).map_err(|_| {
-                    SbroadError::Invalid(
-                        Entity::Plan,
-                        Some("frozen execution plan is still referenced".into()),
-                    )
-                })?;
-                let mut restored = restored;
-                restored.clear_bucket_filter();
-                restored.clear_serialize_as_empty_overlay();
-                *plan = restored;
-                return Ok(());
+                return restore_frozen_plan(plan, frozen_plan);
             };
             dql_child_id
         } else {
@@ -1389,17 +1284,125 @@ pub fn dispatch_impl<'p>(
             port,
         )
     };
-    let restored = Rc::try_unwrap(frozen_plan).map_err(|_| {
+    restore_frozen_plan(plan, frozen_plan)?;
+    dispatch_result
+}
+
+/// Dispatches an anonymous block. It is a separate function: in a debug
+/// build its locals would make the frame of `dispatch_impl` big.
+fn dispatch_block<'p>(
+    coordinator: &impl Router,
+    plan: &mut ExecutionPlan,
+    top_id: NodeId,
+    buckets: &Buckets,
+    port: &mut impl Port<'p>,
+) -> Result<(), SbroadError> {
+    let tier = {
+        match plan.get_ir_plan().tier.as_ref() {
+            None => coordinator.get_current_tier_name()?,
+            tier => tier.cloned(),
+        }
+    };
+
+    let request_id = plan.get_request_id().to_owned();
+
+    let BlockOwned::Anonymous(block) = plan.get_ir_plan().get_owned_block_node(top_id)? else {
+        unreachable!("plan.is_block() returned true");
+    };
+
+    let metadata = block
+        .return_columns
+        .iter()
+        .map(|(name, ty)| MetadataColumn::of_type(name.to_string(), ty))
+        .collect();
+
+    let use_colon_params = !plan.get_ir_plan().is_raw_explain();
+    let cache_key: Option<u64> = if use_colon_params {
+        Some(block_pattern_key(plan, &block.statements)?)
+    } else {
+        None
+    };
+    let cached_patterns: Option<(u64, Rc<Vec<BlockStatement<BlockQuery>>>)> = match cache_key {
+        Some(key) => {
+            let cached = BLOCK_PATTERN_CACHE
+                .with(|c| -> Result<_, SbroadError> { Ok(c.borrow_mut().get(&key)?.cloned()) })?;
+            if cached.is_some() {
+                fire_block_pattern_cache_hook(|h| h.on_hit);
+            } else {
+                fire_block_pattern_cache_hook(|h| h.on_miss);
+            }
+            cached.map(|c| (key, c))
+        }
+        None => None,
+    };
+
+    let mut params: Vec<Vec<Value>> = Vec::new();
+    let statements: Rc<Vec<BlockStatement<BlockQuery>>> =
+        if let Some((_, cached)) = &cached_patterns {
+            for entry in BlockEntries::new(&block.statements) {
+                entry.with(|id| {
+                    let query_params = generate_params_for_block_query(plan, *id)?;
+                    params.push(query_params);
+                    Ok(())
+                })?
+            }
+            Rc::clone(cached)
+        } else {
+            let mut statements = Vec::with_capacity(block.statements.len());
+            // FIXME: add error location tracing,
+            // (e.g. Statement 1 (RETURN QUERY): some shit happened)
+            for stmt in block.statements {
+                let mapped = stmt.try_map(|id| -> Result<BlockQuery, SbroadError> {
+                    let (query, stmt_params) =
+                        generate_pattern_with_params_for_block(plan, id, use_colon_params)?;
+                    params.push(stmt_params);
+                    Ok(query)
+                })?;
+                statements.push(mapped);
+            }
+            let statements = Rc::new(statements);
+            if let Some(key) = cache_key {
+                BLOCK_PATTERN_CACHE.with(|c| -> Result<(), SbroadError> {
+                    c.borrow_mut().put(key, Rc::clone(&statements))?;
+                    Ok(())
+                })?;
+                fire_block_pattern_cache_hook(|h| h.on_added);
+            }
+            statements
+        };
+
+    let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;
+    let table_versions = (*plan.get_ir_plan().table_version_map).clone();
+    let index_versions = (*plan.get_ir_plan().index_version_map).clone();
+    let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
+    let exec_block = BlockExecData {
+        statements,
+        params,
+        table_versions,
+        index_versions,
+        vdbe_max_steps,
+        returns_rows: !block.return_columns.is_empty(),
+        explain_options: plan.get_ir_plan().explain_options,
+        bucket_count: tier_runtime.bucket_count(),
+    };
+    tier_runtime.exec_block_on_buckets(metadata, exec_block, buckets, &request_id, port)
+}
+
+/// Puts the plan that `dispatch_impl` froze for the dispatch back into `plan`.
+fn restore_frozen_plan(
+    plan: &mut ExecutionPlan,
+    frozen_plan: Rc<ExecutionPlan>,
+) -> Result<(), SbroadError> {
+    let mut restored = Rc::try_unwrap(frozen_plan).map_err(|_| {
         SbroadError::Invalid(
             Entity::Plan,
             Some("frozen execution plan is still referenced".into()),
         )
     })?;
-    let mut restored = restored;
     restored.clear_bucket_filter();
     restored.clear_serialize_as_empty_overlay();
     *plan = restored;
-    dispatch_result
+    Ok(())
 }
 
 /// Helper function that chooses one of the methods for execution
