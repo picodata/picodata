@@ -3,14 +3,14 @@
 //! Contains operator nodes that transform the tuples in IR tree.
 
 use crate::ir::aliases::AliasGenerator;
-use crate::ir::api::children::{self, Children};
+use crate::ir::api::children::Children;
 use crate::ir::columns::RelColumn;
 use crate::ir::expression::PlanExpr;
 use crate::ir::node::{
-    Alias, Delete, Except, GroupBy, Having, Insert, Intersect, Join, LetVarRef, Motion, MutNode,
-    NodeId, OrderBy, Projection, Reference, ReferenceAsteriskSource, ReferenceTarget,
-    ScalarFunction, ScanCte, ScanFunction, ScanRelation, ScanSubQuery, Selection,
-    SubQueryReference, Union, UnionAll, Update, Values,
+    Alias, Delete, Except, GroupBy, Having, Insert, Join, LetVarRef, Motion, MutNode, NodeId,
+    OrderBy, Projection, Reference, ReferenceAsteriskSource, ReferenceTarget, ScalarFunction,
+    ScanCte, ScanFunction, ScanRelation, ScanSubQuery, Selection, SubQueryReference, Union,
+    UnionAll, Update, Values,
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
@@ -1943,16 +1943,16 @@ impl Plan {
 
     /// Gets children from relational node.
     pub fn get_relation_children(&self, rel_id: NodeId) -> Result<Children, SbroadError> {
-        if let Node::Relational(_) = self.get_node(rel_id)? {
-            Ok(self.children(rel_id))
+        if let Node::Relational(rel) = self.get_node(rel_id)? {
+            Ok(rel.children())
         } else {
             panic!("Expected relational node for getting children.")
         }
     }
 
     pub fn get_relation_subqueries(&self, rel_id: NodeId) -> Result<&[NodeId], SbroadError> {
-        if let Node::Relational(_) = self.get_node(rel_id)? {
-            self.subqueries(rel_id)
+        if let Node::Relational(rel) = self.get_node(rel_id)? {
+            Ok(rel.subqueries())
         } else {
             panic!("Expected relational node for getting children.")
         }
@@ -2005,15 +2005,9 @@ impl Plan {
                     }
                 }
             },
-            _ => {
-                if let Node::Relational(rel) = self.get_node(rel_id)? {
-                    Ok(*rel.children().get(child_idx).unwrap_or_else(|| {
-                        panic!("Rel node {rel:?} has no child with idx ({child_idx}).")
-                    }))
-                } else {
-                    panic!("Relational node with id {rel_id} is not found.")
-                }
-            }
+            rel => Ok(*rel.children().get(child_idx).unwrap_or_else(|| {
+                panic!("Rel node {rel:?} has no child with idx ({child_idx}).")
+            })),
         }
     }
 
@@ -2272,68 +2266,13 @@ impl Plan {
     /// # Panics
     #[must_use]
     pub fn children(&self, rel_id: NodeId) -> Children {
-        let node = self.get_relation_node(rel_id).unwrap();
-        match node {
-            Relational::Limit(Limit { child, .. })
-            | Relational::ScanCte(ScanCte { child, .. })
-            | Relational::Update(Update { child, .. })
-            | Relational::Delete(Delete {
-                child: Some(child), ..
-            })
-            | Relational::Motion(Motion {
-                child: Some(child), ..
-            })
-            | Relational::Insert(Insert { child, .. })
-            | Relational::ScanSubQuery(ScanSubQuery { child, .. })
-            | Relational::Having(Having { child, .. })
-            | Relational::Selection(Selection { child, .. })
-            | Relational::GroupBy(GroupBy { child, .. })
-            | Relational::OrderBy(OrderBy { child, .. }) => children::one(*child),
-            Relational::Except(Except { left, right, .. })
-            | Relational::Intersect(Intersect { left, right, .. })
-            | Relational::UnionAll(UnionAll { left, right, .. })
-            | Relational::Union(Union { left, right, .. })
-            | Relational::Join(Join { left, right, .. }) => Children::from([*left, *right]),
-            Relational::Motion(Motion { child: None, .. })
-            | Relational::Delete(Delete { child: None, .. })
-            | Relational::ScanRelation(_)
-            | Relational::ScanFunction(_)
-            | Relational::SelectWithoutScan(_)
-            | Relational::Values(_)
-            | Relational::Projection(Projection { child: None, .. }) => Children::new(),
-            Relational::Projection(Projection {
-                child,
-                group_by,
-                having,
-                ..
-            }) => {
-                if group_by.is_some() || having.is_some() {
-                    Children::new()
-                } else if child.is_some() {
-                    children::one(child.unwrap())
-                } else {
-                    unreachable!("nothing was set")
-                }
-            }
-        }
+        self.get_relation_node(rel_id).unwrap().children()
     }
 
     // Gets an immutable reference to the subqueries nodes.
     /// # Panics
     pub fn subqueries(&self, rel_id: NodeId) -> Result<&[NodeId], SbroadError> {
-        let node = self.get_relation_node(rel_id)?;
-        match node {
-            Relational::Join(Join { subqueries, .. })
-            | Relational::Having(Having { subqueries, .. })
-            | Relational::Selection(Selection { subqueries, .. })
-            | Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. })
-            | Relational::Values(Values { subqueries, .. })
-            | Relational::ScanFunction(ScanFunction { subqueries, .. })
-            | Relational::GroupBy(GroupBy { subqueries, .. })
-            | Relational::OrderBy(OrderBy { subqueries, .. })
-            | Relational::Projection(Projection { subqueries, .. }) => Ok(subqueries),
-            _ => Ok(&[]),
-        }
+        Ok(self.get_relation_node(rel_id)?.subqueries())
     }
 }
 

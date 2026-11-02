@@ -731,19 +731,12 @@ impl<'a> Relational<'a> {
             | Relational::SelectWithoutScan(SelectWithoutScan { .. })
             | Relational::Values(Values { .. }) => Children::new(),
             Relational::Projection(Projection {
-                child,
-                having,
-                group_by,
+                child: Some(child),
+                having: None,
+                group_by: None,
                 ..
-            }) => {
-                if having.is_some() || group_by.is_some() {
-                    Children::new()
-                } else if child.is_some() {
-                    children::one(child.unwrap())
-                } else {
-                    unreachable!("nothing was set")
-                }
-            }
+            }) => children::one(*child),
+            Relational::Projection(_) => Children::new(),
         }
     }
 
