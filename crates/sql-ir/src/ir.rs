@@ -142,6 +142,45 @@ pub struct Nodes {
     columns_len_memo: ColumnsLenMemo,
 }
 
+// The error paths of the node getters are cold and out of line: the getters
+// are inlined into many callers, and the formatting of a message would make
+// each copy large.
+
+#[cold]
+#[inline(never)]
+fn node_not_found(id: NodeId) -> SbroadError {
+    SbroadError::NotFound(
+        Entity::Node,
+        format_smolstr!("from {:?} with index {}", id.arena_type, id.offset),
+    )
+}
+
+#[cold]
+#[inline(never)]
+fn node_is_not_relational(node: &Node<'_>) -> SbroadError {
+    SbroadError::Invalid(
+        Entity::Node,
+        Some(format_smolstr!("node is not Relational type: {node:?}")),
+    )
+}
+
+#[cold]
+#[inline(never)]
+fn mut_node_is_not_expression(node_id: NodeId, node: &MutNode<'_>) -> SbroadError {
+    SbroadError::Invalid(
+        Entity::Node,
+        Some(format_smolstr!(
+            "node ({node_id}) is not expression type: {node:?}"
+        )),
+    )
+}
+
+#[cold]
+#[inline(never)]
+fn node_is_not(msg: &'static str) -> SbroadError {
+    SbroadError::Invalid(Entity::Node, Some(msg.into()))
+}
+
 impl Nodes {
     /// Memoized column counts of the relational nodes.
     pub(crate) fn columns_len_memo(&self) -> &ColumnsLenMemo {
@@ -1145,14 +1184,9 @@ impl Plan {
     /// # Errors
     /// Returns `SbroadError` when the node with requested index
     /// doesn't exist.
+    #[inline]
     pub fn get_node(&self, id: NodeId) -> Result<Node<'_>, SbroadError> {
-        match self.nodes.get(id) {
-            None => Err(SbroadError::NotFound(
-                Entity::Node,
-                format_smolstr!("from {:?} with index {}", id.arena_type, id.offset),
-            )),
-            Some(node) => Ok(node),
-        }
+        self.nodes.get(id).ok_or_else(|| node_not_found(id))
     }
 
     /// Get a mutable node by its pointer (position in the node arena).
@@ -1160,14 +1194,9 @@ impl Plan {
     /// # Errors
     /// Returns `SbroadError` when the node with requested index
     /// doesn't exist.
+    #[inline]
     pub fn get_mut_node(&mut self, id: NodeId) -> Result<MutNode<'_>, SbroadError> {
-        match self.nodes.get_mut(id) {
-            None => Err(SbroadError::NotFound(
-                Entity::Node,
-                format_smolstr!("from {:?} with index {}", id.arena_type, id.offset),
-            )),
-            Some(node) => Ok(node),
-        }
+        self.nodes.get_mut(id).ok_or_else(|| node_not_found(id))
     }
 
     /// Get a top node of the plan tree.
@@ -1657,6 +1686,7 @@ impl Plan {
     /// # Errors
     /// - node doesn't exist in the plan
     /// - node is not a relational type
+    #[inline]
     pub fn get_relation_node(&self, node_id: NodeId) -> Result<Relational<'_>, SbroadError> {
         let node = self.get_node(node_id)?;
         match node {
@@ -1669,10 +1699,7 @@ impl Plan {
             | Node::Block(..)
             | Node::Plugin(..)
             | Node::Deallocate(..)
-            | Node::Discard(..) => Err(SbroadError::Invalid(
-                Entity::Node,
-                Some(format_smolstr!("node is not Relational type: {node:?}")),
-            )),
+            | Node::Discard(..) => Err(node_is_not_relational(&node)),
         }
     }
 
@@ -1681,6 +1708,7 @@ impl Plan {
     /// # Errors
     /// - node doesn't exist in the plan
     /// - node is not a relational type
+    #[inline]
     pub fn get_mut_relation_node(
         &mut self,
         node_id: NodeId,
@@ -1695,10 +1723,7 @@ impl Plan {
             | MutNode::Plugin(..)
             | MutNode::Deallocate(..)
             | MutNode::Discard(..)
-            | MutNode::Block(..) => Err(SbroadError::Invalid(
-                Entity::Node,
-                Some("Node is not relational".into()),
-            )),
+            | MutNode::Block(..) => Err(node_is_not("Node is not relational")),
         }
     }
 
@@ -1707,13 +1732,11 @@ impl Plan {
     /// # Errors
     /// - node doesn't exist in the plan
     /// - node is not expression type
+    #[inline]
     pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression<'_>, SbroadError> {
         match self.get_node(node_id)? {
             Node::Expression(exp) => Ok(exp),
-            _ => Err(SbroadError::Invalid(
-                Entity::Node,
-                Some("node is not Expression type".into()),
-            )),
+            _ => Err(node_is_not("node is not Expression type")),
         }
     }
 
@@ -1755,6 +1778,7 @@ impl Plan {
     /// # Errors
     /// - node doesn't exist in the plan
     /// - node is not expression type
+    #[inline]
     pub fn get_mut_expression_node(
         &mut self,
         node_id: NodeId,
@@ -1770,12 +1794,7 @@ impl Plan {
             | MutNode::Plugin(..)
             | MutNode::Deallocate(..)
             | MutNode::Discard(..)
-            | MutNode::Block(..) => Err(SbroadError::Invalid(
-                Entity::Node,
-                Some(format_smolstr!(
-                    "node ({node_id}) is not expression type: {node:?}"
-                )),
-            )),
+            | MutNode::Block(..) => Err(mut_node_is_not_expression(node_id, &node)),
         }
     }
 
