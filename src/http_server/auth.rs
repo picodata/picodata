@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 struct JwtClaims {
     sub: String,
     typ: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    roles: Option<Vec<String>>,
+    #[serde(alias = "roles", skip_serializing_if = "Option::is_none")]
+    privileges: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -108,7 +108,7 @@ fn get_jwt_secret() -> AuthResult<Option<jwt_compact::alg::Hs256Key>> {
 fn create_jwt_token(
     username: &str,
     token_type: &str,
-    roles: Option<Vec<String>>,
+    privileges: Option<Vec<String>>,
 ) -> AuthResult<String> {
     use jwt_compact::AlgorithmExt as _;
 
@@ -136,7 +136,7 @@ fn create_jwt_token(
     let claims = JwtClaims {
         sub: username.to_string(),
         typ: token_type.to_string(),
-        roles,
+        privileges,
     };
 
     let header = jwt_compact::Header::empty();
@@ -225,10 +225,10 @@ macro_rules! allow_disabled_auth {
 pub(crate) fn http_api_login(username: String, password: String) -> AuthResult<TokenResponse> {
     allow_disabled_auth!(
         as_admin(|| {
-            let roles = authenticate_user(&username, Some(password.as_str()))?;
+            let privileges = authenticate_user(&username, Some(password.as_str()))?;
 
             Ok(TokenResponse {
-                auth: create_jwt_token(&username, "auth", Some(roles))?,
+                auth: create_jwt_token(&username, "auth", Some(privileges))?,
                 refresh: create_jwt_token(&username, "refresh", None)?,
             })
         }),
@@ -245,9 +245,9 @@ pub(crate) fn http_api_refresh_session(auth_header: String) -> AuthResult<TokenR
                 return Err(AuthError::InvalidType);
             }
 
-            let user_roles = authenticate_user(&claims.sub, None)?;
+            let privileges = authenticate_user(&claims.sub, None)?;
 
-            let auth_token = create_jwt_token(&claims.sub, "auth", Some(user_roles))?;
+            let auth_token = create_jwt_token(&claims.sub, "auth", Some(privileges))?;
             let refresh_token = create_jwt_token(&claims.sub, "refresh", None)?;
 
             Ok(TokenResponse {
@@ -266,7 +266,7 @@ fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
         return Err(AuthError::InvalidType);
     }
 
-    let roles = claims.roles.unwrap_or_default();
+    let roles = claims.privileges.unwrap_or_default();
     if !roles.contains(&"login".to_string()) {
         return Err(AuthError::InsufficientPrivileges);
     }
@@ -319,4 +319,38 @@ pub(crate) fn http_api_config() -> AuthResult<UiConfig> {
     let is_auth_enabled = get_jwt_secret().is_ok_and(|secret| secret.is_some());
 
     Ok(UiConfig { is_auth_enabled })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_token_serializes_privileges() {
+        let claims = JwtClaims {
+            sub: "jwt_user".into(),
+            typ: "auth".into(),
+            privileges: Some(vec!["login".into()]),
+        };
+        let value = serde_json::to_value(&claims).unwrap();
+        assert_eq!(value["privileges"], serde_json::json!(["login"]));
+        assert!(value.get("roles").is_none());
+        let claims: JwtClaims = serde_json::from_value(value).unwrap();
+        assert_eq!(claims.privileges.unwrap(), ["login"]);
+    }
+
+    #[test]
+    fn legacy_roles_claim_is_accepted() {
+        let claims: JwtClaims = serde_json::from_value(serde_json::json!({
+            "sub": "jwt_user",
+            "typ": "auth",
+            "roles": ["login"],
+        }))
+        .unwrap();
+        assert_eq!(claims.sub, "jwt_user");
+        assert_eq!(claims.privileges.as_deref().unwrap(), ["login"]);
+        let value = serde_json::to_value(&claims).unwrap();
+        assert_eq!(value["privileges"], serde_json::json!(["login"]));
+        assert!(value.get("roles").is_none());
+    }
 }
