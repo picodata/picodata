@@ -904,13 +904,19 @@ def test_jwt_session_login_invalid_credentials(instance: Instance):
     assert response_data["errorMessage"] == "invalid credentials"
 
 
-def test_jwt_session_refresh_success(instance: Instance):
+@pytest.mark.parametrize("scheme", ["Bearer", "bearer", "BEARER", "bEaReR"])
+def test_jwt_session_refresh_success(instance: Instance, scheme: str):
     http_listen = instance.http_listen
 
     response_data, _ = authorize(instance, USERNAME, PASSWORD)
     refresh_token = response_data["refresh"]
 
-    with get_authorized(f"http://{http_listen}/api/v1/session", refresh_token) as response:
+    request = Request(
+        f"http://{http_listen}/api/v1/session",
+        headers={"Authorization": f"{scheme} {refresh_token}"},
+        method="GET",
+    )
+    with urlopen(request) as response:
         new_tokens = json.loads(response.read().decode())
         status_code = response.status
 
@@ -924,6 +930,20 @@ def test_jwt_session_refresh_success(instance: Instance):
     assert len(new_tokens["refresh"].split(".")) == 3
     assert decode_jwt_claims(new_tokens["auth"])["privileges"] == ["login"]
     assert "privileges" not in decode_jwt_claims(new_tokens["refresh"])
+
+
+@pytest.mark.parametrize("scheme", ["Bearer", "bearer", "BEARER", "bEaReR"])
+def test_jwt_accepts_auth_token_scheme_casing(instance: Instance, scheme: str):
+    set_jwt_enabled(instance, True)
+    token = get_auth_token(instance)
+    request = Request(
+        f"http://{instance.http_listen}/api/v1/tiers",
+        headers={"Authorization": f"{scheme} {token}"},
+        method="GET",
+    )
+
+    with urlopen(request) as response:
+        assert response.status == 200
 
 
 def test_jwt_rejects_missing_token(instance: Instance):

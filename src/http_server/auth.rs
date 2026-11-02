@@ -169,7 +169,9 @@ fn get_jwt_claims(auth_header: &str) -> AuthResult<JwtClaims> {
     };
 
     let token = auth_header
-        .strip_prefix("Bearer ")
+        .split_once(' ')
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("Bearer"))
+        .map(|(_, token)| token)
         .ok_or(AuthError::InvalidHeader)?;
 
     decode_jwt_claims(token, &secret_key)
