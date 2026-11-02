@@ -1617,90 +1617,48 @@ impl LogicalExplain {
 
         let dft_post = PostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
         for (id, node) in dft_post.relational() {
-            let (current, children) = match &node {
+            // Every arm writes the same result slot. A `?` per arm would keep a
+            // copy of the 112-byte result for each of them in a debug build.
+            let result = match &node {
                 Relational::Intersect { .. } => {
-                    let right = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Intersect node must have exactly two children".into(),
-                        )
-                    })?;
-                    let left = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Intersect node must have exactly two children".into(),
-                        )
-                    })?;
+                    let children = Self::pop_children(
+                        &mut stack,
+                        2,
+                        "Intersect node must have exactly two children",
+                    )?;
 
-                    (ExplainNode::Intersect, vec![left, right])
+                    Ok((ExplainNode::Intersect, children))
                 }
                 Relational::Except { .. } => {
-                    let right = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Exception node must have exactly two children".into(),
-                        )
-                    })?;
-                    let left = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Exception node must have exactly two children".into(),
-                        )
-                    })?;
-
-                    (ExplainNode::Except, vec![left, right])
-                }
-                Relational::GroupBy(node::GroupBy {
-                    gr_exprs,
-                    subqueries,
-                    ..
-                }) => {
-                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
+                    let children = Self::pop_children(
                         &mut stack,
-                        &mut known_subqueries,
-                        subqueries,
-                    );
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "GroupBy must have exactly one child".into(),
-                        )
-                    })?;
-                    let group_by = GroupBy::new(ir, gr_exprs, &sq_ref_map, should_fmt)?;
+                        2,
+                        "Exception node must have exactly two children",
+                    )?;
 
-                    (ExplainNode::GroupBy(group_by), vec![child])
+                    Ok((ExplainNode::Except, children))
                 }
-                Relational::OrderBy(node::OrderBy {
-                    order_by_elements,
-                    subqueries,
-                    ..
-                }) => {
-                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
-                        &mut stack,
-                        &mut known_subqueries,
-                        subqueries,
-                    );
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "OrderBy must have exactly one child".into(),
-                        )
-                    })?;
-                    let order_by = OrderBy::new(ir, order_by_elements, &sq_ref_map, should_fmt)?;
-
-                    (ExplainNode::OrderBy(order_by), vec![child])
-                }
-                Relational::Projection(node::Projection {
-                    output, subqueries, ..
-                }) => {
-                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
-                        &mut stack,
-                        &mut known_subqueries,
-                        subqueries,
-                    );
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Projection must have exactly one child".into(),
-                        )
-                    })?;
-                    let projection = Projection::new(ir, *output, &sq_ref_map, should_fmt)?;
-
-                    (ExplainNode::Projection(projection), vec![child])
-                }
+                Relational::GroupBy(group_by) => Self::explain_group_by(
+                    group_by,
+                    ir,
+                    &mut stack,
+                    &mut known_subqueries,
+                    should_fmt,
+                ),
+                Relational::OrderBy(order_by) => Self::explain_order_by(
+                    order_by,
+                    ir,
+                    &mut stack,
+                    &mut known_subqueries,
+                    should_fmt,
+                ),
+                Relational::Projection(projection) => Self::explain_projection(
+                    projection,
+                    ir,
+                    &mut stack,
+                    &mut known_subqueries,
+                    should_fmt,
+                ),
                 Relational::SelectWithoutScan(node::SelectWithoutScan {
                     output,
                     subqueries,
@@ -1713,7 +1671,7 @@ impl LogicalExplain {
                     );
                     let projection = Projection::new(ir, *output, &sq_ref_map, should_fmt)?;
 
-                    (ExplainNode::Projection(projection), vec![])
+                    Ok((ExplainNode::Projection(projection), vec![]))
                 }
                 Relational::ScanRelation(ScanRelation {
                     relation,
@@ -1723,40 +1681,16 @@ impl LogicalExplain {
                 }) => {
                     let scan = Scan::new(relation.clone(), alias.clone(), indexed_by.clone());
 
-                    (ExplainNode::Scan(scan), vec![])
+                    Ok((ExplainNode::Scan(scan), vec![]))
                 }
-                Relational::ScanFunction(ScanFunction {
-                    alias,
-                    function,
-                    with_ordinality,
-                    subqueries,
-                    ..
-                }) => {
-                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
-                        &mut stack,
-                        &mut known_subqueries,
-                        subqueries,
-                    );
-                    let ColExpr::ScalarFunction(name, args, _, _, should_fmt) =
-                        ColExpr::new(ir, *function, &sq_ref_map, should_fmt)?
-                    else {
-                        return Err(SbroadError::Invalid(
-                            Entity::Relational,
-                            Some(format_smolstr!(
-                                "table function scan {id} has no function call"
-                            )),
-                        ));
-                    };
-                    let scan = FunctionScan {
-                        name,
-                        args,
-                        with_ordinality: *with_ordinality,
-                        alias: alias.clone(),
-                        should_fmt,
-                    };
-
-                    (ExplainNode::FunctionScan(scan), vec![])
-                }
+                Relational::ScanFunction(scan_function) => Self::explain_scan_function(
+                    scan_function,
+                    ir,
+                    id,
+                    &mut stack,
+                    &mut known_subqueries,
+                    should_fmt,
+                ),
                 Relational::ScanCte(ScanCte { alias, child, .. }) => {
                     let child_tree = stack.pop().expect("CTE node must have exactly one child");
                     let existing_pos = known_subqueries
@@ -1767,225 +1701,91 @@ impl LogicalExplain {
                         known_subqueries.len() - 1
                     });
 
-                    (ExplainNode::Cte(alias.clone(), Ref::new(pos)), vec![])
+                    Ok((ExplainNode::Cte(alias.clone(), Ref::new(pos)), vec![]))
                 }
                 Relational::Selection(Selection {
                     subqueries, filter, ..
                 })
                 | Relational::Having(Having {
                     subqueries, filter, ..
-                }) => {
-                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
-                        &mut stack,
-                        &mut known_subqueries,
-                        subqueries,
-                    );
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Selection or Having must have exactly one child".into(),
-                        )
-                    })?;
-                    let filter_id = *ir.undo().get_oldest(filter);
-                    let selection = ColExpr::new(ir, filter_id, &sq_ref_map, should_fmt)?;
-                    let explain_node = match &node {
-                        Relational::Selection { .. } => {
-                            ExplainNode::Selection(selection, should_fmt)
-                        }
-                        Relational::Having { .. } => ExplainNode::Having(selection, should_fmt),
-                        _ => panic!("Expected Selection or Having node."),
-                    };
-
-                    (explain_node, vec![child])
-                }
+                }) => Self::explain_selection(
+                    &node,
+                    subqueries,
+                    filter,
+                    ir,
+                    &mut stack,
+                    &mut known_subqueries,
+                    should_fmt,
+                ),
                 u @ (Relational::UnionAll { .. } | Relational::Union { .. }) => {
-                    let right = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Union node must have exactly two children".into(),
-                        )
-                    })?;
-                    let left = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Union node must have exactly two children".into(),
-                        )
-                    })?;
+                    let children = Self::pop_children(
+                        &mut stack,
+                        2,
+                        "Union node must have exactly two children",
+                    )?;
 
                     let kind = match u {
                         Relational::Union(..) => ExplainNode::Union,
                         _other => ExplainNode::UnionAll,
                     };
 
-                    (kind, vec![left, right])
+                    Ok((kind, children))
                 }
                 Relational::ScanSubQuery(ScanSubQuery { alias, .. }) => {
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "ScanSubQuery node must have exactly one child".into(),
-                        )
-                    })?;
+                    let children = Self::pop_children(
+                        &mut stack,
+                        1,
+                        "ScanSubQuery node must have exactly one child",
+                    )?;
                     let subquery = SubQuery::new(alias.clone());
 
-                    (ExplainNode::SubQuery(subquery), vec![child])
+                    Ok((ExplainNode::SubQuery(subquery), children))
                 }
-                Relational::Motion(MotionRel {
-                    child: child_id,
-                    policy,
-                    program,
-                    ..
-                }) => {
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Motion node must have exactly one child".into(),
-                        )
-                    })?;
-
-                    let collect_targets = |s: &IrMotionKey| -> Result<Vec<Target>, SbroadError> {
-                        let child_id = child_id.ok_or_else(|| {
-                            SbroadError::UnexpectedNumberOfValues(
-                                "current node should have exactly one child".to_smolstr(),
-                            )
-                        })?;
-
-                        let targets = (s.targets)
-                            .iter()
-                            .map(|r| match r {
-                                IrTarget::Reference(pos) => {
-                                    let col_name = ir
-                                        .column_at(RelColumn::new(child_id, *pos))
-                                        .map_err(|_| {
-                                            SbroadError::NotFound(
-                                                Entity::Target,
-                                                format_smolstr!("reference with position {pos}"),
-                                            )
-                                        })?;
-
-                                    Ok::<Target, SbroadError>(Target::Reference(
-                                        col_name.name_owned(),
-                                    ))
-                                }
-                                IrTarget::Value(v) => Ok(Target::Value(v.clone())),
-                            })
-                            .collect::<Result<Vec<Target>, _>>()?;
-
-                        Ok(targets)
-                    };
-
-                    let p = match policy {
-                        IrMotionPolicy::None => MotionPolicy::None,
-                        IrMotionPolicy::Segment(s) => {
-                            let targets = collect_targets(s)?;
-                            MotionPolicy::Segment(MotionKey { targets })
-                        }
-                        IrMotionPolicy::Full => MotionPolicy::Full,
-                        IrMotionPolicy::Local => MotionPolicy::Local,
-                        IrMotionPolicy::LocalSegment(s) => {
-                            let targets = collect_targets(s)?;
-                            MotionPolicy::LocalSegment(MotionKey { targets })
-                        }
-                    };
-
-                    let motion = Motion::new(p, program.clone());
-
-                    (ExplainNode::Motion(motion), vec![child])
+                Relational::Motion(motion) => Self::explain_motion(motion, ir, &mut stack),
+                Relational::Join(join) => {
+                    Self::explain_join(join, ir, &mut stack, &mut known_subqueries, should_fmt)
                 }
-                Relational::Join(Join {
-                    subqueries,
-                    condition,
-                    kind,
-                    ..
-                }) => {
-                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
-                        &mut stack,
-                        &mut known_subqueries,
-                        subqueries,
-                    );
-                    let right = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Join node must have exactly two children".into(),
-                        )
-                    })?;
-                    let left = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Join node must have exactly two children".into(),
-                        )
-                    })?;
-
-                    let condition = ColExpr::new(ir, *condition, &sq_ref_map, should_fmt)?;
-                    let join = ExplainNode::Join(condition, *kind, should_fmt);
-
-                    (join, vec![left, right])
-                }
-                Relational::Values(Values {
-                    rows, subqueries, ..
-                }) => {
-                    let sq_ref_map = LogicalExplain::get_sq_ref_map(
-                        &mut stack,
-                        &mut known_subqueries,
-                        subqueries,
-                    );
-                    let mut children = Vec::with_capacity(rows.len());
-                    for row_id in rows {
-                        let row = ColExpr::new(ir, *row_id, &sq_ref_map, should_fmt)?;
-                        children.push(ExplainTreePart {
-                            current: ExplainNode::ValueRow(row),
-                            children: Vec::new(),
-                        });
-                    }
-
-                    (ExplainNode::Value, children)
+                Relational::Values(values) => {
+                    Self::explain_values(values, ir, &mut stack, &mut known_subqueries, should_fmt)
                 }
                 Relational::Insert(Insert {
                     relation,
                     conflict_strategy,
                     ..
                 }) => {
-                    let values = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Insert node failed to pop a value row.".into(),
-                        )
-                    })?;
+                    let children = Self::pop_children(
+                        &mut stack,
+                        1,
+                        "Insert node failed to pop a value row.",
+                    )?;
                     let conflict = explain_conflict_strategy(ir, relation, conflict_strategy)?;
                     let insert = ExplainNode::Insert(relation.clone(), conflict);
 
-                    (insert, vec![values])
+                    Ok((insert, children))
                 }
                 Relational::Update { .. } => {
-                    let values = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Insert node failed to pop a value row.".into(),
-                        )
-                    })?;
+                    let children = Self::pop_children(
+                        &mut stack,
+                        1,
+                        "Insert node failed to pop a value row.",
+                    )?;
 
                     let update = ExplainNode::Update(Update::new(ir, id, should_fmt)?);
 
-                    (update, vec![values])
+                    Ok((update, children))
                 }
-                Relational::Delete(Delete {
-                    relation, child, ..
-                }) => {
-                    let mut children = vec![];
-                    if child.is_some() {
-                        let values = stack.pop().ok_or_else(|| {
-                            SbroadError::UnexpectedNumberOfValues(
-                                "Delete node failed to pop a value row.".into(),
-                            )
-                        })?;
-
-                        children.push(values);
-                    }
-                    let delete = ExplainNode::Delete(relation.clone());
-
-                    (delete, children)
-                }
+                Relational::Delete(delete) => Self::explain_delete(delete, &mut stack),
                 Relational::Limit(Limit { limit, .. }) => {
-                    let child = stack.pop().ok_or_else(|| {
-                        SbroadError::UnexpectedNumberOfValues(
-                            "Limit node must have exactly one child".into(),
-                        )
-                    })?;
+                    let children = Self::pop_children(
+                        &mut stack,
+                        1,
+                        "Limit node must have exactly one child",
+                    )?;
 
-                    (ExplainNode::Limit(*limit), vec![child])
+                    Ok((ExplainNode::Limit(*limit), children))
                 }
             };
+            let (current, children) = result?;
 
             stack.push(ExplainTreePart { current, children });
         }
@@ -2001,5 +1801,264 @@ impl LogicalExplain {
         };
 
         Ok(result)
+    }
+
+    /// Pops the last `n` parts from `stack` and keeps their order. A popped
+    /// part is 104 bytes, and in a debug build each `pop()?` keeps several
+    /// copies of it in the caller's frame.
+    fn pop_children(
+        stack: &mut Vec<ExplainTreePart>,
+        n: usize,
+        msg: &'static str,
+    ) -> Result<Vec<ExplainTreePart>, SbroadError> {
+        if stack.len() < n {
+            return Err(SbroadError::UnexpectedNumberOfValues(msg.into()));
+        }
+        Ok(stack.drain(stack.len() - n..).collect())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn explain_selection(
+        node: &Relational,
+        subqueries: &[NodeId],
+        filter: &NodeId,
+        ir: &Plan,
+        stack: &mut Vec<ExplainTreePart>,
+        known_subqueries: &mut OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
+        should_fmt: bool,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let sq_ref_map = LogicalExplain::get_sq_ref_map(stack, known_subqueries, subqueries);
+        let children =
+            Self::pop_children(stack, 1, "Selection or Having must have exactly one child")?;
+        let filter_id = *ir.undo().get_oldest(filter);
+        let selection = ColExpr::new(ir, filter_id, &sq_ref_map, should_fmt)?;
+        let explain_node = match &node {
+            Relational::Selection { .. } => ExplainNode::Selection(selection, should_fmt),
+            Relational::Having { .. } => ExplainNode::Having(selection, should_fmt),
+            _ => panic!("Expected Selection or Having node."),
+        };
+
+        Ok((explain_node, children))
+    }
+
+    fn explain_group_by(
+        group_by: &node::GroupBy,
+        ir: &Plan,
+        stack: &mut Vec<ExplainTreePart>,
+        known_subqueries: &mut OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
+        should_fmt: bool,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let node::GroupBy {
+            gr_exprs,
+            subqueries,
+            ..
+        } = group_by;
+        let sq_ref_map = LogicalExplain::get_sq_ref_map(stack, known_subqueries, subqueries);
+        let children = Self::pop_children(stack, 1, "GroupBy must have exactly one child")?;
+        let group_by = GroupBy::new(ir, gr_exprs, &sq_ref_map, should_fmt)?;
+
+        Ok((ExplainNode::GroupBy(group_by), children))
+    }
+
+    fn explain_order_by(
+        order_by: &node::OrderBy,
+        ir: &Plan,
+        stack: &mut Vec<ExplainTreePart>,
+        known_subqueries: &mut OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
+        should_fmt: bool,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let node::OrderBy {
+            order_by_elements,
+            subqueries,
+            ..
+        } = order_by;
+        let sq_ref_map = LogicalExplain::get_sq_ref_map(stack, known_subqueries, subqueries);
+        let children = Self::pop_children(stack, 1, "OrderBy must have exactly one child")?;
+        let order_by = OrderBy::new(ir, order_by_elements, &sq_ref_map, should_fmt)?;
+
+        Ok((ExplainNode::OrderBy(order_by), children))
+    }
+
+    fn explain_projection(
+        projection: &node::Projection,
+        ir: &Plan,
+        stack: &mut Vec<ExplainTreePart>,
+        known_subqueries: &mut OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
+        should_fmt: bool,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let node::Projection {
+            output, subqueries, ..
+        } = projection;
+        let sq_ref_map = LogicalExplain::get_sq_ref_map(stack, known_subqueries, subqueries);
+        let children = Self::pop_children(stack, 1, "Projection must have exactly one child")?;
+        let projection = Projection::new(ir, *output, &sq_ref_map, should_fmt)?;
+
+        Ok((ExplainNode::Projection(projection), children))
+    }
+
+    fn explain_scan_function(
+        scan_function: &ScanFunction,
+        ir: &Plan,
+        id: NodeId,
+        stack: &mut Vec<ExplainTreePart>,
+        known_subqueries: &mut OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
+        should_fmt: bool,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let ScanFunction {
+            alias,
+            function,
+            with_ordinality,
+            subqueries,
+            ..
+        } = scan_function;
+        let sq_ref_map = LogicalExplain::get_sq_ref_map(stack, known_subqueries, subqueries);
+        let ColExpr::ScalarFunction(name, args, _, _, should_fmt) =
+            ColExpr::new(ir, *function, &sq_ref_map, should_fmt)?
+        else {
+            return Err(SbroadError::Invalid(
+                Entity::Relational,
+                Some(format_smolstr!(
+                    "table function scan {id} has no function call"
+                )),
+            ));
+        };
+        let scan = FunctionScan {
+            name,
+            args,
+            with_ordinality: *with_ordinality,
+            alias: alias.clone(),
+            should_fmt,
+        };
+
+        Ok((ExplainNode::FunctionScan(scan), vec![]))
+    }
+
+    fn explain_motion(
+        motion: &MotionRel,
+        ir: &Plan,
+        stack: &mut Vec<ExplainTreePart>,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let MotionRel {
+            child: child_id,
+            policy,
+            program,
+            ..
+        } = motion;
+        let child = stack.pop().ok_or_else(|| {
+            SbroadError::UnexpectedNumberOfValues("Motion node must have exactly one child".into())
+        })?;
+
+        let collect_targets = |s: &IrMotionKey| -> Result<Vec<Target>, SbroadError> {
+            let child_id = child_id.ok_or_else(|| {
+                SbroadError::UnexpectedNumberOfValues(
+                    "current node should have exactly one child".to_smolstr(),
+                )
+            })?;
+
+            let targets = (s.targets)
+                .iter()
+                .map(|r| match r {
+                    IrTarget::Reference(pos) => {
+                        let col_name =
+                            ir.column_at(RelColumn::new(child_id, *pos)).map_err(|_| {
+                                SbroadError::NotFound(
+                                    Entity::Target,
+                                    format_smolstr!("reference with position {pos}"),
+                                )
+                            })?;
+
+                        Ok::<Target, SbroadError>(Target::Reference(col_name.name_owned()))
+                    }
+                    IrTarget::Value(v) => Ok(Target::Value(v.clone())),
+                })
+                .collect::<Result<Vec<Target>, _>>()?;
+
+            Ok(targets)
+        };
+
+        let p = match policy {
+            IrMotionPolicy::None => MotionPolicy::None,
+            IrMotionPolicy::Segment(s) => {
+                let targets = collect_targets(s)?;
+                MotionPolicy::Segment(MotionKey { targets })
+            }
+            IrMotionPolicy::Full => MotionPolicy::Full,
+            IrMotionPolicy::Local => MotionPolicy::Local,
+            IrMotionPolicy::LocalSegment(s) => {
+                let targets = collect_targets(s)?;
+                MotionPolicy::LocalSegment(MotionKey { targets })
+            }
+        };
+
+        let motion = Motion::new(p, program.clone());
+
+        Ok((ExplainNode::Motion(motion), vec![child]))
+    }
+
+    fn explain_join(
+        join: &Join,
+        ir: &Plan,
+        stack: &mut Vec<ExplainTreePart>,
+        known_subqueries: &mut OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
+        should_fmt: bool,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let Join {
+            subqueries,
+            condition,
+            kind,
+            ..
+        } = join;
+        let sq_ref_map = LogicalExplain::get_sq_ref_map(stack, known_subqueries, subqueries);
+        let children = Self::pop_children(stack, 2, "Join node must have exactly two children")?;
+
+        let condition = ColExpr::new(ir, *condition, &sq_ref_map, should_fmt)?;
+        let join = ExplainNode::Join(condition, *kind, should_fmt);
+
+        Ok((join, children))
+    }
+
+    fn explain_values(
+        values: &Values,
+        ir: &Plan,
+        stack: &mut Vec<ExplainTreePart>,
+        known_subqueries: &mut OrderedMap<NodeId, ExplainTreePart, RepeatableState>,
+        should_fmt: bool,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let Values {
+            rows, subqueries, ..
+        } = values;
+        let sq_ref_map = LogicalExplain::get_sq_ref_map(stack, known_subqueries, subqueries);
+        let mut children = Vec::with_capacity(rows.len());
+        for row_id in rows {
+            let row = ColExpr::new(ir, *row_id, &sq_ref_map, should_fmt)?;
+            children.push(ExplainTreePart {
+                current: ExplainNode::ValueRow(row),
+                children: Vec::new(),
+            });
+        }
+
+        Ok((ExplainNode::Value, children))
+    }
+
+    fn explain_delete(
+        delete: &Delete,
+        stack: &mut Vec<ExplainTreePart>,
+    ) -> Result<(ExplainNode, Vec<ExplainTreePart>), SbroadError> {
+        let Delete {
+            relation, child, ..
+        } = delete;
+        let mut children = vec![];
+        if child.is_some() {
+            let values = stack.pop().ok_or_else(|| {
+                SbroadError::UnexpectedNumberOfValues(
+                    "Delete node failed to pop a value row.".into(),
+                )
+            })?;
+
+            children.push(values);
+        }
+        let delete = ExplainNode::Delete(relation.clone());
+
+        Ok((delete, children))
     }
 }
