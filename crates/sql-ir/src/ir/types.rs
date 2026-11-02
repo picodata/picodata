@@ -329,12 +329,11 @@ impl TryFrom<&UnrestrictedType> for CastType {
             UnrestrictedType::Uuid => Ok(CastType::Uuid),
             UnrestrictedType::String => Ok(CastType::String),
             UnrestrictedType::Array(n) => Ok(CastType::Array(*n)),
-            UnrestrictedType::Map | UnrestrictedType::Any | UnrestrictedType::Json => {
-                Err(Self::Error::Invalid(
-                    Entity::Type,
-                    Some(format_smolstr!("cannot cast to Map/Any/Json")),
-                ))
-            }
+            UnrestrictedType::Json => Ok(CastType::Json),
+            UnrestrictedType::Map | UnrestrictedType::Any => Err(Self::Error::Invalid(
+                Entity::Type,
+                Some(format_smolstr!("cannot cast to Map/Any")),
+            )),
         }
     }
 }

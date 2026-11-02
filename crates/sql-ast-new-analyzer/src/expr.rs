@@ -1353,8 +1353,6 @@ impl ExprTypeDeriver for Expr<'_, Analyzed> {
 fn add_cast(expr: &mut Expr<'_, Analyzed>, d_type: Type) -> AstResult<()> {
     let (inner, meta) = expr.parts_mut();
     let cast_type = match *DerivedType::from(d_type).get() {
-        // Text coerced to json; `TryFrom` refuses json for the old pipeline.
-        Some(UnrestrictedType::Json) => CastType::Json,
         Some(ty) => (&ty).try_into()?,
         None => {
             return Err(analyze_err(format_smolstr!(
