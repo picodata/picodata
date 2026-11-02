@@ -157,11 +157,23 @@ fn node_not_found(id: NodeId) -> SbroadError {
 
 #[cold]
 #[inline(never)]
-fn node_is_not_relational(node: &Node<'_>) -> SbroadError {
-    SbroadError::Invalid(
-        Entity::Node,
-        Some(format_smolstr!("node is not Relational type: {node:?}")),
-    )
+fn relation_node_error(nodes: &Nodes, id: NodeId) -> SbroadError {
+    match nodes.get(id) {
+        None => node_not_found(id),
+        Some(node) => SbroadError::Invalid(
+            Entity::Node,
+            Some(format_smolstr!("node is not Relational type: {node:?}")),
+        ),
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn expression_node_error(nodes: &Nodes, id: NodeId) -> SbroadError {
+    match nodes.get(id) {
+        None => node_not_found(id),
+        Some(_) => node_is_not("node is not Expression type"),
+    }
 }
 
 #[cold]
@@ -188,6 +200,28 @@ impl Nodes {
     }
 
     pub(crate) fn get(&self, id: NodeId) -> Option<Node<'_>> {
+        self.get_inlined(id)
+    }
+
+    // The typed lookups inline the arena match, so LLVM merges it with the
+    // match on `Node` and does not write the 24-byte `Node` to the stack.
+
+    pub(crate) fn get_relation(&self, id: NodeId) -> Option<Relational<'_>> {
+        match self.get_inlined(id)? {
+            Node::Relational(rel) => Some(rel),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn get_expression(&self, id: NodeId) -> Option<Expression<'_>> {
+        match self.get_inlined(id)? {
+            Node::Expression(expr) => Some(expr),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    fn get_inlined(&self, id: NodeId) -> Option<Node<'_>> {
         match id.arena_type() {
             ArenaType::Arena32 => self
                 .arena32
@@ -1675,19 +1709,9 @@ impl Plan {
     /// - node is not a relational type
     #[inline]
     pub fn get_relation_node(&self, node_id: NodeId) -> Result<Relational<'_>, SbroadError> {
-        let node = self.get_node(node_id)?;
-        match node {
-            Node::Relational(rel) => Ok(rel),
-            Node::Expression(_)
-            | Node::Ddl(..)
-            | Node::Invalid(..)
-            | Node::Acl(..)
-            | Node::Tcl(..)
-            | Node::Block(..)
-            | Node::Plugin(..)
-            | Node::Deallocate(..)
-            | Node::Discard(..) => Err(node_is_not_relational(&node)),
-        }
+        self.nodes
+            .get_relation(node_id)
+            .ok_or_else(|| relation_node_error(&self.nodes, node_id))
     }
 
     /// Get mutable relation type node
@@ -1721,10 +1745,9 @@ impl Plan {
     /// - node is not expression type
     #[inline]
     pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression<'_>, SbroadError> {
-        match self.get_node(node_id)? {
-            Node::Expression(exp) => Ok(exp),
-            _ => Err(node_is_not("node is not Expression type")),
-        }
+        self.nodes
+            .get_expression(node_id)
+            .ok_or_else(|| expression_node_error(&self.nodes, node_id))
     }
 
     /// Calculate type of expression
