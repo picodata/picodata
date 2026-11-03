@@ -26,7 +26,7 @@ use sql::executor::preemption::Scheduler;
 use sql::executor::protocol::SchemaInfo;
 use sql::executor::result::ConsumerResult;
 use sql::executor::vdbe::ExecutionInsight::{BusyStmt, Nothing, StaleStmt};
-use sql::executor::vdbe::{ExecutionInsight, SharedStmt, SqlError, SqlStmt};
+use sql::executor::vdbe::{ExecutionInsight, SharedStmt, SqlStmt};
 use sql::executor::vtable::{
     vtable_indexed_column_name, VTableTuple, VirtualTable, VirtualTableTupleEncoder,
 };
@@ -284,7 +284,7 @@ pub fn stmt_execute<'p, 'b>(
     let vtables = info.vtables();
     let sql_motion_row_max = info.sql_motion_row_max();
     let mut tables_names = Vec::with_capacity(vtables.len());
-    let pcall = || -> Result<ExecutionInsight, SbroadError> {
+    let populate = || -> Result<(), SbroadError> {
         for vtable_data in vtables {
             let (vtable, tuples) = vtable_data?;
             // Register the current temp table before population starts so
@@ -292,15 +292,23 @@ pub fn stmt_execute<'p, 'b>(
             tables_names.push(vtable);
             populate_table(vtable, tuples)?;
         }
-
-        with_su(ADMIN_ID, || -> Result<ExecutionInsight, SqlError> {
-            port.process_stmt_with_raw_params(stmt, info.params(), info.sql_vdbe_opcode_max())
-        })?
-        .map_err(SbroadError::from)
+        Ok(())
     };
 
-    let res = pcall();
-    with_su(ADMIN_ID, || {
+    // The population runs as the current user; the statement and the cleanup
+    // of the temp tables run as admin in one scope, so a session switch pair
+    // is paid once and the cleanup runs whatever the statement returned.
+    let populated = populate();
+    let res = with_su(ADMIN_ID, || -> Result<ExecutionInsight, SbroadError> {
+        let res = match populated {
+            Ok(()) => port
+                .process_stmt_with_raw_params(stmt, info.params(), info.sql_vdbe_opcode_max())
+                .map_err(SbroadError::from),
+            Err(e) => {
+                tlog!(Error, "Failed to populate a temporary table: {e}");
+                Err(e)
+            }
+        };
         for name in tables_names {
             if let Some(space) = Space::find(name) {
                 space
@@ -308,9 +316,9 @@ pub fn stmt_execute<'p, 'b>(
                     .expect("failed to truncate temporary table");
             }
         }
+        res
     })
-    .expect("failed to switch to admin user");
-    let res = res?;
+    .expect("failed to switch to admin user")?;
 
     // We should check if we exceed the maximum number of rows.
     if port.size() > 0 {
