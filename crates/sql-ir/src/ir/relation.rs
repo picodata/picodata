@@ -11,6 +11,7 @@ use ahash::AHashMap;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::fmt::Formatter;
+use std::rc::Rc;
 use tarantool::index::Metadata as IndexMetadata;
 use tarantool::space::{Field, Space, SpaceEngineType, SpaceId, SystemSpace};
 use tarantool::tuple::{FieldType, KeyDef, KeyDefPart};
@@ -638,7 +639,9 @@ impl Table {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Relations {
-    pub tables: HashMap<SmolStr, Table>,
+    /// Shared between the clones of a plan: bound statements copy the cached
+    /// plan on every execution, and the tables do not change after planning.
+    pub tables: Rc<HashMap<SmolStr, Table>>,
 }
 
 impl Default for Relations {
@@ -651,21 +654,17 @@ impl Relations {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            tables: HashMap::new(),
+            tables: Rc::new(HashMap::new()),
         }
     }
 
     pub fn insert(&mut self, table: Table) {
-        self.tables.insert(table.name().clone(), table);
+        Rc::make_mut(&mut self.tables).insert(table.name().clone(), table);
     }
 
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&Table> {
         self.tables.get(name)
-    }
-
-    pub fn drain(&mut self) -> HashMap<SmolStr, Table> {
-        std::mem::take(&mut self.tables)
     }
 }
 

@@ -96,8 +96,8 @@ impl PreparedStatement {
                     index_version_map.insert(*index_pk, version);
                 }
 
-                plan.table_version_map = table_version_map;
-                plan.index_version_map = index_version_map;
+                plan.table_version_map = Rc::new(table_version_map);
+                plan.index_version_map = Rc::new(index_version_map);
             }
 
             plan.optimize_statement()?;

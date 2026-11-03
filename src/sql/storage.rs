@@ -668,8 +668,8 @@ impl Vshard for StorageRuntime {
                                 buckets: &Buckets,
                                 motion_info: MotionInfo| {
                 let schema_info = SchemaInfo::new(
-                    plan.table_version_map.clone(),
-                    plan.index_version_map.clone(),
+                    (*plan.table_version_map).clone(),
+                    (*plan.index_version_map).clone(),
                 );
                 let miss_info = ExpandedLocalExecutionInfo {
                     schema_info,
@@ -745,8 +745,8 @@ impl Vshard for StorageRuntime {
                 let sql = generate_local_dql_sql(ex_plan, top_id, plan_id, ids)?;
                 let vtables = ex_plan.subtree_vtables(top_id, plan_id)?;
                 let schema_info = SchemaInfo::new(
-                    plan.table_version_map.clone(),
-                    plan.index_version_map.clone(),
+                    (*plan.table_version_map).clone(),
+                    (*plan.index_version_map).clone(),
                 );
                 let miss_info = ExpandedLocalExecutionInfo {
                     schema_info,
@@ -805,8 +805,8 @@ impl Vshard for StorageRuntime {
                 generate_local_dql_sql(ex_plan, top_id, plan_id, sql_params.constant_ids())?;
 
             let schema_info = SchemaInfo::new(
-                ex_plan.get_ir_plan().table_version_map.clone(),
-                ex_plan.get_ir_plan().index_version_map.clone(),
+                (*ex_plan.get_ir_plan().table_version_map).clone(),
+                (*ex_plan.get_ir_plan().index_version_map).clone(),
             );
 
             let miss_info = ExpandedLocalExecutionInfo {

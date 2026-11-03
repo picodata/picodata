@@ -27,6 +27,7 @@ use sql_type_system::error::Error as TypeSystemError;
 use sql_type_system::expr::Type as TypeSystemType;
 use sql_type_system::type_system::FunctionKind;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::metadata::Metadata;
@@ -756,7 +757,7 @@ where
 
     let index = Index::from(table_id, index_id);
     plan.indexes.insert(index_name, index);
-    plan.index_version_map.insert([table_id, index_id], 0);
+    Rc::make_mut(&mut plan.index_version_map).insert([table_id, index_id], 0);
     Ok(())
 }
 
@@ -1554,7 +1555,7 @@ where
             parse_indexed_by_expr(ast, *indexed_by_id)?.expect("INDEXED BY must exist");
         let index_id = metadata.get_index_id(&index_name, &relation_name)?;
         let table = metadata.table(&relation_name)?;
-        plan.index_version_map.insert([table.id, index_id], 0);
+        Rc::make_mut(&mut plan.index_version_map).insert([table.id, index_id], 0);
     }
 
     Ok((None, relation_name))
@@ -1635,7 +1636,7 @@ where
 
     let index = Index::from(table_id, index_id);
     plan.indexes.insert(index_name, index);
-    plan.index_version_map.insert([table_id, index_id], 0);
+    Rc::make_mut(&mut plan.index_version_map).insert([table_id, index_id], 0);
     Ok(relation_name)
 }
 

@@ -15,10 +15,7 @@ use sql::{ExecutingQueryExt as _, PreparedStatement};
 fn get_block_pattern_key_from_query(query: &mut ExecutingQuery<RouterRuntimeMock>) -> u64 {
     let exec_plan = query.get_mut_exec_plan();
     let table_id = exec_plan.get_ir_plan().relations.get("t").unwrap().id;
-    exec_plan
-        .get_mut_ir_plan()
-        .table_version_map
-        .insert(table_id, 1);
+    std::rc::Rc::make_mut(&mut exec_plan.get_mut_ir_plan().table_version_map).insert(table_id, 1);
     let top_id = exec_plan.get_ir_plan().get_top().unwrap();
     let BlockOwned::Anonymous(block) = exec_plan
         .get_ir_plan()

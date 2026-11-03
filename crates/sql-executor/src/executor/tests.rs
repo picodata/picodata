@@ -18,6 +18,7 @@ use crate::utils::MutexLike;
 use insta::assert_snapshot;
 use sql_frontend::frontend::sql::transform_into_plan;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 // Helper function to format back sql.
 // The local sql we produce doesn't contain line breaks,
@@ -116,7 +117,8 @@ fn shard_union_query() {
 #[test]
 fn bind_does_not_write_into_prepared_plan() {
     // Like `PreparedStatement::bind`: each bind takes a clone of the
-    // prepared plan, which shares its node arenas.
+    // prepared plan, which shares its node arenas, tables, slices and
+    // version maps.
     let sql = r#"SELECT "FIRST_NAME" FROM "test_space" WHERE "id" = $1"#;
     let coordinator = RouterRuntimeMock::new();
     let mut prepared = {
@@ -141,6 +143,21 @@ fn bind_does_not_write_into_prepared_plan() {
         let bucket = coordinator.determine_bucket_id(&[&param]).unwrap();
         assert_eq!(params, &[param]);
         assert_eq!(buckets, &[bucket]);
+
+        // Nothing writes these after planning, so they must stay shared.
+        let executed = query.get_exec_plan().get_ir_plan();
+        let tables = (&prepared.relations.tables, &executed.relations.tables);
+        assert!(Rc::ptr_eq(tables.0, tables.1));
+        let slices = (&prepared.slices().slices, &executed.slices().slices);
+        assert!(Rc::ptr_eq(slices.0, slices.1));
+        assert!(Rc::ptr_eq(
+            &prepared.table_version_map,
+            &executed.table_version_map
+        ));
+        assert!(Rc::ptr_eq(
+            &prepared.index_version_map,
+            &executed.index_version_map
+        ));
     }
 }
 

@@ -3236,8 +3236,8 @@ fn create_dml_ops(
         let info = FullDeleteInfo::new(
             plan_id,
             SchemaInfo::new(
-                plan.table_version_map.clone(),
-                plan.index_version_map.clone(),
+                (*plan.table_version_map).clone(),
+                (*plan.index_version_map).clone(),
             ),
             plan.effective_options.clone(),
             table_name.as_str(),

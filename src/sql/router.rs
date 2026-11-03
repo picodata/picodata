@@ -1114,7 +1114,7 @@ mod tests {
         let mut plan = Plan::new();
         plan.indexes
             .insert(index.name.clone(), Index::from(index.table_id, index.id));
-        plan.index_version_map
+        Rc::make_mut(&mut plan.index_version_map)
             .insert([index.table_id, index.id], index.schema_version);
 
         let mut cache = PicoRouterCache::new(10).unwrap();

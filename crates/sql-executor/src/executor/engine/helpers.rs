@@ -1322,8 +1322,8 @@ pub fn dispatch_impl<'p>(
             };
 
         let vdbe_max_steps = plan.get_ir_plan().effective_options.sql_vdbe_opcode_max as _;
-        let table_versions = std::mem::take(&mut plan.get_mut_ir_plan().table_version_map);
-        let index_versions = std::mem::take(&mut plan.get_mut_ir_plan().index_version_map);
+        let table_versions = (*plan.get_ir_plan().table_version_map).clone();
+        let index_versions = (*plan.get_ir_plan().index_version_map).clone();
         let tier_runtime = coordinator.get_vshard_object_by_tier(tier.as_ref())?;
         let exec_block = BlockExecData {
             statements,

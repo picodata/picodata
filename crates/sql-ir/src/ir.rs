@@ -697,19 +697,22 @@ impl Slice {
 /// Element of `slices` vec is one level containing several `motion_id`s to execute.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Slices {
-    pub slices: Vec<Slice>,
+    /// Shared between the clones of a plan, see [`Relations::tables`].
+    pub slices: Rc<Vec<Slice>>,
 }
 
 impl From<Vec<Slice>> for Slices {
     fn from(vec: Vec<Slice>) -> Self {
-        Self { slices: vec }
+        Self {
+            slices: Rc::new(vec),
+        }
     }
 }
 
 impl From<Vec<Vec<NodeId>>> for Slices {
     fn from(vec: Vec<Vec<NodeId>>) -> Self {
         Self {
-            slices: vec.into_iter().map(Slice::from).collect(),
+            slices: Rc::new(vec.into_iter().map(Slice::from).collect()),
         }
     }
 }
@@ -727,7 +730,9 @@ impl Slices {
 
     #[must_use]
     pub fn empty() -> Self {
-        Self { slices: vec![] }
+        Self {
+            slices: Rc::default(),
+        }
     }
 }
 
@@ -818,8 +823,8 @@ pub struct Plan {
     /// SQL options. Initialized to defaults upon IR creation.
     /// Then bound to their effective values resolved from `raw_options` when calling `bind_params`.
     pub effective_options: Options,
-    pub table_version_map: VersionMap,
-    pub index_version_map: HashMap<[u32; 2], u64, RepeatableState>,
+    pub table_version_map: Rc<VersionMap>,
+    pub index_version_map: Rc<HashMap<[u32; 2], u64, RepeatableState>>,
     /// Exists only on the router during plan build.
     /// RefCell is used because context can be mutated
     /// independently of the plan. It is just stored
@@ -1134,14 +1139,14 @@ impl Plan {
             },
             relations: Relations::new(),
             indexes: Indexes::new(),
-            slices: Slices { slices: vec![] },
+            slices: Slices::empty(),
             top: None,
             explain_options: ExplainOptions::empty(),
             undo: TransformationLog::new(),
             raw_options: vec![],
             effective_options: Options::default(),
-            table_version_map: VersionMap::with_hasher(RepeatableState),
-            index_version_map: HashMap::with_hasher(RepeatableState),
+            table_version_map: Rc::default(),
+            index_version_map: Rc::default(),
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
             shapes: PlanShapes::default(),

@@ -790,8 +790,8 @@ impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
 
         let plan = value.plan.get_ir_plan();
         let schema_info = PlanVersion {
-            table_version_map: plan.table_version_map.clone(),
-            index_version_map: plan.index_version_map.clone(),
+            table_version_map: (*plan.table_version_map).clone(),
+            index_version_map: (*plan.index_version_map).clone(),
         };
         Ok(Self {
             schema_info,
@@ -816,8 +816,8 @@ impl TryFrom<&DqlProtocol> for ExecutionCacheMissData {
 
         let plan = value.plan.get_ir_plan();
         let schema_info = PlanVersion {
-            table_version_map: plan.table_version_map.clone(),
-            index_version_map: plan.index_version_map.clone(),
+            table_version_map: (*plan.table_version_map).clone(),
+            index_version_map: (*plan.index_version_map).clone(),
         };
         Ok(Self {
             schema_info,
