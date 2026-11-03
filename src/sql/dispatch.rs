@@ -20,12 +20,13 @@ use crate::util::MpValueAsJson;
 use ahash::{AHashMap, AHashSet};
 use rmp::decode::{read_array_len, read_bool, read_int};
 use rmp::encode::write_uint;
+use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::vshard::{prepare_rs_to_ir_map, prepare_single_rs_ir_plan};
 use sql::executor::engine::helpers::{
     init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
-    init_sharded_update_tuple_builder, try_get_metadata_from_plan_for_top, vtable_columns,
+    init_sharded_update_tuple_builder, vtable_columns,
 };
 use sql::executor::engine::protocol::{
     build_dql_protocol_for_top, DeleteCoreData, DqlProtocol, ExecutionCacheMissData,
@@ -35,7 +36,7 @@ use sql::executor::engine::protocol::{
 use sql::executor::engine::{BlockExecData, QueryCache, Vshard};
 use sql::executor::ir::{ExecutionPlan, QueryType};
 use sql::executor::protocol::SchemaInfo;
-use sql::executor::result::MetadataColumn;
+use sql::executor::result::{metadata_type_name, MetadataColumn};
 use sql::executor::vtable::VirtualTable;
 use sql::executor::Port;
 use sql::ir::api::children::Children;
@@ -56,6 +57,7 @@ use sql_protocol::dml::update::{write_update_packet, write_update_shared_key_pac
 use sql_protocol::dql::write_dql_packet;
 use sql_protocol::dql_encoder::{DQLDataSource, DQLOptions};
 use sql_protocol::encode::write_metadata;
+use std::borrow::Cow;
 use std::cell::{Cell, LazyCell, OnceCell};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -466,8 +468,8 @@ pub(crate) fn single_plan_dispatch<'p>(
         QueryType::DQL => {
             let max_rows = ex_plan.get_sql_motion_row_max();
             let read_preference = effective_read_preference(&ex_plan)?;
-            if should_single_rs_dispatch_locally(buckets, tier, &replicasets, &read_preference)? {
-                execute_dql_locally(port, ex_plan, top_id, buckets, timeout, &read_preference)?;
+            if should_single_rs_dispatch_locally(buckets, tier, &replicasets, read_preference)? {
+                execute_dql_locally(port, ex_plan, top_id, buckets, timeout, read_preference)?;
                 return Ok(());
             }
 
@@ -485,7 +487,7 @@ pub(crate) fn single_plan_dispatch<'p>(
                 max_rows,
                 timeout,
                 tier,
-                read_preference,
+                read_preference.to_string(),
                 do_two_step,
             )?
         }
@@ -527,10 +529,10 @@ pub(crate) fn custom_plan_dispatch<'p>(
                 buckets,
                 tier,
                 &rs_buckets,
-                &read_preference,
+                read_preference,
             )? {
                 let local_plan = extract_single_rs_plan(rs_buckets, ex_plan, top_id)?;
-                execute_dql_locally(port, local_plan, top_id, buckets, timeout, &read_preference)?;
+                execute_dql_locally(port, local_plan, top_id, buckets, timeout, read_preference)?;
                 return Ok(());
             }
 
@@ -550,7 +552,7 @@ pub(crate) fn custom_plan_dispatch<'p>(
                 max_rows,
                 timeout,
                 tier,
-                read_preference,
+                read_preference.to_string(),
                 do_two_step,
             )?;
         }
@@ -670,27 +672,30 @@ pub(crate) fn port_write_metadata_for_top<'p>(
     ex_plan: &ExecutionPlan,
     top_id: NodeId,
 ) -> SqlResult<()> {
-    let metadata = try_get_metadata_from_plan_for_top(ex_plan, top_id)?.ok_or_else(|| {
-        SbroadError::FailedTo(
+    let ir = ex_plan.get_ir_plan();
+    if ir.get_relation_node(top_id)?.is_dml() || ir.is_raw_explain() {
+        return Err(SbroadError::FailedTo(
             Action::Get,
             Some(Entity::Query),
             "Failed to get metadata from execution plan".into(),
-        )
-    })?;
-    port_write_metadata_impl(port, &metadata)
-}
-
-fn port_write_metadata_impl<'p>(
-    port: &mut impl Port<'p>,
-    metadata: &[MetadataColumn],
-) -> SqlResult<()> {
-    let length = metadata.len() as u32;
+        ));
+    }
+    // `write_metadata` walks the columns twice and the column types are
+    // derived lazily, so keep them in a buffer. The buffer is on the stack
+    // for up to eight columns, the names borrow from the plan and the type
+    // names are inline, so a usual query writes its metadata without an
+    // allocation.
+    let mut metadata: SmallVec<[(Cow<'_, str>, SmolStr); 8]> = SmallVec::new();
+    for column in ir.columns_of(top_id)? {
+        let column = column?;
+        metadata.push((column.name, metadata_type_name(&column.r#type)));
+    }
     write_metadata(
         port,
         metadata
             .iter()
-            .map(|c| (c.name.as_str(), c.r#type.as_str())),
-        length,
+            .map(|(name, ty)| (name.as_ref(), ty.as_str())),
+        metadata.len() as u32,
     )
     .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
     Ok(())
@@ -708,12 +713,12 @@ fn plan_has_unlogged_tables(plan: &Plan) -> SqlResult<bool> {
 /// If `sql_preemption` is enabled, `read_preference` should be equal to `leader`.
 ///
 /// If the plan has unlogged tables `read_preference` should be equal to `leader`.
-fn effective_read_preference(ex_plan: &ExecutionPlan) -> SqlResult<String> {
+fn effective_read_preference(ex_plan: &ExecutionPlan) -> SqlResult<&'static str> {
     let plan = ex_plan.get_ir_plan();
     let read_preference = plan.effective_options.read_preference;
 
     if read_preference == ReadPreference::Leader {
-        return Ok(read_preference.to_string());
+        return Ok(read_preference.as_str());
     }
 
     if plan_has_unlogged_tables(plan)? {
@@ -735,7 +740,7 @@ fn effective_read_preference(ex_plan: &ExecutionPlan) -> SqlResult<String> {
         ));
     }
 
-    Ok(read_preference.to_string())
+    Ok(read_preference.as_str())
 }
 
 fn should_dispatch_locally(

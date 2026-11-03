@@ -7,6 +7,7 @@
 use core::fmt::Debug;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde::{Deserialize, Deserializer};
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use tarantool::msgpack;
 use tarantool::tlua::{self, LuaRead};
@@ -43,7 +44,7 @@ impl MetadataColumn {
     pub fn of_type(name: String, ty: &DerivedType) -> Self {
         MetadataColumn {
             name,
-            r#type: metadata_type_name(ty),
+            r#type: metadata_type_name(ty).into(),
         }
     }
 }
@@ -55,11 +56,15 @@ impl MetadataColumn {
 /// even though SQL itself prints the type as `text`. Every writer of
 /// result metadata must name column types with this function.
 #[must_use]
-pub fn metadata_type_name(ty: &DerivedType) -> String {
+pub fn metadata_type_name(ty: &DerivedType) -> SmolStr {
     match ty.get() {
-        Some(UnrestrictedType::String) => "string".to_string(),
-        Some(UnrestrictedType::Array(NestedType::Text)) => "string[]".to_string(),
-        _ => ty.to_string(),
+        Some(UnrestrictedType::String) => SmolStr::new_static("string"),
+        Some(UnrestrictedType::Array(NestedType::Text)) => SmolStr::new_static("string[]"),
+        Some(t) => match t.static_name() {
+            Some(name) => SmolStr::new_static(name),
+            None => t.to_smolstr(),
+        },
+        None => SmolStr::new_static("unknown"),
     }
 }
 

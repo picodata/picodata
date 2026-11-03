@@ -118,14 +118,20 @@ pub enum ReadPreference {
     Any = 2,
 }
 
-impl Display for ReadPreference {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let value = match self {
+impl ReadPreference {
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
             ReadPreference::Leader => "leader",
             ReadPreference::Replica => "replica",
             ReadPreference::Any => "any",
-        };
-        write!(f, "{value}")
+        }
+    }
+}
+
+impl Display for ReadPreference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

@@ -574,22 +574,35 @@ impl From<&UnrestrictedType> for SpaceFieldType {
     }
 }
 
+impl UnrestrictedType {
+    /// The SQL name of the type when it is one static string; `None` for a
+    /// typed array, whose name is composed from the element type.
+    #[must_use]
+    pub fn static_name(&self) -> Option<&'static str> {
+        Some(match self {
+            UnrestrictedType::Boolean => "bool",
+            UnrestrictedType::Decimal => "decimal",
+            UnrestrictedType::Datetime => "datetime",
+            UnrestrictedType::Double => "double",
+            UnrestrictedType::Integer => "int",
+            UnrestrictedType::String => "text",
+            UnrestrictedType::Uuid => "uuid",
+            UnrestrictedType::Map => "map",
+            UnrestrictedType::Array(NestedType::Any) => "array",
+            UnrestrictedType::Array(_) => return None,
+            UnrestrictedType::Any => "any",
+        })
+    }
+}
+
 impl fmt::Display for UnrestrictedType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            UnrestrictedType::Boolean => write!(f, "bool"),
-            UnrestrictedType::Decimal => write!(f, "decimal"),
-            UnrestrictedType::Datetime => write!(f, "datetime"),
-            UnrestrictedType::Double => write!(f, "double"),
-            UnrestrictedType::Integer => write!(f, "int"),
-            UnrestrictedType::String => write!(f, "text"),
-            UnrestrictedType::Uuid => write!(f, "uuid"),
-            UnrestrictedType::Map => write!(f, "map"),
-            UnrestrictedType::Array(NestedType::Any) => write!(f, "array"),
-            UnrestrictedType::Array(elem) => {
+        match (self.static_name(), self) {
+            (Some(name), _) => f.write_str(name),
+            (None, UnrestrictedType::Array(elem)) => {
                 write!(f, "{}[]", UnrestrictedType::from(*elem))
             }
-            UnrestrictedType::Any => write!(f, "any"),
+            (None, _) => unreachable!("static_name() is None only for a typed array"),
         }
     }
 }

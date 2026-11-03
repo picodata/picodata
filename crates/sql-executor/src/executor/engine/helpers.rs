@@ -1900,43 +1900,6 @@ pub fn sharding_key_from_map<'rec, S: ::std::hash::BuildHasher>(
     Ok(tuple)
 }
 
-/// Try to get metadata from the plan. If the plan is not dql, `None` is returned.
-///
-/// # Errors
-/// - Invalid execution plan.
-pub fn try_get_metadata_from_plan(
-    plan: &ExecutionPlan,
-) -> Result<Option<Vec<MetadataColumn>>, SbroadError> {
-    let top_id = plan.get_ir_plan().get_top()?;
-    try_get_metadata_from_plan_for_top(plan, top_id)
-}
-
-/// Try to get metadata from a top node. If the node is not DQL, `None` is returned.
-///
-/// # Errors
-/// - Invalid execution plan.
-pub fn try_get_metadata_from_plan_for_top(
-    plan: &ExecutionPlan,
-    top_id: NodeId,
-) -> Result<Option<Vec<MetadataColumn>>, SbroadError> {
-    let ir = plan.get_ir_plan();
-    if ir.get_relation_node(top_id)?.is_dml() || ir.is_raw_explain() {
-        return Ok(None);
-    }
-
-    // Get metadata (column types) from the top node's columns.
-    let columns = ir.columns_of(top_id)?;
-    let mut metadata = Vec::with_capacity(columns.len());
-    for column in columns {
-        let column = column?;
-        metadata.push(MetadataColumn::of_type(
-            column.name.to_string(),
-            &column.r#type,
-        ));
-    }
-    Ok(Some(metadata))
-}
-
 #[inline(always)]
 fn to_mp_err(msg: SmolStr) -> SbroadError {
     SbroadError::FailedTo(Action::Encode, Some(Entity::MsgPack), msg)
