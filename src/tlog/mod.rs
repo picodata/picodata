@@ -116,9 +116,21 @@ pub fn root() -> &'static slog::Logger {
 #[macro_export]
 macro_rules! tlog {
     ($lvl:ident, $($args:tt)*) => {{
-        let logger = &$crate::tlog::root();
-        slog::log!(logger, slog::Level::$lvl, "", $($args)*);
+        // `slog::log!` evaluates the arguments, builds the record and makes
+        // a virtual call into the drain, and only the drain drops a record of
+        // a disabled level. The check before the macro makes a disabled level
+        // cost one read of the tarantool log level.
+        if $crate::tlog::is_enabled(slog::Level::$lvl) {
+            let logger = &$crate::tlog::root();
+            slog::log!(logger, slog::Level::$lvl, "", $($args)*);
+        }
     }}
+}
+
+/// Whether the tarantool logger accepts records of `level`.
+#[inline]
+pub fn is_enabled(level: slog::Level) -> bool {
+    slog_level_to_say_level(level) <= tarantool::log::current_level()
 }
 
 pub struct Drain;
@@ -146,8 +158,7 @@ impl slog::Drain for Drain {
     }
 
     fn is_enabled(&self, level: slog::Level) -> bool {
-        let level = slog_level_to_say_level(level);
-        level <= tarantool::log::current_level()
+        is_enabled(level)
     }
 }
 
