@@ -371,6 +371,13 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": 
 picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": true}}'
 ```
 
+!!! warning "Внимание"
+    Фактор репликации тира и сам набор тиров задаются
+    только при первоначальной инициализации кластера: изменить их в уже
+    работающем кластере нельзя. Попытка изменения этих параметров в
+    файле конфигурации и последующий перезапуск кластера приведут к
+    ошибке (кластер не запустится).
+
 ### cluster.tier.<tier_name\>.replication_mode {: #cluster_tier_tier_replication_mode }
 
 <span class="supported">поддерживается с версии 26.2.1</span>

@@ -57,13 +57,25 @@
 следует воспользоваться системными средствами для управления
 индивидуальными пакетами (`dpkg`/`rpm`).
 
-??? example "Обновление Picodata из исходного кода"
-    Если Picodata была собрана из исходного кода, то необходимо обновить
-    данные локальной копии Git-репозитория (`git pull && git submodule
-    update --init --recursive`), очистить данные предыдущей сборки (`cargo
-    clean`) и [собрать](../tutorial/install.md#building) новую версию бинарного файла `picodata`.
-    Важно [удостовериться](../tutorial/install.md#post_install_check), что после этого будет
-    запускаться именно новая версия `picodata`
+#### Обновление Picodata из исходного кода {: #update_sources }
+
+Если Picodata была собрана из исходного кода, то необходимо:
+
+1. Обновить данные локальной копии Git-репозитория:
+```shell
+git pull
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+2. Очистить данные предыдущей сборки:
+```shell
+cargo clean
+```
+
+3. [Собрать](../tutorial/install.md#building) новую версию бинарного файла `picodata`.
+4. [Удостовериться](../tutorial/install.md#post_install_check), что после этого будет
+запускаться именно новая версия `picodata`.
 
 [поставляемую сборку продукта]: https://picodata.io/download
 
