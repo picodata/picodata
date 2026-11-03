@@ -3,6 +3,7 @@ use crate::catalog::governor_queue::GovernorQueue;
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_table::PicoTable;
+use crate::catalog::revoked_jwt::RevokedJwt;
 use crate::catalog::user_audit_policy::PicoUserAuditPolicy;
 use crate::catalog_cache::CatalogCache;
 use crate::config::observer::AtomicObserver;
@@ -162,6 +163,7 @@ pub fn storage_is_initialized() -> bool {
 /// 532 - _bucket
 /// 533 - _pico_bucket
 /// 534 - _pico_resharding_state
+/// 535 - _pico_revoked_jwt
 ////////////////////////////////////////////////////////////////////////////////
 pub const SYSTEM_TABLES_ID_RANGE: RangeInclusive<u32> = 512..=SPACE_ID_INTERNAL_MAX;
 
@@ -205,6 +207,7 @@ pub struct Catalog {
     pub users_audit_policies: PicoUserAuditPolicy,
     pub pico_bucket: PicoBucket,
     pub pico_resharding_state: PicoReshardingState,
+    pub revoked_jwt: RevokedJwt,
 }
 
 /// Id of system table `_bucket`. Note that we don't add in to `Clusterwide`
@@ -250,6 +253,7 @@ impl Catalog {
             pico_resharding_state: PicoReshardingState::new(),
             snapshot_cache: Default::default(),
             login_attempts: Default::default(),
+            revoked_jwt: RevokedJwt::new(),
         }
     }
 
@@ -281,6 +285,7 @@ impl Catalog {
             pico_resharding_state,
             snapshot_cache,
             login_attempts,
+            revoked_jwt,
         } = self;
         // Initialization not needed
         _ = snapshot_cache;
@@ -307,6 +312,7 @@ impl Catalog {
         users_audit_policies.create()?;
         pico_bucket.create()?;
         pico_resharding_state.create()?;
+        revoked_jwt.create()?;
 
         Ok(())
     }
@@ -333,6 +339,7 @@ impl Catalog {
             PicoUserAuditPolicy::TABLE_ID => Some(PicoUserAuditPolicy::TABLE_NAME),
             PicoBucket::TABLE_ID => Some(PicoBucket::TABLE_NAME),
             PicoReshardingState::TABLE_ID => Some(PicoReshardingState::TABLE_NAME),
+            RevokedJwt::TABLE_ID => Some(RevokedJwt::TABLE_NAME),
             _ => None,
         }
     }

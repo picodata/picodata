@@ -423,7 +423,10 @@ Insert(_pico_index, [{_pico_user_audit_policy},0,"_pico_user_audit_policy_pkey",
 Insert(_pico_table, [{_pico_bucket},"_pico_bucket",{{"Global":null}},[{{"name":"tier_name","field_type":"string","is_nullable":false}},{{"name":"bucket_id_start","field_type":"unsigned","is_nullable":false}},{{"name":"bucket_id_end","field_type":"unsigned","is_nullable":false}},{{"name":"state","field_type":"string","is_nullable":false}},{{"name":"current_replicaset_name","field_type":"string","is_nullable":false}},{{"name":"target_replicaset_name","field_type":"string","is_nullable":true}}],0,true,"memtx",1,"",[]]),
 Insert(_pico_index, [{_pico_bucket},0,"_pico_bucket_index_primary","tree",[{{"unique":true}}],[["tier_name","string",null,false,null],["bucket_id_start","unsigned",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_resharding_state},"_pico_resharding_state",{{"Global":null}},[{{"name":"tier_name","field_type":"string","is_nullable":false}},{{"name":"type","field_type":"string","is_nullable":false}},{{"name":"current_replicaset_name","field_type":"string","is_nullable":false}},{{"name":"target_replicaset_name","field_type":"string","is_nullable":false}},{{"name":"bucket_id_start","field_type":"unsigned","is_nullable":true}},{{"name":"bucket_count","field_type":"unsigned","is_nullable":false}}],0,true,"memtx",1,"",[]]),
-Insert(_pico_index, [{_pico_resharding_state},0,"_pico_resharding_state_index_primary","tree",[{{"unique":true}}],[["tier_name","string",null,false,null],["type","string",null,false,null],["current_replicaset_name","string",null,false,null],["target_replicaset_name","string",null,false,null]],true,0])
+Insert(_pico_index, [{_pico_resharding_state},0,"_pico_resharding_state_index_primary","tree",[{{"unique":true}}],[["tier_name","string",null,false,null],["type","string",null,false,null],["current_replicaset_name","string",null,false,null],["target_replicaset_name","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_revoked_jwt},"_pico_revoked_jwt",{{"Global":null}},[{{"name":"jwt","field_type":"string","is_nullable":false}},{{"name":"retain_until","field_type":"integer","is_nullable":false}}],0,true,"memtx",1,"",[]]),
+Insert(_pico_index, [{_pico_revoked_jwt},0,"_pico_revoked_jwt_pkey","tree",[{{"unique":true}}],[["jwt","string",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_revoked_jwt},1,"_pico_revoked_jwt_retain_until","tree",[{{"unique":false}}],[["retain_until","integer",null,false,null]],true,0])
 )|
 |  0  | 1  |GrantPrivilege(2, 1, 2, table, Some(515), read)|
 |  0  | 1  |GrantPrivilege(3, 1, 2, table, Some(514), read)|
@@ -477,6 +480,7 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",3]])
         _pico_user_audit_policy=space_id("_pico_user_audit_policy"),
         _pico_bucket=space_id("_pico_bucket"),
         _pico_resharding_state=space_id("_pico_resharding_state"),
+        _pico_revoked_jwt=space_id("_pico_revoked_jwt"),
     )
     actual = preprocess(raft_log)
     expected = preprocess(expected)

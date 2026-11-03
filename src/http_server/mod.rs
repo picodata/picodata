@@ -9,7 +9,7 @@ mod instance;
 #[cfg(feature = "webui")]
 pub(crate) mod plugin_ui;
 
-pub(crate) use auth::{http_api_config, http_api_login, http_api_refresh_session};
+pub(crate) use auth::{http_api_config, http_api_login, http_api_logout, http_api_refresh_session};
 pub(crate) use cluster::{
     http_api_cluster_with_auth, http_api_memory_with_auth, http_api_tiers_with_auth,
 };

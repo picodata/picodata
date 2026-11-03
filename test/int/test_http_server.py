@@ -97,12 +97,16 @@ def decode_jwt_claims(token: str) -> Dict[str, Any]:
 
 
 def make_expired_token(token: str, secret: str) -> str:
+    return replace_jwt_claims(token, secret, exp=0)
+
+
+def replace_jwt_claims(token: str, secret: str, **updates: Any) -> str:
     # Stage 1: Split the token and decode its claims.
     header = token.split(".")[0]
     claims = decode_jwt_claims(token)
 
-    # Stage 2: Expire the token and re-encode the payload.
-    claims["exp"] = 0
+    # Stage 2: Update the claims and re-encode the payload.
+    claims.update(updates)
     payload_json = json.dumps(claims, separators=(",", ":"))
     encoded_payload = base64.urlsafe_b64encode(payload_json.encode()).rstrip(b"=").decode()
     unsigned_token = f"{header}.{encoded_payload}"
@@ -930,6 +934,164 @@ def test_jwt_session_refresh_success(instance: Instance, scheme: str):
     assert len(new_tokens["refresh"].split(".")) == 3
     assert decode_jwt_claims(new_tokens["auth"])["privileges"] == ["login"]
     assert "privileges" not in decode_jwt_claims(new_tokens["refresh"])
+
+
+def logout(instance: Instance, authorization: str):
+    request = Request(
+        f"http://{instance.http_listen}/api/v1/session",
+        headers={"Authorization": authorization},
+        method="DELETE",
+    )
+    with urlopen(request) as response:
+        assert response.status == 204
+        assert response.read() == b""
+
+
+def assert_refresh_revoked(instance: Instance, token: str):
+    with pytest.raises(HTTPError) as error:
+        get_authorized(f"http://{instance.http_listen}/api/v1/session", token)
+    assert error.value.code == 401
+    assert json.load(error.value) == {"error": "authError", "errorMessage": "token has been revoked"}
+
+
+def test_jwt_logout(instance: Instance):
+    tokens, status = authorize(instance, USERNAME, PASSWORD)
+    assert status == 200
+    refresh = tokens["refresh"]
+
+    # Logout is idempotent and retains the token through expiration leeway.
+    for _ in range(2):
+        logout(instance, f"Bearer {refresh}")
+        assert instance.sql('SELECT jwt, retain_until FROM "_pico_revoked_jwt"') == [
+            [refresh, decode_jwt_claims(refresh)["exp"] + 60]
+        ]
+        assert_refresh_revoked(instance, refresh)
+
+    # Revoking the refresh token leaves already issued access tokens valid.
+    with get_authorized(f"http://{instance.http_listen}/api/v1/tiers", tokens["auth"]) as response:
+        assert response.status == 200
+
+
+@pytest.mark.parametrize("kind", ["malformed", "expired", "no_login"])
+def test_jwt_logout_invalid_token(instance: Instance, kind: str):
+    secret = "logout-test-secret"
+    instance.sql(f"ALTER SYSTEM SET jwt_secret = '{secret}'")
+    tokens, _ = authorize(instance, USERNAME, PASSWORD)
+    refresh = tokens["refresh"]
+    if kind == "malformed":
+        token = "not-a-jwt"
+    elif kind == "expired":
+        token = make_expired_token(refresh, secret)
+    else:
+        instance.sql(f'ALTER USER "{USERNAME}" WITH NOLOGIN')
+        token = refresh
+    logout(instance, f"Bearer {token}")
+    if kind == "no_login":
+        # A valid refresh token is revoked even after LOGIN was removed.
+        assert instance.sql('SELECT jwt, retain_until FROM "_pico_revoked_jwt"') == [
+            [refresh, decode_jwt_claims(refresh)["exp"] + 60]
+        ]
+        assert_refresh_revoked(instance, refresh)
+        return
+    assert instance.sql('SELECT * FROM "_pico_revoked_jwt"') == []
+    with get_authorized(f"http://{instance.http_listen}/api/v1/session", refresh) as response:
+        assert response.status == 200
+
+
+@pytest.mark.parametrize(
+    "kind", ["valid", "expired", "wrong_signature", "expired_wrong_signature", "no_exp", "invalid_exp", "auth_disabled"]
+)
+def test_jwt_logout_rejects_auth_token(instance: Instance, kind: str):
+    secret = "logout-test-secret"
+    instance.sql(f"ALTER SYSTEM SET jwt_secret = '{secret}'")
+    tokens, _ = authorize(instance, USERNAME, PASSWORD)
+    auth = tokens["auth"]
+    if "expired" in kind:
+        auth = make_expired_token(auth, secret)
+    if "wrong_signature" in kind:
+        auth = replace_jwt_claims(auth, "another-secret")
+    if kind == "no_exp":
+        auth = replace_jwt_claims(auth, secret, exp=None)
+    if kind == "invalid_exp":
+        auth = replace_jwt_claims(auth, secret, exp="invalid")
+    if kind == "auth_disabled":
+        set_jwt_enabled(instance, False)
+
+    request = Request(
+        f"http://{instance.http_listen}/api/v1/session",
+        headers={"Authorization": f"Bearer {auth}"},
+        method="DELETE",
+    )
+    with pytest.raises(HTTPError) as error:
+        urlopen(request)
+    assert error.value.code == 401
+    assert json.load(error.value) == {"error": "authError", "errorMessage": "invalid token type"}
+    assert instance.sql('SELECT * FROM "_pico_revoked_jwt"') == []
+    with get_authorized(f"http://{instance.http_listen}/api/v1/session", tokens["refresh"]) as response:
+        assert response.status == 200
+
+
+@pytest.mark.parametrize("authorization", [None, "", "Basic abc", "Bearer", "Bearer "])
+def test_jwt_logout_requires_bearer_header(instance: Instance, authorization: Optional[str]):
+    headers = {} if authorization is None else {"Authorization": authorization}
+    request = Request(f"http://{instance.http_listen}/api/v1/session", headers=headers, method="DELETE")
+    with pytest.raises(HTTPError) as error:
+        urlopen(request)
+    assert error.value.code == 401
+    assert json.load(error.value) == {"error": "authError", "errorMessage": "invalid authorization header"}
+
+
+def test_jwt_logout_deleted_user(instance: Instance):
+    tokens, _ = authorize(instance, USERNAME, PASSWORD)
+    instance.sql(f'DROP USER "{USERNAME}"')
+    logout(instance, f"Bearer {tokens['refresh']}")
+    assert instance.sql('SELECT jwt FROM "_pico_revoked_jwt"') == [[tokens["refresh"]]]
+    assert_refresh_revoked(instance, tokens["refresh"])
+
+
+def test_jwt_logout_disabled_auth(instance: Instance):
+    tokens, _ = authorize(instance, USERNAME, PASSWORD)
+    set_jwt_enabled(instance, False)
+    logout(instance, f"Bearer {tokens['refresh']}")
+    logout(instance, "Bearer invalid")
+    assert instance.sql('SELECT * FROM "_pico_revoked_jwt"') == []
+
+
+def test_jwt_revocation_clusterwide_and_persistent(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    tokens, _ = authorize(i1, USERNAME, PASSWORD)
+    cluster.raft_wait_index(i1.raft_get_index())
+    # Write on a follower, then immediately attempt refresh on the other node.
+    follower = i2 if i1.raft_leader_id() == i1.raft_id else i1
+    other = i1 if follower is i2 else i2
+    logout(follower, f"Bearer {tokens['refresh']}")
+    assert_refresh_revoked(other, tokens["refresh"])
+    other.restart()
+    other.wait_online()
+    assert_refresh_revoked(other, tokens["refresh"])
+
+
+def test_jwt_revocation_cleanup(instance: Instance):
+    secret = "logout-test-secret"
+    instance.sql(f"ALTER SYSTEM SET jwt_secret = '{secret}'")
+    tokens, _ = authorize(instance, USERNAME, PASSWORD)
+    # Still valid during the 60-second leeway, so logout must record this token.
+    refresh = replace_jwt_claims(tokens["refresh"], secret, exp=int(time.time()) - 30)
+    logout(instance, f"Bearer {refresh}")
+    assert instance.sql('SELECT jwt, retain_until FROM "_pico_revoked_jwt"') == [
+        [refresh, decode_jwt_claims(refresh)["exp"] + 60]
+    ]
+    assert_refresh_revoked(instance, refresh)
+
+    # Move the retention deadline to the past to exercise the real background
+    # worker without waiting for the token lifetime. Keep a future record too.
+    logout(instance, f"Bearer {tokens['refresh']}")
+    instance.sql('UPDATE "_pico_revoked_jwt" SET retain_until = 0 WHERE jwt = ?', refresh)
+
+    def check_cleanup():
+        assert instance.sql('SELECT jwt FROM "_pico_revoked_jwt"') == [[tokens["refresh"]]]
+
+    Retriable().call(check_cleanup)
 
 
 @pytest.mark.parametrize("scheme", ["Bearer", "bearer", "BEARER", "bEaReR"])

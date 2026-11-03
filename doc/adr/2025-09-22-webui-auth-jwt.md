@@ -252,10 +252,25 @@ The following API endpoints are required for the process to work:
 
 - `DELETE /session` - requests to log the user out and terminate the session.
     - Headers:
-        - `Authorization: "Bearer <auth-token>"`, where `<auth-token>` is replaced with the actual user `auth` JWT.
-    - Response 401 JSON fields:
-        - `error`: error description token, as per the [error type](#error-types).
-        - `errorMessage`: error message with any technical details that have no need to be relayed to the end user; mainly for debugging purposes.
+        - `Authorization: "Bearer <refresh-token>"`.
+    - Tokens whose unverified claims identify them as `auth` return `401` with
+      `authError` / `invalid token type`, regardless of their signature validity
+      or expiration, including when authentication is disabled.
+    - Other nonempty Bearer tokens return `204 No Content`, including malformed,
+      expired, and already revoked tokens, regardless of the user's current
+      privileges. With authentication disabled, this is a no-op.
+    - A missing or malformed Bearer header returns `401` with `authError`.
+    - Only refresh tokens with a valid signature and expiration are recorded in
+      the global `_pico_revoked_jwt` table (`jwt`, `retain_until`).
+      `retain_until` is the token's `exp` plus the 60-second clock skew allowance.
+      The Raft leader removes records with `retain_until < current_ts` in the
+      background. Revocations survive restarts and apply on all instances.
+    - `GET /session` rejects a revoked refresh token with `401` / `authError`.
+      Already issued auth tokens remain valid until expiration. JWTs have no
+      unique token ID (`jti`): identical claims and signing key produce identical
+      tokens. Logins within the same second can therefore share a refresh token,
+      and logout revokes all identical tokens, including one reissued by a login
+      immediately after logout. This behavior is intentional.
 
 - `GET /config` - returns current WebUI configuration.
     - Response 200 JSON fields:

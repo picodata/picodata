@@ -1,6 +1,7 @@
 use crate::catalog::pico_bucket::PicoBucket;
 use crate::catalog::pico_resharding_state::PicoReshardingState;
 use crate::catalog::pico_table::PicoTable;
+use crate::catalog::revoked_jwt::RevokedJwt;
 use crate::config::apply_alter_system_parameter;
 use crate::config::DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION;
 use crate::config::DEFAULT_GOVERNOR_COMMON_RPC_TIMEOUT;
@@ -178,6 +179,9 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             // Resharding loop internals
             ("sql", "ALTER SYSTEM RESET resharding_bucket_count_max"),
             ("sql", "ALTER SYSTEM RESET resharding_chunk_size_max"),
+            ("sql", RevokedJwt::SQL_CREATE),
+            ("sql", "ALTER INDEX \"535_pkey\" RENAME TO _pico_revoked_jwt_pkey"),
+            ("sql", RevokedJwt::SQL_CREATE_INDEX),
         ],
     ),
 ];

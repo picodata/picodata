@@ -8,6 +8,16 @@ from framework.util.version import ExecutableVersion
 from framework.util.version import parse_version_exc
 from framework.util.version import VersionAlias
 from packaging.version import Version
+from test_http_server import (
+    PASSWORD,
+    USERNAME,
+    assert_refresh_revoked,
+    authorize,
+    decode_jwt_claims,
+    get_authorized,
+    logout,
+    set_jwt_enabled,
+)
 from urllib.request import urlopen
 import json
 import pytest
@@ -535,6 +545,66 @@ cluster:
         # ...as well as the `clusterVersion`.
         real_cluster_version = cluster.version()
         assert webui_cluster_version == real_cluster_version
+
+
+@pytest.mark.xdist_group(name="rolling")
+@pytest.mark.required_rolling_versions(
+    versions=[
+        Version("26.2.1"),
+        get_or_make_registry().next_version(Version("26.2.1"), skip_on_gap=False),
+    ]
+)
+def test_jwt_revocation_during_upgrade(cluster: Cluster, registry: Registry):
+    previous = registry.get_or_skip(Version("26.2.1"))
+    target = registry.get(registry.next_version(Version("26.2.1")))
+    assert target is not None
+
+    instances = cluster.deploy(executable=previous, instance_count=3)
+    upgraded = instances[0]
+    set_jwt_enabled(upgraded, True)
+    tokens, status = authorize(upgraded, USERNAME, PASSWORD)
+    assert status == 200
+    cluster.raft_wait_index(upgraded.raft_get_index())
+
+    upgraded.change_executable(target)
+    assert_version(cluster, previous.version, registry)
+    assert upgraded.eval("return box.space._pico_revoked_jwt == nil") is True
+
+    # Before catalog migration, logout remains a no-op and existing refresh
+    # tokens continue working, including on the instance running the new binary.
+    for instance in instances:
+        with get_authorized(f"http://{instance.http_listen}/api/v1/session", tokens["refresh"]) as response:
+            assert response.status == 200
+            refreshed = json.load(response)
+            assert refreshed["auth"] and refreshed["refresh"]
+    logout(upgraded, f"Bearer {tokens['refresh']}")
+    with get_authorized(f"http://{upgraded.http_listen}/api/v1/session", tokens["refresh"]) as response:
+        assert response.status == 200
+    assert upgraded.eval("return box.space._pico_revoked_jwt == nil") is True
+
+    for instance in instances[1:]:
+        instance.change_executable(target)
+    cluster.wait_governor_status("idle")
+    Retriable().call(assert_version, cluster, target.version, registry)
+
+    # Tokens issued before the upgrade survive migration. Once all instances
+    # are upgraded, logout on a follower must prevent refresh on every instance.
+    for instance in instances:
+        assert instance.sql('SELECT * FROM "_pico_revoked_jwt"') == []
+        with get_authorized(f"http://{instance.http_listen}/api/v1/session", tokens["refresh"]) as response:
+            assert response.status == 200
+
+    follower = next(instance for instance in instances if instance.raft_id != instance.raft_leader_id())
+    logout(follower, f"Bearer {tokens['refresh']}")
+    for instance in instances:
+        assert_refresh_revoked(instance, tokens["refresh"])
+        assert instance.sql('SELECT jwt, retain_until FROM "_pico_revoked_jwt"') == [
+            [tokens["refresh"], decode_jwt_claims(tokens["refresh"])["exp"] + 60]
+        ]
+        with get_authorized(f"http://{instance.http_listen}/api/v1/tiers", tokens["auth"]) as response:
+            assert response.status == 200
+    logout(follower, f"Bearer {tokens['refresh']}")
+    cluster.check_health()
 
 
 @pytest.mark.xdist_group(name="rolling")

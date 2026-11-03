@@ -441,6 +441,23 @@ fn start_http_server(
     lua.exec_with(
         r#"
               local handler = ...
+              pico.httpd:route({method = 'DELETE', path = 'api/v1/session' }, function(req)
+              local auth_header = req.headers['authorization'] or ''
+              return handler(auth_header)
+        end)"#,
+        tlua::Function::new(|auth_header: String| -> http_server::HttpResponseTable {
+            http_server::http_api_logout(auth_header).into()
+        }),
+    )
+    .map_err(|err| {
+        Error::other(format!(
+            "failed to add route DELETE `/api/v1/session` to http server: {err}"
+        ))
+    })?;
+
+    lua.exec_with(
+        r#"
+              local handler = ...
               pico.httpd:route({method = 'GET', path = 'api/v1/tiers' }, function(req)
               local auth_header = req.headers['authorization'] or ''
               return handler(auth_header)
@@ -2145,6 +2162,8 @@ fn postjoin(
         false,
     );
     let node = node.expect("failed initializing raft node");
+
+    http_server::auth::start_revoked_jwt_cleanup();
 
     let pg_config = &config.instance.pgproto;
     let instance_dir = config.instance.instance_dir();

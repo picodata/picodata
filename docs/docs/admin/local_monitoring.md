@@ -318,6 +318,23 @@ curl -s "http://127.0.0.1:8081/api/v1/health/status"     -H "Authorization: Bear
 curl -s "http://127.0.0.1:8081/api/v1/session"     -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTgwNDk0NzAwNSwidHlwIjoicmVmcmVzaCJ9.gEP-qlJjhlIhzg_05-8ntAaf9MeH4qiFw0ib_DiRM7U" | jq
 ```
 
+Чтобы отозвать refresh-токен, отправьте запрос:
+
+```shell
+curl -i -X DELETE "http://127.0.0.1:8081/api/v1/session" \
+    -H "Authorization: Bearer <refresh-token>"
+```
+
+Если из содержимого JWT можно определить тип `auth`, сервер возвращает `401`
+с ошибкой `authError` и сообщением `invalid token type` независимо от подписи,
+срока действия токена и включённости JWT-аутентификации. Для остальных непустых
+Bearer-токенов сервер возвращает `204 No Content` независимо от корректности
+токена и текущих прав пользователя. Отсутствующий или неверно оформленный
+заголовок возвращает `401`. Отзываются только refresh-токены с
+корректной подписью и сроком действия. Отозванный refresh-токен больше не позволяет получить новую пару токенов ни на одном инстансе, в том числе после
+перезапуска. Уже выданный auth-токен действует до истечения своего срока.
+При отключённой JWT-аутентификации запрос не изменяет состояние кластера.
+
 ### Оценка состояния инстанса для Kubernetes {: #k8s_endpoints }
 
 Эндпоинты, предназначенные для оценки состояния инстанса в [Kubernetes],

@@ -1,8 +1,15 @@
-use super::{as_admin, ApiError, ApiResult, ErrorResponse, HttpResponse};
-use crate::storage::Catalog;
+use super::{as_admin, ApiError, ApiResult, ErrorResponse, HttpResponse, DEFAULT_TIMEOUT};
+use crate::cas;
+use crate::catalog::revoked_jwt::RevokedJwt;
+use crate::schema::ADMIN_ID;
+use crate::storage::{Catalog, SystemTable};
 use crate::traft::Result;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use tarantool::fiber;
+
+const JWT_CLOCK_SKEW_SECONDS: i64 = 60;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JwtClaims {
@@ -34,6 +41,8 @@ pub(crate) enum AuthError {
     InvalidHeader,
     #[error("invalid token type")]
     InvalidType,
+    #[error("token has been revoked")]
+    Revoked,
     #[error("invalid credentials")]
     InvalidCredentials,
     #[error("insufficient privileges")]
@@ -149,6 +158,10 @@ fn create_jwt_token(
     let duration =
         chrono::Duration::from_std(duration).map_err(|e| AuthError::Inner(e.to_string()))?;
 
+    // Our JWTs have no unique token ID (jti). Identical claims and signing key
+    // produce identical tokens, so logins within the same second can share a
+    // refresh token. Revoking it also revokes any identical token, including
+    // one reissued by a login immediately after logout. This is intentional.
     let claims = JwtClaims {
         sub: username.to_string(),
         typ: token_type.to_string(),
@@ -163,16 +176,20 @@ fn create_jwt_token(
         .map_err(AuthError::JWTEncoding)
 }
 
+fn bearer_token(auth_header: &str) -> AuthResult<&str> {
+    auth_header
+        .split_once(' ')
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("Bearer"))
+        .map(|(_, token)| token)
+        .ok_or(AuthError::InvalidHeader)
+}
+
 fn get_jwt_claims(auth_header: &str) -> AuthResult<JwtClaims> {
     let Some(secret_key) = get_jwt_secret()? else {
         return Err(AuthError::Disabled);
     };
 
-    let token = auth_header
-        .split_once(' ')
-        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("Bearer"))
-        .map(|(_, token)| token)
-        .ok_or(AuthError::InvalidHeader)?;
+    let token = bearer_token(auth_header)?;
 
     decode_jwt_claims(token, &secret_key)
 }
@@ -181,9 +198,17 @@ fn decode_jwt_claims(
     token: &str,
     secret_key: &jwt_compact::alg::Hs256Key,
 ) -> AuthResult<JwtClaims> {
+    Ok(decode_jwt(token, secret_key)?.custom)
+}
+
+fn decode_jwt(
+    token: &str,
+    secret_key: &jwt_compact::alg::Hs256Key,
+) -> AuthResult<jwt_compact::Claims<JwtClaims>> {
     use jwt_compact::AlgorithmExt as _;
 
-    let time_options = jwt_compact::TimeOptions::default();
+    let time_options =
+        jwt_compact::TimeOptions::from_leeway(chrono::Duration::seconds(JWT_CLOCK_SKEW_SECONDS));
 
     let validator = jwt_compact::alg::Hs256.validator(secret_key);
 
@@ -199,7 +224,7 @@ fn decode_jwt_claims(
         .validate_expiration(&time_options)
         .map_err(AuthError::JWTValidation)?;
 
-    Ok(claims.custom)
+    Ok(claims)
 }
 
 fn authenticate_user(username: &str, password: Option<&str>) -> AuthResult<Vec<String>> {
@@ -274,6 +299,28 @@ pub(crate) fn http_api_refresh_session(auth_header: String) -> AuthResult<TokenR
                 return Err(AuthError::InvalidType);
             }
 
+            // Observe completed logouts even when this request reaches a
+            // follower which has not applied the revocation yet.
+            let node = crate::traft::node::global()
+                .map_err(|_| AuthError::Inner("failed to access revocations".into()))?;
+            node.read_index(DEFAULT_TIMEOUT)
+                .map_err(|_| AuthError::Inner("failed to read revocations".into()))?;
+
+            let revocations_available = Catalog::get()
+                .pico_table
+                .get(RevokedJwt::TABLE_ID)
+                .map_err(|_| AuthError::Inner("failed to access revocations".into()))?
+                .is_some();
+
+            if revocations_available
+                && Catalog::get()
+                    .revoked_jwt
+                    .contains(bearer_token(&auth_header)?)
+                    .map_err(|_| AuthError::Inner("failed to read revocations".into()))?
+            {
+                return Err(AuthError::Revoked);
+            }
+
             let privileges = authenticate_user(&claims.sub, None)?;
 
             let auth_token = create_jwt_token(&claims.sub, "auth", Some(privileges))?;
@@ -286,6 +333,107 @@ pub(crate) fn http_api_refresh_session(auth_header: String) -> AuthResult<TokenR
         }),
         TokenResponse::default()
     )
+}
+
+/// Reject auth tokens without revealing their validity. For other tokens, do
+/// not reveal token validity through logout.
+pub(crate) fn http_api_logout(auth_header: String) -> HttpResponse {
+    let token = match bearer_token(&auth_header) {
+        Ok("") => return AuthError::InvalidHeader.into(),
+        Ok(token) => token,
+        Err(e) => return e.into(),
+    };
+
+    // Check if this is auth token before validating lifetime or signature
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    let unverified_claims = token
+        .split('.')
+        .nth(1)
+        .and_then(|claims| URL_SAFE_NO_PAD.decode(claims).ok())
+        .and_then(|claims| serde_json::from_slice::<serde_json::Value>(&claims).ok());
+    if unverified_claims.is_some_and(|claims| claims["typ"] != "refresh") {
+        return AuthError::InvalidType.into();
+    }
+
+    let result = as_admin(|| -> AuthResult<()> {
+        let secret = get_jwt_secret()?.ok_or(AuthError::Disabled)?;
+        let claims = decode_jwt(token, &secret)?;
+
+        // Logout is a no-op until the rolling upgrade creates the table.
+        if Catalog::get()
+            .pico_table
+            .get(RevokedJwt::TABLE_ID)
+            .map_err(|_| AuthError::Inner("failed to access revocations".into()))?
+            .is_none()
+        {
+            return Ok(());
+        }
+
+        // Expiration is required and checked by decode_jwt.
+        let retain_until =
+            claims.expiration.expect("validated expiration").timestamp() + JWT_CLOCK_SKEW_SECONDS;
+        let deadline = fiber::clock().saturating_add(DEFAULT_TIMEOUT);
+        let predicate = cas::Predicate::with_applied_index(vec![]);
+        cas::apply_dml_with_retries(
+            vec![RevokedJwt::dml_replace(&(token, retain_until))],
+            predicate,
+            ADMIN_ID,
+            deadline,
+        )
+        .map_err(|_| AuthError::Inner("failed to persist JWT revocation".into()))
+    });
+    if let Err(e @ AuthError::Inner(_)) = result {
+        // Storage errors may contain tuple keys, so never log their details.
+        // but we can return it to user as he know his token anyway
+        crate::tlog!(Warning, "failed to persist JWT revocation");
+        return e.into();
+    }
+
+    HttpResponse::to_json_response(StatusCode::NO_CONTENT, String::new())
+}
+
+pub(crate) fn start_revoked_jwt_cleanup() {
+    fiber::Builder::new()
+        .name("revoked_jwt_cleanup")
+        .func(|| loop {
+            fiber::sleep(Duration::from_secs(1));
+            let result = as_admin(|| -> Result<()> {
+                let node = crate::traft::node::global()?;
+                // A single cluster-wide worker, following Raft leadership.
+                // During rolling upgrades the table or its cleanup index may
+                // not exist yet.
+                if !node.status().raft_state.is_leader()
+                    || node.storage.pico_table.get(RevokedJwt::TABLE_ID)?.is_none()
+                    || node
+                        .storage
+                        .revoked_jwt
+                        .space
+                        .index(RevokedJwt::RETAIN_UNTIL_INDEX_NAME)
+                        .is_none()
+                {
+                    return Ok(());
+                }
+                let expired = node
+                    .storage
+                    .revoked_jwt
+                    .expired(chrono::Utc::now().timestamp(), 128)?;
+                if !expired.is_empty() {
+                    let dmls = expired
+                        .iter()
+                        .map(|jwt| RevokedJwt::dml_delete(&(jwt,)))
+                        .collect();
+                    let deadline = fiber::clock().saturating_add(DEFAULT_TIMEOUT);
+                    let predicate = cas::Predicate::with_applied_index(vec![]);
+                    cas::apply_dml_with_retries(dmls, predicate, ADMIN_ID, deadline)?;
+                }
+                Ok(())
+            });
+            if result.is_err() {
+                crate::tlog!(Warning, "failed to clean up revoked JWTs");
+            }
+        })
+        .defer_non_joinable()
+        .expect("starting JWT cleanup fiber should not fail");
 }
 
 fn validate_auth(auth_header: &str) -> AuthResult<AuthContext> {
