@@ -23,6 +23,7 @@ use sql::{
     },
 };
 use std::iter::zip;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy)]
 pub enum QueryType {
@@ -476,12 +477,14 @@ impl Describe {
 
 #[derive(Debug, Clone)]
 pub struct StatementDescribe {
-    pub describe: Describe,
+    /// Shared with the portals of the statement: a Bind must not copy the
+    /// column list.
+    pub describe: Rc<Describe>,
     pub param_oids: Vec<Oid>,
 }
 
 impl StatementDescribe {
-    pub fn new(describe: Describe, param_oids: Vec<Oid>) -> Self {
+    pub fn new(describe: Rc<Describe>, param_oids: Vec<Oid>) -> Self {
         Self {
             describe,
             param_oids,
@@ -501,12 +504,12 @@ impl StatementDescribe {
 
 #[derive(Debug, Clone)]
 pub struct PortalDescribe {
-    pub describe: Describe,
+    pub describe: Rc<Describe>,
     pub output_format: Vec<FieldFormat>,
 }
 
 impl PortalDescribe {
-    pub fn new(describe: Describe, output_format: Vec<FieldFormat>) -> Self {
+    pub fn new(describe: Rc<Describe>, output_format: Vec<FieldFormat>) -> Self {
         Self {
             describe,
             output_format,

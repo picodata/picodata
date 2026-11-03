@@ -302,7 +302,7 @@ impl Statement {
         // generate pgproto metadata
         let inferred_types = statement.collect_parameter_types();
         let param_oids = collect_param_oids(&inferred_types, &specified_param_oids);
-        let describe = Describe::new(statement.as_plan())?;
+        let describe = Rc::new(Describe::new(statement.as_plan())?);
 
         let describe = StatementDescribe::new(describe, param_oids);
         let inner = StatementInner {
