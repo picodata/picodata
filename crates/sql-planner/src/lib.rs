@@ -172,7 +172,7 @@ impl PreparedStatement {
         plan.bind_statement(params, default_options)?;
 
         Ok(BoundStatement {
-            plan: Box::new(plan),
+            plan: Rc::new(plan),
             params_for_audit,
         })
     }
@@ -181,9 +181,10 @@ impl PreparedStatement {
 /// A query with parameter values supplied. This representation is ready for execution.
 #[derive(Debug, Clone)]
 pub struct BoundStatement {
-    // wrap the plan into a `Box` to reduce the size of `BoundStatement`
-    // this is important for `pgproto`, which stores it in `PortalState`
-    plan: Box<Plan>,
+    // The plan stays behind a pointer to keep `BoundStatement` small:
+    // `pgproto` stores it in `PortalState`. `ExecutionPlan` takes the same
+    // `Rc` over, so the 1 KB `Plan` is not moved or copied again on execute.
+    plan: Rc<Plan>,
     /// This is for audit logging of SQL statement params.
     params_for_audit: Option<Vec<Value>>,
 }
@@ -219,7 +220,7 @@ where
         runtime: &'a C,
         statement: BoundStatement,
     ) -> Result<Self, SbroadError> {
-        Self::from_plan(runtime, *statement.plan)
+        Self::from_shared_plan(runtime, statement.plan)
     }
 
     fn from_text_and_params(

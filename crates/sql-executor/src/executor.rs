@@ -141,10 +141,16 @@ where
     ///
     /// # Errors
     /// - The user name can't be determined.
-    pub fn from_plan(runtime: &'a C, mut plan: Plan) -> Result<Self, SbroadError> {
-        plan.update_current_user(C::get_user_name)?;
+    pub fn from_plan(runtime: &'a C, plan: Plan) -> Result<Self, SbroadError> {
+        Self::from_shared_plan(runtime, Rc::new(plan))
+    }
+
+    /// Same as [`Self::from_plan`] for a plan that is already behind an `Rc`.
+    /// A plan with other holders is cloned on the first mutation.
+    pub fn from_shared_plan(runtime: &'a C, mut plan: Rc<Plan>) -> Result<Self, SbroadError> {
+        Rc::make_mut(&mut plan).update_current_user(C::get_user_name)?;
         Ok(Self {
-            exec_plan: ExecutionPlan::new(plan),
+            exec_plan: ExecutionPlan::from_shared_plan(plan),
             coordinator: runtime,
             bucket_map: HashMap::new(),
             exec_ctx: ExecutionContext::default(),

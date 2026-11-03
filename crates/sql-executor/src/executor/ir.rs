@@ -413,10 +413,14 @@ impl ExecutionPlan {
     }
 
     pub fn new(plan: Plan) -> Self {
+        Self::from_shared_plan(Rc::new(plan))
+    }
+
+    pub fn from_shared_plan(plan: Rc<Plan>) -> Self {
         ExecutionPlan {
             request_id: Uuid::new_v4(),
             request_id_text: OnceCell::new(),
-            plan: Rc::new(plan),
+            plan,
             vtables: VirtualTableMap::new(),
             plan_id: None,
             plan_id_sql_parameter_count: None,
