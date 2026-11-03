@@ -26,6 +26,7 @@ use ::raft::GetEntriesContext;
 use ::raft::StorageError;
 use smol_str::SmolStr;
 use sql::ir::operator::ConflictStrategy;
+use std::time::Duration;
 use tarantool::access_control::box_user_check_limit;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
@@ -161,6 +162,34 @@ pub fn compare_and_swap_and_wait(request: &Request, deadline: Instant) -> traft:
     metrics::record_cas_ops_total(&request.op);
 
     result
+}
+
+/// Applies a batch of DML operations cluster-wide and waits for local application,
+/// retrying retriable CAS errors until `deadline`.
+///
+/// Operations must be idempotent because the same batch can be resubmitted.
+/// The supplied predicate is preserved across retries. If a conflict requires
+/// re-reading state, the caller must build a new predicate and retry the operation.
+/// This helper does not log operation payloads, which may contain credentials.
+pub fn apply_dml_with_retries(
+    dmls: Vec<Dml>,
+    predicate: Predicate,
+    as_user: UserId,
+    deadline: Instant,
+) -> traft::Result<()> {
+    let op = Op::single_dml_or_batch(dmls);
+    let request = Request::new(op, predicate, as_user)?;
+    loop {
+        match compare_and_swap_and_wait(&request, deadline)? {
+            CasResult::Ok(_) => return Ok(()),
+            CasResult::RetriableError(e) => {
+                if fiber::clock() >= deadline {
+                    return Err(e);
+                }
+                fiber::sleep(Duration::from_millis(10));
+            }
+        }
+    }
 }
 
 /// Performs a clusterwide compare and swap operation.
