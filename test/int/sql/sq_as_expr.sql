@@ -957,15 +957,15 @@ buckets <= [1-3000]
 │ 2. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."product_units" + ( SELECT "COL_0" FROM "_tmp_4366320446883752717_0136" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."product_units" + ( SELECT "COL_0" FROM "_tmp_4366320446883752717_0136" )
+SELECT "testing_space"."product_units" + ( SELECT "COL_0" FROM "_tmp_7383803878358511848_0136" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."product_units" + ( SELECT "COL_0" FROM "_tmp_7383803878358511848_0136" )
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] EXECUTE SCALAR SUBQUERY 1
-    [1] SCAN TABLE _tmp_4366320446883752717_0136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_7383803878358511848_0136 (~1048576 rows)
     [0] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE _tmp_4366320446883752717_0136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_7383803878358511848_0136 (~1048576 rows)
 ''
 buckets <= [1-3000]
 ''
@@ -1033,15 +1033,15 @@ buckets = any
 │ 4. Query (WHOLE STORAGE) │
 ╰──────────────────────────╯
 ''
-SELECT "testing_space"."id" + ( SELECT "COL_0" FROM "_tmp_14080165071210472173_2136" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT "COL_0" FROM "_tmp_14080165071210472173_2136" )
+SELECT "testing_space"."id" + ( SELECT "COL_0" FROM "_tmp_6177919257480173955_2136" ) as "gr_expr_1" FROM "testing_space" GROUP BY "testing_space"."id" + ( SELECT "COL_0" FROM "_tmp_6177919257480173955_2136" )
 ''
 plan:
     [0] SCAN TABLE testing_space (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] EXECUTE SCALAR SUBQUERY 1
-    [1] SCAN TABLE _tmp_14080165071210472173_2136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_6177919257480173955_2136 (~1048576 rows)
     [0] EXECUTE SCALAR SUBQUERY 2
-    [2] SCAN TABLE _tmp_14080165071210472173_2136 (~1048576 rows)
+    [2] SCAN TABLE _tmp_6177919257480173955_2136 (~1048576 rows)
 ''
 buckets <= [1-3000]
 ''
@@ -1591,3 +1591,15 @@ projection (t1.a::int -> a)
 SELECT a FROM t1 WHERE
 (1 NOT BETWEEN 0 AND COALESCE(NULL, NULL)) BETWEEN 0 = 0 AND (EXISTS (SELECT 1) OR TRUE);
 -- EXPECTED:
+
+-- TEST: nested-exists-with-several-columns
+-- SQL:
+SELECT EXISTS (SELECT EXISTS (SELECT EXISTS (SELECT 1, 2), 2), 2), 2;
+-- EXPECTED:
+true, 2
+
+-- TEST: nested-exists-with-several-columns-sharded
+-- SQL:
+SELECT a FROM t1 WHERE EXISTS (SELECT EXISTS (SELECT a, b FROM t1), 2 FROM t1);
+-- EXPECTED:
+1

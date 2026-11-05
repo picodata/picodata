@@ -2718,18 +2718,18 @@ impl Plan {
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
         // Collect first: the loops below read the ids two times and change the plan.
-        let nodes: Vec<NodeId> =
+        let mut nodes: Vec<NodeId> =
             PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
                 .map(|(id, _)| id)
                 .collect();
+        // A release build enters a node twice if it has two parents through an
+        // edge that its iterator does not mark (a debug build panics). Keep the
+        // first occurrence, which follows the children.
+        let mut seen = AHashSet::with_capacity(nodes.len());
+        nodes.retain(|id| seen.insert(*id));
         self.check_motion_inputs_analyzed(&nodes, state)?;
         let mut cte_ref_counts: AHashMap<CteChildId, usize> = AHashMap::with_capacity(CTE_CAPACITY);
-        let mut counted_cte_refs = AHashSet::with_capacity(nodes.len());
         for id in &nodes {
-            if !counted_cte_refs.insert(*id) {
-                continue;
-            }
-
             if let Relational::ScanCte(ScanCte { child, .. }) = self.get_relation_node(*id)? {
                 *cte_ref_counts.entry(*child).or_insert(0) += 1;
             }
@@ -2751,19 +2751,12 @@ impl Plan {
                 }
             }
         }
-        // Set of already visited nodes. Used for the case of BETWEEN where two expressions may
-        // refer to the same relational node.
-        let mut visited = AHashSet::with_capacity(nodes.len());
         // Map of { old relational child -> new relational child }
         // used to fix Union nodes.
         let mut old_new: AHashMap<NodeId, NodeId> = AHashMap::new();
         let mut values_covered = AHashSet::new();
         let mut cache = MotionsCache::default();
         for id in nodes {
-            if visited.contains(&id) {
-                continue;
-            }
-
             let node =
                 self.prepare_node_for_motions(id, &mut values_covered, &mut old_new, state)?;
 
@@ -2825,7 +2818,7 @@ impl Plan {
                     having,
                     ..
                 }) => {
-                    if !self.add_motions_for_projection(
+                    self.add_motions_for_projection(
                         id,
                         output,
                         &windows,
@@ -2834,9 +2827,7 @@ impl Plan {
                         &gathered_by_windows,
                         &mut cache,
                         state,
-                    )? {
-                        continue;
-                    }
+                    )?;
                 }
                 RelOwned::ScanFunction(ScanFunction { function, .. }) => {
                     // Every instance must compute the same rows, so the
@@ -2911,8 +2902,6 @@ impl Plan {
                     )?;
                 }
             }
-
-            visited.insert(id);
         }
 
         if !old_new.is_empty() {
@@ -3176,7 +3165,6 @@ impl Plan {
         Ok(())
     }
 
-    /// Returns `false` if the projection must not be marked as visited.
     #[allow(clippy::too_many_arguments)]
     fn add_motions_for_projection(
         &mut self,
@@ -3188,7 +3176,7 @@ impl Plan {
         gathered_by_windows: &AHashSet<NodeId>,
         cache: &mut MotionsCache,
         state: &mut PlanningState,
-    ) -> Result<bool, SbroadError> {
+    ) -> Result<(), SbroadError> {
         // Picodata for distributed SQL `DISTINCT` operator logic uses GroupBy
         // For now GroupBy inside Projection (if it is) is USER defined
         if let Some(group_by_id) = group_by {
@@ -3219,7 +3207,7 @@ impl Plan {
             if let Some(group_by_id) = group_by {
                 self.share_groupby_subqueries(id, group_by_id)?;
             }
-            return Ok(false);
+            return Ok(());
         }
 
         let windows_in_place = !windows.is_empty() && !gathered_by_windows.contains(&id);
@@ -3249,7 +3237,7 @@ impl Plan {
             }
             self.share_groupby_subqueries(id, group_by_id)?;
             // Nothing else to do here.
-            return Ok(false);
+            return Ok(());
         }
 
         if windows.is_empty()
@@ -3257,7 +3245,7 @@ impl Plan {
             && self.add_two_stage_aggregation(id, state)?
         {
             // We have successfully added two stage aggregation.
-            return Ok(false);
+            return Ok(());
         }
 
         if !windows.is_empty() {
@@ -3273,7 +3261,7 @@ impl Plan {
 
         // Just take distribution from projection's child.
         self.set_projection_distribution(id)?;
-        Ok(true)
+        Ok(())
     }
 
     fn add_motions_for_scan_cte(
@@ -3328,44 +3316,37 @@ impl Plan {
         // is the slice index.
         let mut slices: Vec<Vec<NodeId>> = Vec::new();
         let dfs_tree = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id);
-        // When visiting new node this stack stores
-        // all the children of the current node.
-        let mut stack = Vec::new();
-        // Our plan is a DAG, we must not add the same motion twice
-        // to slices.
-        let mut visited_motions_ids = AHashSet::with_capacity(REL_CAPACITY);
+        // The result of each visited node. A node can have several parents,
+        // so its result is found by id.
+        let mut motions_in_path: AHashMap<NodeId, usize> = AHashMap::with_capacity(REL_CAPACITY);
         for (id, rel) in dfs_tree.relational() {
-            let subqueries_len = rel.subqueries().len();
-
+            // The result of a node entered again through an unmarked edge is
+            // already there (see `add_motions_to_subtree`).
+            if motions_in_path.contains_key(&id) {
+                continue;
+            }
             let mut max_motions_in_path = 0;
-            for _ in 0..rel.children_len() + subqueries_len {
-                // We can use unwrap here, because:
-                // 1. We traverse nodes in DFS, bottom up manner.
-                // So we will first iterate over node's children
-                // and add them to stack.
-                // 2. DFS uses rel iter to iterate over node's children
-                // and we know that rel iter iterates over ALL children.
-                let child_mm = stack.pop().expect("rel iter visits all children");
+            for child in self.nodes.rel_iter(id) {
+                // The traversal visits the children before their parent.
+                let child_mm = motions_in_path[&child];
                 max_motions_in_path = max_motions_in_path.max(child_mm);
             }
 
             if rel.is_motion() {
                 debug_assert!(max_motions_in_path <= slices.len());
 
-                if visited_motions_ids.insert(id) {
-                    if max_motions_in_path == slices.len() {
-                        slices.push(Vec::new())
-                    }
-                    // We can unwrap here, because max_motions_in_path
-                    // is always incremented by one and each time we
-                    // add new slice if needed.
-                    slices.get_mut(max_motions_in_path).unwrap().push(id);
+                if max_motions_in_path == slices.len() {
+                    slices.push(Vec::new())
                 }
+                // We can unwrap here, because max_motions_in_path
+                // is always incremented by one and each time we
+                // add new slice if needed.
+                slices.get_mut(max_motions_in_path).unwrap().push(id);
 
                 max_motions_in_path += 1;
             }
 
-            stack.push(max_motions_in_path);
+            motions_in_path.insert(id, max_motions_in_path);
         }
         Ok(slices)
     }

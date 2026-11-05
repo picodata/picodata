@@ -691,3 +691,57 @@ fn cte_with_left_join() {
           scan t2
     "#);
 }
+
+/// Each CTE reads the previous one twice, so the number of paths in the plan
+/// doubles on each level.
+fn reused_cte_chain(table: &str, levels: usize) -> String {
+    let mut sql = format!("explain (logical) WITH c0 AS (SELECT a FROM {table})");
+    for level in 1..=levels {
+        let body = level - 1;
+        sql += &format!(", c{level} AS (SELECT a FROM c{body} UNION ALL SELECT a FROM c{body})");
+    }
+    sql + &format!(" SELECT a FROM c{levels}")
+}
+
+#[test]
+fn reused_cte_chain_plan() {
+    let plan = sql_to_optimized_ir(&reused_cte_chain("t", 2), vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (c2.a::int -> a)
+      scan cte c2($2)
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        projection (t.a::int -> a)
+          scan t
+    subquery $1:
+      motion [policy: full, program: ReshardIfNeeded]
+        union all
+          projection (c0.a::int -> a)
+            scan cte c0($0)
+          projection (c0.a::int -> a)
+            scan cte c0($0)
+    subquery $2:
+      union all
+        projection (c1.a::int -> a)
+          scan cte c1($1)
+        projection (c1.a::int -> a)
+          scan cte c1($1)
+    ");
+}
+
+/// Walking every path of these plans would not finish.
+#[test]
+fn reused_cte_chain_is_planned_by_shared_nodes() {
+    let levels = 64;
+    for table in ["t", "global_t"] {
+        let plan = sql_to_optimized_ir(&reused_cte_chain(table, levels), vec![]);
+        assert_eq!(full_motion_count(&plan), levels, "table {table}");
+
+        let explain = explain_logical(&plan).unwrap();
+        assert!(
+            explain.contains(&format!("subquery ${levels}:")),
+            "table {table}"
+        );
+    }
+}

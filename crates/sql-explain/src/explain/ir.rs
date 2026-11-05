@@ -1629,11 +1629,13 @@ impl LogicalExplain {
 
         // Note that subqueries are added to the stack in the `children` reversed order
         // because of the PostOrder traversal. That's why we apply `rev` here.
+        // The traversal enters a shared subquery once, so it is on the stack
+        // only for its first parent.
         for sq_id in subqueries.iter().rev() {
-            let sq_node = stack
-                .pop()
-                .unwrap_or_else(|| panic!("Rel node failed to pop a sub-query."));
             if !known_subqueries.contains_key(sq_id) {
+                let sq_node = stack
+                    .pop()
+                    .unwrap_or_else(|| panic!("Rel node failed to pop a sub-query."));
                 known_subqueries.insert(*sq_id, sq_node);
             }
             let offset = known_subqueries
@@ -1653,6 +1655,8 @@ impl LogicalExplain {
         let should_fmt = ir.explain_options.contains(ExplainOptions::Fmt);
 
         let mut known_subqueries = OrderedMap::with_hasher(RepeatableState);
+        // The position in `known_subqueries` of each CTE body.
+        let mut cte_positions: HashMap<NodeId, usize> = HashMap::new();
         let mut stack: Vec<ExplainTreePart> = Vec::new();
 
         let dft_post = PostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
@@ -1732,13 +1736,17 @@ impl LogicalExplain {
                     should_fmt,
                 ),
                 Relational::ScanCte(ScanCte { alias, child, .. }) => {
-                    let child_tree = stack.pop().expect("CTE node must have exactly one child");
-                    let existing_pos = known_subqueries
-                        .iter()
-                        .position(|(_, sq)| *sq == child_tree);
-                    let pos = existing_pos.unwrap_or_else(|| {
-                        known_subqueries.insert(*child, child_tree);
-                        known_subqueries.len() - 1
+                    // The traversal enters the body once, so it is on the stack
+                    // only for the first reference.
+                    let pos = *cte_positions.entry(*child).or_insert_with(|| {
+                        let child_tree = stack.pop().expect("CTE node must have exactly one child");
+                        let existing_pos = known_subqueries
+                            .iter()
+                            .position(|(_, sq)| *sq == child_tree);
+                        existing_pos.unwrap_or_else(|| {
+                            known_subqueries.insert(*child, child_tree);
+                            known_subqueries.len() - 1
+                        })
                     });
 
                     Ok((ExplainNode::Cte(alias.clone(), Ref::new(pos)), vec![]))

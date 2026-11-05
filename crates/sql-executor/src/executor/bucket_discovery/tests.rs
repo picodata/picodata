@@ -1910,3 +1910,18 @@ fn insert_local_segment_with_vtable() {
 
     assert_eq!(buckets_of_key(&key), query.bucket_discovery(top).unwrap());
 }
+
+#[test]
+fn subquery_shared_by_group_by_and_having() {
+    // The local projection and its `GROUP BY` list one subquery, which the
+    // walk enters once.
+    let query = r#"SELECT sum("a") FROM "t" GROUP BY (SELECT true) HAVING (SELECT true)"#;
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let motion_id = query.get_motion_id(0, 0);
+    let plan = query.get_exec_plan().get_ir_plan();
+    let local_id = plan.get_first_rel_child(motion_id).unwrap();
+
+    assert_eq!(Buckets::All, query.bucket_discovery(local_id).unwrap());
+}

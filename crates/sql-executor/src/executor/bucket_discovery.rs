@@ -295,10 +295,13 @@ where
                 Node::Relational(Relational::ScanCte(ScanCte { child, .. }))
                     if memo.borrow().contains_key(child) =>
                 {
-                    ir_plan.nodes.empty_rel_iter()
+                    ir_plan.nodes.empty_rel_iter().take(0)
                 }
-                Node::Relational(rel) => self.exec_plan.exec_rel_children(id, &rel),
-                _ => ir_plan.nodes.empty_rel_iter(),
+                Node::Relational(rel) => self
+                    .exec_plan
+                    .exec_rel_children(id, &rel)
+                    .take(walked_children(&rel)),
+                _ => ir_plan.nodes.empty_rel_iter().take(0),
             },
             top_id,
         );
@@ -316,7 +319,11 @@ where
                     continue;
                 }
             }
-            let arity = self.exec_plan.exec_rel_children(node_id, &rel).count();
+            let arity = self
+                .exec_plan
+                .exec_rel_children(node_id, &rel)
+                .take(walked_children(&rel))
+                .count();
             let base = stack.len().checked_sub(arity).ok_or_else(|| {
                 SbroadError::FailedTo(
                     Action::Retrieve,
@@ -480,7 +487,7 @@ where
                     buckets
                 }
             };
-            // The children that no arm reads, e.g. subqueries, go with the drain.
+            // The children that no arm reads go with the drain.
             drop(children);
             stack.push(buckets);
         }
@@ -510,6 +517,21 @@ fn motion_vtable_buckets(
 ) -> Result<HashSet<u64, RepeatableState>, SbroadError> {
     let virtual_table = exec_plan.get_motion_vtable(motion_id)?;
     Ok(virtual_table.get_bucket_index().keys().copied().collect())
+}
+
+/// How many relational children of a node bucket discovery walks. Subqueries
+/// come after the other children, and only a `SELECT` without `FROM` reads
+/// their buckets. The others are not walked: a subquery that a projection
+/// shares with its `GROUP BY` is entered once, so both cannot take it from the
+/// stack.
+fn walked_children(rel: &Relational) -> usize {
+    match rel {
+        Relational::SelectWithoutScan(SelectWithoutScan { subqueries, .. }) => subqueries.len(),
+        // Its child is the `HAVING`, the `GROUP BY` or the source, which
+        // `children` does not give for the first two.
+        Relational::Projection(_) => 1,
+        _ => rel.children().len(),
+    }
 }
 
 /// Takes the buckets of the next relational child of a node.

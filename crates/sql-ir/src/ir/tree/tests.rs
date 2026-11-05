@@ -3,7 +3,7 @@ use crate::ir::node::{Alias, ArenaType, NodeId};
 use crate::ir::operator::Bool;
 use crate::ir::relation::{SpaceEngine, Table};
 use crate::ir::test_fixtures::column_user_non_null;
-use crate::ir::tree::traversal::{BreadthFirst, NodeIter, PostOrder, EXPR_CAPACITY};
+use crate::ir::tree::traversal::{BreadthFirst, EveryPath, NodeIter, PostOrder, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::value::Value;
 use crate::ir::Node;
@@ -11,6 +11,7 @@ use crate::ir::Plan;
 use pretty_assertions::assert_eq;
 use rand::random;
 use smol_str::SmolStr;
+use std::collections::HashSet;
 
 #[test]
 fn expression_bft() {
@@ -299,6 +300,112 @@ fn subtree_dfs_post() {
     let missing = plan.nodes.next_id(ArenaType::Arena64);
     let mut iter = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), missing);
     assert!(iter.next().is_none());
+}
+
+fn add_table_t(plan: &mut Plan) {
+    let t = Table::new_sharded(
+        random(),
+        "t",
+        vec![column_user_non_null(
+            SmolStr::from("a"),
+            UnrestrictedType::Boolean,
+        )],
+        &["a"],
+        &["a"],
+        SpaceEngine::Memtx,
+    )
+    .unwrap();
+    plan.add_rel(t);
+}
+
+/// A scan under `levels` of `c(i) = c(i-1) union all c(i-1)`. Each level has
+/// a union and two references to one body, so the plan has `1 + 3 * levels`
+/// relational nodes and `4 * 2^levels - 3` paths to them.
+fn reused_cte_chain(plan: &mut Plan, levels: usize) -> NodeId {
+    add_table_t(plan);
+    let mut body = plan.add_scan("t", None).unwrap();
+    for _ in 0..levels {
+        let left = plan.add_cte_scan(body, SmolStr::from("c")).unwrap();
+        let right = plan.add_cte_scan(body, SmolStr::from("c")).unwrap();
+        body = plan.add_union(left, right, false).unwrap();
+    }
+    body
+}
+
+#[test]
+fn post_order_enters_shared_nodes_once() {
+    let mut plan = Plan::default();
+    // Every path would take 2^66 visits.
+    let levels = 64;
+    let top = reused_cte_chain(&mut plan, levels);
+
+    let visited: Vec<NodeId> = PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top)
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(visited.len(), 1 + 3 * levels);
+    assert_eq!(visited.last(), Some(&top));
+
+    // Children go before their parents, however many parents they have.
+    let mut seen = HashSet::new();
+    for id in &visited {
+        assert!(plan.nodes.rel_iter(*id).all(|child| seen.contains(&child)));
+        assert!(seen.insert(*id));
+    }
+
+    // The traversal with expressions enters shared nodes once too.
+    let subtree = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), top);
+    assert_eq!(subtree.relational().count(), 1 + 3 * levels);
+}
+
+#[test]
+fn post_order_every_path_visits_each_occurrence() {
+    let mut plan = Plan::default();
+    let top = reused_cte_chain(&mut plan, 4);
+
+    let visits = PostOrder::new(
+        EveryPath(&plan.nodes),
+        |node| plan.nodes.rel_iter(node),
+        top,
+    )
+    .count();
+    assert_eq!(visits, 4 * 2_usize.pow(4) - 3);
+
+    let by_node =
+        PostOrder::new_by_node(EveryPath(&plan.nodes), |id, _| plan.nodes.rel_iter(id), top)
+            .count();
+    assert_eq!(by_node, visits);
+}
+
+#[test]
+fn post_order_of_a_tree_is_not_changed() {
+    let mut plan = Plan::default();
+    // Without a reused CTE and subqueries each node has one path.
+    add_table_t(&mut plan);
+    let left = plan.add_scan("t", None).unwrap();
+    let right = plan.add_scan("t", None).unwrap();
+    let top = plan.add_union(left, right, false).unwrap();
+
+    let new: Vec<_> = PostOrder::new(&plan.nodes, |node| plan.subtree_iter(node), top)
+        .map(|(id, _)| id)
+        .collect();
+    let every_path: Vec<_> =
+        PostOrder::new(EveryPath(&plan.nodes), |node| plan.subtree_iter(node), top)
+            .map(|(id, _)| id)
+            .collect();
+    assert_eq!(new, every_path);
+}
+
+/// A new kind of shared relational node must not slip past `shares_children`.
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "`Arena::shares_children` misses an edge")]
+fn post_order_checks_shares_children() {
+    let mut plan = Plan::default();
+    add_table_t(&mut plan);
+    let scan = plan.add_scan("t", None).unwrap();
+    let top = plan.add_union(scan, scan, false).unwrap();
+
+    let _ = PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top).count();
 }
 
 /// Check that `PostOrder` gives the node of each id, and that the typed

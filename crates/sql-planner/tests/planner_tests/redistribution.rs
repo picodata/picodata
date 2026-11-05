@@ -448,6 +448,7 @@ fn test_slices_3() {
     let mut plan = Plan::new();
 
     // Our plan is a DAG, let's test we compute slices correctly in this case.
+    // A node gets two parents through the scans of a CTE.
 
     //         m6
     //         |
@@ -457,9 +458,11 @@ fn test_slices_3() {
     //       |    |
     //       m3   u1
     //        \  / \
-    //         m1   m2
+    //        cte   m2
     //         |    |
-    //         s1   s2
+    //         m1   s2
+    //         |
+    //         s1
 
     // Correct slices:
     // 1. [m1, m2]
@@ -493,6 +496,76 @@ fn test_slices_3() {
     let s2_id = plan.add_scan("t", None).unwrap();
     let m2_id = add_motion(&mut plan, s2_id);
 
+    let first_scan_id = plan.add_cte_scan(m1_id, "c".into()).unwrap();
+    let second_scan_id = plan.add_cte_scan(m1_id, "c".into()).unwrap();
+
+    let m3_id = add_sq_and_motion(&mut plan, first_scan_id);
+    let m4_id = add_sq_and_motion(&mut plan, m3_id);
+
+    let u1_id = plan.add_union(second_scan_id, m2_id, false).unwrap();
+    let m5_id = add_motion(&mut plan, u1_id);
+
+    let u2_id = plan.add_union(m4_id, m5_id, false).unwrap();
+    let m6_id = add_motion(&mut plan, u2_id);
+
+    plan.set_top(m6_id).unwrap();
+
+    let slices = plan.calculate_slices(plan.get_top().unwrap()).unwrap();
+
+    let expected = vec![
+        vec![m1_id, m2_id],
+        vec![m3_id, m5_id],
+        vec![m4_id],
+        vec![m6_id],
+    ];
+
+    assert_eq!(slices, expected);
+}
+
+/// The shape of the old `test_slices_3`: `m1` has two parents through edges
+/// that are not marked as shared. A debug build stops at it, and a release
+/// build gives each motion once.
+#[test]
+#[cfg_attr(debug_assertions, should_panic(expected = "a node entered twice"))]
+fn test_slices_of_a_motion_with_two_parents() {
+    let mut plan = Plan::new();
+
+    //         m6
+    //         |
+    //         u2
+    //        /  \
+    //       m4  m5
+    //       |    |
+    //       m3   u1
+    //        \  / \
+    //         m1   m2
+    //         |    |
+    //         s1   s2
+
+    let add_motion = |plan: &mut Plan, child_id: NodeId| -> NodeId {
+        let mut aliases = AliasGenerator::default();
+        plan.add_motion(
+            child_id,
+            &MotionPolicy::Full,
+            Program::default(),
+            &mut aliases,
+        )
+        .unwrap()
+    };
+    // Two motions in a row are squeezed into one, so put ScanSQ between them.
+    let add_sq_and_motion = |plan: &mut Plan, child_id: NodeId| -> NodeId {
+        let sq_id = plan.add_sub_query(child_id, None).unwrap();
+        add_motion(plan, sq_id)
+    };
+
+    plan.add_rel(Table::new_global(random(), "t", vec![Column::default()], &[""]).unwrap());
+
+    let s1_id = plan.add_scan("t", None).unwrap();
+    let m1_id = add_motion(&mut plan, s1_id);
+
+    let s2_id = plan.add_scan("t", None).unwrap();
+    let m2_id = add_motion(&mut plan, s2_id);
+
     let m3_id = add_sq_and_motion(&mut plan, m1_id);
     let m4_id = add_sq_and_motion(&mut plan, m3_id);
 
@@ -512,7 +585,6 @@ fn test_slices_3() {
         vec![m4_id],
         vec![m6_id],
     ];
-
     assert_eq!(slices, expected);
 }
 

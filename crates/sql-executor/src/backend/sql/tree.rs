@@ -16,7 +16,7 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::MotionPolicy;
-use crate::ir::tree::traversal::{Arena, NodeIter, PostOrder};
+use crate::ir::tree::traversal::{Arena, EveryPath, NodeIter, PostOrder};
 use crate::ir::tree::Snapshot;
 use crate::ir::types::CastType;
 use crate::ir::Plan;
@@ -1483,28 +1483,10 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_select_without_scan(&mut self, id: NodeId) {
         let (_, proj) = self.prologue_rel(id);
-        let Relational::SelectWithoutScan(SelectWithoutScan {
-            subqueries, output, ..
-        }) = proj
-        else {
+        let Relational::SelectWithoutScan(SelectWithoutScan { output, .. }) = proj else {
             panic!("Expected SelectWithoutScan node");
         };
         let output = *output;
-
-        // We can't hold onto subqueries, because
-        // we mutate self, so use indices
-        for child_idx in (0..subqueries.len()).rev() {
-            let sq_id = *self
-                .plan
-                .get_ir_plan()
-                .get_relation_subqueries(id)
-                .expect("node should be in plan")
-                .get(child_idx)
-                .expect("node can't change between iters");
-            // Pop sq from the stack and do nothing with them.
-            // We've already handled them as a part of the `output`.
-            self.pop_from_stack(sq_id, id);
-        }
 
         let row_sn_id = self.pop_from_stack(output, id);
         let row_sn = self.nodes.get_mut_sn(row_sn_id);
@@ -1526,20 +1508,10 @@ impl<'p> SyntaxPlan<'p> {
 
     fn add_proj(&mut self, id: NodeId) {
         let (_, proj) = self.prologue_rel(id);
-        let Relational::Projection(Projection {
-            subqueries, output, ..
-        }) = proj
-        else {
+        let Relational::Projection(Projection { output, .. }) = proj else {
             panic!("Expected PROJECTION node");
         };
         let output = *output;
-        let subqueries = subqueries.clone();
-
-        for sq_id in subqueries.iter().rev() {
-            // Pop sq from the stack and do nothing with them.
-            // We've already handled them as a part of the `output`.
-            self.pop_from_stack(*sq_id, id);
-        }
 
         let (child_sn_id, row_sn_id) = {
             let child_plan_id = self
@@ -2136,7 +2108,12 @@ impl<'p> SyntaxPlan<'p> {
                 .get_expression_node(*child_id)
                 .expect("row child is expression");
 
-            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) = expr {
+            if let Expression::SubQueryReference(SubQueryReference {
+                rel_id,
+                position: 0,
+                ..
+            }) = expr
+            {
                 self.pop_from_stack(*rel_id, id);
             }
         }
@@ -2192,7 +2169,12 @@ impl<'p> SyntaxPlan<'p> {
             let expr = plan
                 .get_expression_node(*child_id)
                 .expect("row child is expression");
-            if let Expression::SubQueryReference(SubQueryReference { rel_id, .. }) = expr {
+            if let Expression::SubQueryReference(SubQueryReference {
+                rel_id,
+                position: 0,
+                ..
+            }) = expr
+            {
                 sq_sn_id = Some(self.pop_from_stack(*rel_id, id));
             }
         }
@@ -2807,8 +2789,12 @@ impl<'p> SyntaxPlan<'p> {
         let ir_plan = plan.get_ir_plan();
 
         // A motion is a leaf when its subtree is already materialized or is
-        // serialized as an empty table.
+        // serialized as an empty table. The text writes a subquery once for the
+        // row of its columns, so only the reference to the first one goes into it.
         let is_leaf = |id, node: &Node| match node {
+            Node::Expression(Expression::SubQueryReference(SubQueryReference {
+                position, ..
+            })) => *position != 0,
             Node::Relational(Relational::Motion(Motion { program, .. })) => {
                 plan.is_effective_motion_leaf(id)
                     || plan
@@ -2818,11 +2804,12 @@ impl<'p> SyntaxPlan<'p> {
             _ => false,
         };
 
-        // Wrap plan's nodes and preserve their ids.
+        // Wrap plan's nodes and preserve their ids. The SQL text repeats
+        // a shared subtree at each use, so the plan is walked along every path.
         match snapshot {
             Snapshot::Latest => sp.add_plan_subtree(
                 PostOrder::new_by_node(
-                    &ir_plan.nodes,
+                    EveryPath(&ir_plan.nodes),
                     |id, node| {
                         (!is_leaf(id, &node))
                             .then(|| ir_plan.subtree_iter_of(node))
@@ -2835,7 +2822,7 @@ impl<'p> SyntaxPlan<'p> {
             )?,
             Snapshot::Oldest => sp.add_plan_subtree(
                 PostOrder::new_by_node(
-                    &ir_plan.nodes,
+                    EveryPath(&ir_plan.nodes),
                     |id, node| {
                         (!is_leaf(id, &node))
                             .then(|| ir_plan.flashback_subtree_iter_of(node))

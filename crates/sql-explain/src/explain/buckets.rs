@@ -1,5 +1,5 @@
 use crate::explain::utils::{TinyFmtBuffer, FMT_WIDTH, INDENT};
-use ahash::AHashSet;
+use ahash::{AHashMap, AHashSet};
 use itertools::{process_results, Itertools};
 use serde::{Deserialize, Serialize};
 use sql_executor::executor::{
@@ -156,9 +156,10 @@ fn estimate_subtree_buckets<R: Router>(
 
     let dfs_tree = PostOrder::new(&ir.nodes, |node| ir.nodes.rel_iter(node), top_id);
     // Stores previously computed results for each
-    // child of the current node: weather the child
-    // has non-local motion in its subtree.
-    let mut stack: Vec<(NodeId, bool)> = Vec::new();
+    // visited node: whether the node has non-local
+    // motion in its subtree. A node can have several
+    // parents, so its result is found by id.
+    let mut has_motion: AHashMap<NodeId, bool> = AHashMap::new();
     // Ids of nodes that don't have non-local motions in their subtrees.
     // We can safely call `bucket_discovery` on such nodes. For buckets
     // estimation we take union of all buckets produced by those nodes:
@@ -184,12 +185,11 @@ fn estimate_subtree_buckets<R: Router>(
     // such children are to be used for buckets estimation.
     let mut cur_children_without_motions: Vec<NodeId> = Vec::new();
     for (id, rel) in dfs_tree.relational() {
-        let rel_deps_len = rel.children_len() + rel.subqueries().len();
-
         // true if this subtree has non-local motion
         let mut has_non_local_motion = false;
-        for _ in 0..rel_deps_len {
-            let (child_id, child_value) = stack.pop().expect("rel iter visits all children");
+        for child_id in ir.nodes.rel_iter(id) {
+            // The traversal visits the children before their parent.
+            let child_value = has_motion[&child_id];
 
             if !child_value {
                 cur_children_without_motions.push(child_id);
@@ -210,7 +210,7 @@ fn estimate_subtree_buckets<R: Router>(
             without_motions_ids.insert(id);
         }
 
-        stack.push((id, has_non_local_motion));
+        has_motion.insert(id, has_non_local_motion);
     }
 
     let mut estimated_buckets: Option<Buckets> = None;

@@ -484,25 +484,15 @@ fn subtree_next<'plan>(
                     iter.advance();
                     rows.get(step).copied()
                 }
-                Relational::SelectWithoutScan(SelectWithoutScan {
-                    output, subqueries, ..
-                }) => {
+                // Subqueries are reached from the expressions that refer to them.
+                Relational::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
                     let step = iter.get_child().get();
                     iter.advance();
-
-                    let once_output = std::iter::once(*output);
-                    let sub_iter = subqueries.iter().copied();
-
-                    if iter.output_first() {
-                        once_output.chain(sub_iter).nth(step)
-                    } else {
-                        sub_iter.chain(once_output).nth(step)
-                    }
+                    (step == 0).then_some(*output)
                 }
                 Relational::Projection(Projection {
                     output,
                     child,
-                    subqueries,
                     group_by,
                     having,
                     ..
@@ -535,14 +525,7 @@ fn subtree_next<'plan>(
                         unreachable!("nothing was set");
                     }
 
-                    let subquery_idx = step - step_shift;
-                    if subquery_idx < subqueries.len() {
-                        return subqueries.get(subquery_idx).copied();
-                    } else if !iter.output_first() && subquery_idx == subqueries.len() {
-                        return Some(*output);
-                    }
-
-                    None
+                    (!iter.output_first() && step == step_shift).then_some(*output)
                 }
                 Relational::Selection(Selection { child, filter, .. })
                 | Relational::Having(Having { child, filter, .. }) => {

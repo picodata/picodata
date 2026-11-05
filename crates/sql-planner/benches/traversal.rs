@@ -34,7 +34,7 @@ use sql_frontend::frontend::sql::transform_into_plan;
 use sql_ir::ir::node::expression::Expression;
 use sql_ir::ir::node::relational::Relational;
 use sql_ir::ir::node::{Motion, Node, NodeId};
-use sql_ir::ir::tree::traversal::PostOrder;
+use sql_ir::ir::tree::traversal::{EveryPath, PostOrder};
 use sql_ir::ir::tree::Snapshot;
 use sql_ir::ir::Plan;
 
@@ -187,7 +187,7 @@ fn sql_gen_post_by_node(cases: &[Prepared]) -> usize {
         .iter()
         .map(|p| {
             PostOrder::new_by_node(
-                &p.plan.nodes,
+                EveryPath(&p.plan.nodes),
                 |_, node| {
                     let leaf = matches!(&node, Node::Relational(Relational::Motion(_))) && cut;
                     (!leaf)

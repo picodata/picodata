@@ -2,12 +2,18 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::NodeId;
 use crate::ir::{Node, Nodes};
+use ahash::AHashSet;
+use arrayvec::ArrayVec;
 use std::collections::VecDeque;
+use std::hash::Hash;
 
 pub const EXPR_CAPACITY: usize = 64;
 pub const REL_CAPACITY: usize = 32;
 /// The usual depth of a plan tree.
 const STACK_CAPACITY: usize = 16;
+/// How many entered shared children a traversal keeps in place: a plan has
+/// a few, and searching them costs less than an allocation.
+const ENTERED_INLINE: usize = 8;
 
 pub struct BreadthFirst<ChildrenFn, T> {
     children_fn: ChildrenFn,
@@ -47,13 +53,27 @@ where
     }
 }
 
-/// A tree arena that [`PostOrder`] takes the nodes from.
+/// An arena that [`PostOrder`] takes the nodes from.
 pub trait Arena: Copy {
-    type Id: Copy;
+    type Id: Copy + Eq + Hash;
     type Node;
 
     /// `None` skips the node with its subtree.
     fn node(self, id: Self::Id) -> Option<Self::Node>;
+
+    /// Whether a child of this node can have other parents. [`PostOrder`]
+    /// remembers only such children, so a tree does not pay for it.
+    #[inline]
+    fn shares_children(_node: &Self::Node) -> bool {
+        false
+    }
+
+    /// Whether debug builds check that this node is entered once, which fails
+    /// when `shares_children` misses an edge.
+    #[cfg(debug_assertions)]
+    fn is_entered_once(_node: &Self::Node) -> bool {
+        false
+    }
 }
 
 impl<'nodes> Arena for &'nodes Nodes {
@@ -64,13 +84,58 @@ impl<'nodes> Arena for &'nodes Nodes {
     fn node(self, id: NodeId) -> Option<Node<'nodes>> {
         self.get(id)
     }
+
+    /// The body of a CTE has a parent per reference. A subquery has a parent
+    /// per node listing it and per expression referring to it.
+    #[inline]
+    fn shares_children(node: &Node<'nodes>) -> bool {
+        match node {
+            Node::Relational(Relational::ScanCte(_))
+            | Node::Expression(Expression::SubQueryReference(_)) => true,
+            Node::Relational(rel) => !rel.subqueries().is_empty(),
+            _ => false,
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    fn is_entered_once(node: &Node<'nodes>) -> bool {
+        matches!(node, Node::Relational(_))
+    }
+}
+
+/// An arena whose shared nodes [`PostOrder`] visits once per path to them, for
+/// the consumers that need each occurrence: the SQL text repeats a shared
+/// subtree at each use. The time is exponential in the depth of sharing. It does
+/// not forward `Arena::shares_children`, whose default shares no child.
+#[derive(Clone, Copy)]
+pub struct EveryPath<A>(pub A);
+
+impl<A: Arena> Arena for EveryPath<A> {
+    type Id = A::Id;
+    type Node = A::Node;
+
+    #[inline]
+    fn node(self, id: A::Id) -> Option<A::Node> {
+        self.0.node(id)
+    }
 }
 
 /// Post-order traversal that yields each node with its id.
 ///
+/// A plan is a DAG: the body of a CTE and a subquery can have several parents.
+/// The traversal enters such a node once, because the number of paths to it
+/// grows exponentially with the depth of sharing while the plan stays small.
+/// So a consumer finds the result of a child by its id, and the consumers that
+/// need each occurrence of a node walk an [`EveryPath`] arena.
+///
+/// Expression nodes can be shared too (DNF does it), and they are visited once
+/// per parent: checking every node costs too much for what it protects from.
+/// Only the children of a node with `Arena::shares_children`, expressions among
+/// them, are entered once.
+///
 /// Each node is taken from the arena only once, so the consumer does not
 /// need to get it again. The traversal is lazy and borrows the arena, so the
-/// tree cannot change while it runs.
+/// plan cannot change while it runs.
 pub struct PostOrder<A: Arena, C, I> {
     arena: A,
     children: C,
@@ -80,6 +145,14 @@ pub struct PostOrder<A: Arena, C, I> {
     /// one here: the frames are large, and an inline stack is copied each
     /// time the traversal is moved.
     stack: Vec<(A::Id, A::Node, I)>,
+    /// The children of `Arena::shares_children` nodes that are already entered.
+    /// The first ones are kept in place. The rest go to a set that is allocated
+    /// when they do not fit, and boxed because each move of the traversal
+    /// copies its fields.
+    entered: ArrayVec<A::Id, ENTERED_INLINE>,
+    entered_more: Option<Box<AHashSet<A::Id>>>,
+    #[cfg(debug_assertions)]
+    entered_once: AHashSet<A::Id>,
 }
 
 /// The children of a node for [`PostOrder`].
@@ -151,15 +224,35 @@ where
             arena,
             children,
             stack: Vec::with_capacity(STACK_CAPACITY),
+            entered: ArrayVec::new(),
+            entered_more: None,
+            #[cfg(debug_assertions)]
+            entered_once: AHashSet::new(),
         };
         traversal.push(root);
         traversal
+    }
+
+    /// Remembers a shared child, and tells whether it is entered first.
+    fn enter(&mut self, id: A::Id) -> bool {
+        if self.entered.contains(&id) {
+            return false;
+        }
+        match self.entered.try_push(id) {
+            Ok(()) => true,
+            Err(_) => self.entered_more.get_or_insert_default().insert(id),
+        }
     }
 
     /// A node that is absent from the arena is skipped with its subtree,
     /// as the child iterators do.
     fn push(&mut self, id: A::Id) {
         if let Some(node) = self.arena.node(id) {
+            #[cfg(debug_assertions)]
+            assert!(
+                !A::is_entered_once(&node) || self.entered_once.insert(id),
+                "a node entered twice: `Arena::shares_children` misses an edge to it"
+            );
             let children = self.children.children(id, &node);
             self.stack.push((id, node, children));
         }
@@ -176,9 +269,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (_, _, children) = self.stack.last_mut()?;
+            let (_, node, children) = self.stack.last_mut()?;
             match children.next() {
-                Some(child) => self.push(child),
+                Some(child) => {
+                    if A::shares_children(node) && !self.enter(child) {
+                        continue;
+                    }
+                    self.push(child);
+                }
                 None => {
                     let (id, node, _) = self.stack.pop()?;
                     return Some((id, node));

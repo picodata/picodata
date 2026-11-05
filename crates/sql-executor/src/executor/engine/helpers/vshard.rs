@@ -8,7 +8,7 @@ use crate::ir::node::{Motion, Node, NodeId};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::Plan;
-use ahash::AHashMap;
+use ahash::AHashSet;
 use smol_str::format_smolstr;
 use std::collections::HashMap;
 
@@ -27,18 +27,15 @@ tarantool::define_str_enum! {
 pub struct SerializeAsEmptyInfo {
     // ids of motions which have this opcode
     target_motion_ids: Vec<NodeId>,
+    // ids of motions that are reached only through
+    // the motions with an enabled opcode: their vtables
+    // must be deleted from replicaset message, where
+    // those motions are serialized as empty.
     unused_motions: Vec<NodeId>,
-    // ids of motions that are located below
-    // top_motion_id, vtables corresponding
-    // to those motions must be deleted from
-    // replicaset message.
-    motions_ref_count: AHashMap<NodeId, usize>,
 }
 
 pub trait PlanSerializeAsEmptyExt {
     fn is_serialize_as_empty_motion(&self, node_id: NodeId, check_enabled: bool) -> bool;
-
-    fn collect_top_ids(&self, top_id: NodeId) -> Result<Vec<NodeId>, SbroadError>;
 
     fn serialize_as_empty_info(
         &self,
@@ -67,7 +64,12 @@ impl PlanSerializeAsEmptyExt for Plan {
             .is_ok_and(|node| is_serialize_as_empty_motion_node(&node, check_enabled))
     }
 
-    fn collect_top_ids(&self, top_id: NodeId) -> Result<Vec<NodeId>, SbroadError> {
+    fn serialize_as_empty_info(
+        &self,
+        top_id: NodeId,
+    ) -> Result<Option<SerializeAsEmptyInfo>, SbroadError> {
+        // The motions with an enabled opcode, and the motions that are used
+        // without going through them.
         let iter_children = |node_id, node: Node| {
             // do not traverse subtree with this child
             if is_serialize_as_empty_motion_node(&node, true) {
@@ -75,61 +77,41 @@ impl PlanSerializeAsEmptyExt for Plan {
             }
             self.nodes.rel_iter(node_id)
         };
-        let top_ids = PostOrder::new_by_node(&self.nodes, iter_children, top_id)
-            .filter(|(_, node)| is_serialize_as_empty_motion_node(node, true))
-            .map(|(id, _)| id)
-            .collect();
-        Ok(top_ids)
-    }
-
-    fn serialize_as_empty_info(
-        &self,
-        top_id: NodeId,
-    ) -> Result<Option<SerializeAsEmptyInfo>, SbroadError> {
-        let top_ids = self.collect_top_ids(top_id)?;
+        let mut top_ids = Vec::new();
+        let mut used_motions = AHashSet::new();
+        for (id, node) in PostOrder::new_by_node(&self.nodes, iter_children, top_id) {
+            if is_serialize_as_empty_motion_node(&node, true) {
+                top_ids.push(id);
+            } else if matches!(node, Node::Relational(Relational::Motion(_))) {
+                used_motions.insert(id);
+            }
+        }
         if top_ids.is_empty() {
             return Ok(None);
         }
 
-        let mut motions_ref_count: AHashMap<NodeId, usize> = AHashMap::new();
-        let motions = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
-            .relational()
-            .filter(|(_, rel)| matches!(rel, Relational::Motion(_)));
-        for (motion_id, _) in motions {
-            motions_ref_count
-                .entry(motion_id)
-                .and_modify(|cnt| *cnt += 1)
-                .or_insert(1);
-        }
-
-        // all motion nodes that are inside the subtrees
-        // defined by `top_ids`
-        let all_motion_nodes = {
-            let mut all_motions = Vec::new();
-            for top_id in &top_ids {
-                let motions =
-                    PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), *top_id)
-                        .relational()
-                        .filter(|(_, rel)| matches!(rel, Relational::Motion(_)))
-                        .map(|(id, _)| id);
-                all_motions.extend(motions);
-            }
-            all_motions
-        };
+        let mut seen = AHashSet::new();
         let mut target_motions = Vec::new();
         let mut unused_motions = Vec::new();
-        for id in all_motion_nodes {
-            if self.is_serialize_as_empty_motion(id, false) {
-                target_motions.push(id);
-            } else {
-                unused_motions.push(id);
+        for top_id in &top_ids {
+            let motions = PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), *top_id)
+                .relational()
+                .filter(|(_, rel)| matches!(rel, Relational::Motion(_)));
+            for (id, _) in motions {
+                if !seen.insert(id) {
+                    continue;
+                }
+                if self.is_serialize_as_empty_motion(id, false) {
+                    target_motions.push(id);
+                } else if !used_motions.contains(&id) {
+                    unused_motions.push(id);
+                }
             }
         }
 
         Ok(Some(SerializeAsEmptyInfo {
             target_motion_ids: target_motions,
             unused_motions,
-            motions_ref_count,
         }))
     }
 }
@@ -148,12 +130,12 @@ pub fn prepare_rs_to_ir_map(
     rs_ir.reserve(rs_bucket_vec.len());
     let mut extra_plan_id = None;
     if let Some((last, other)) = rs_bucket_vec.split_last() {
-        let mut sae_info = sub_plan.get_ir_plan().serialize_as_empty_info(top_id)?;
+        let sae_info = sub_plan.get_ir_plan().serialize_as_empty_info(top_id)?;
 
         if !other.is_empty() {
             let mut other_plan = sub_plan.clone();
-            if let Some(info) = sae_info.as_mut() {
-                trim_serialize_as_empty_vtables(&mut other_plan, info)?;
+            if let Some(info) = sae_info.as_ref() {
+                trim_serialize_as_empty_vtables(&mut other_plan, info);
                 other_plan.salt_plan_id()?;
                 // It's important to use `get_plan_id` because of the plan's metadata.
                 extra_plan_id = Some(other_plan.get_plan_id()?);
@@ -211,26 +193,11 @@ fn prepare_single_rs_ir_plan_with_serialize_as_empty_info(
     Ok(sub_plan)
 }
 
-fn trim_serialize_as_empty_vtables(
-    sub_plan: &mut ExecutionPlan,
-    info: &mut SerializeAsEmptyInfo,
-) -> Result<(), SbroadError> {
+fn trim_serialize_as_empty_vtables(sub_plan: &mut ExecutionPlan, info: &SerializeAsEmptyInfo) {
     let vtables_map = sub_plan.get_mut_vtables();
-    let unused_motions = std::mem::take(&mut info.unused_motions);
-    for motion_id in &unused_motions {
-        let Some(use_count) = info.motions_ref_count.get_mut(motion_id) else {
-            return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                "no ref count for motion={motion_id:?}"
-            )));
-        };
-        if *use_count > 1 {
-            *use_count -= 1;
-        } else {
-            vtables_map.remove(motion_id);
-        }
+    for motion_id in &info.unused_motions {
+        vtables_map.remove(motion_id);
     }
-
-    Ok(())
 }
 
 fn serialize_as_empty_motions_to_disable(
@@ -354,6 +321,71 @@ mod tests {
             .expect("local sql params");
         plan.generate_sql(&nodes, 0, table_name, Some(params.constant_ids().to_vec()))
             .expect("local sql")
+    }
+
+    /// Enumerating the paths of this plan would not finish.
+    #[test]
+    fn serialize_as_empty_info_does_not_walk_every_path() {
+        let mut query = r#"WITH c0 AS (SELECT "e" FROM "t2")"#.to_string();
+        for level in 1..=40 {
+            let body = level - 1;
+            query += &format!(
+                r#", c{level} AS (SELECT "e" FROM c{body} UNION ALL SELECT "e" FROM c{body})"#
+            );
+        }
+        query += r#" SELECT "e" FROM c40 UNION ALL SELECT "e" FROM "t2" UNION ALL SELECT 0"#;
+
+        let plan = sql_to_optimized_ir(&query, vec![]);
+        let top_id = plan.get_top().expect("top node");
+        let info = plan
+            .serialize_as_empty_info(top_id)
+            .expect("serialize_as_empty info")
+            .expect("serialize_as_empty info must exist");
+        assert!(!info.target_motion_ids.is_empty());
+    }
+
+    /// A vtable stays while something else than a motion serialized as empty uses it.
+    #[test]
+    fn serialize_as_empty_info_keeps_shared_motions() {
+        let plan = sql_to_optimized_ir(
+            r#"
+            WITH c AS (SELECT "e" FROM "t2")
+            SELECT "a" FROM "global_t" WHERE "a" IN (SELECT "e" FROM c)
+            UNION ALL
+            SELECT "e" FROM "t2" WHERE "e" IN (SELECT "e" FROM c)
+            "#,
+            vec![],
+        );
+        let top_id = plan.get_top().expect("top node");
+        let info = plan
+            .serialize_as_empty_info(top_id)
+            .expect("serialize_as_empty info")
+            .expect("serialize_as_empty info must exist");
+        assert!(info.unused_motions.is_empty(), "{:?}", info.unused_motions);
+    }
+
+    /// The vtable of a motion that only a motion serialized as empty reads is
+    /// removed.
+    #[test]
+    fn serialize_as_empty_info_trims_motions_below_it() {
+        let plan = sql_to_optimized_ir(
+            r#"
+            SELECT "a" FROM "global_t" WHERE "a" IN (SELECT "e" FROM "t2")
+            UNION ALL
+            SELECT "e" FROM "t2"
+            "#,
+            vec![],
+        );
+        let top_id = plan.get_top().expect("top node");
+        let info = plan
+            .serialize_as_empty_info(top_id)
+            .expect("serialize_as_empty info")
+            .expect("serialize_as_empty info must exist");
+        let (enabled, below): (Vec<_>, Vec<_>) = motion_ids(&plan)
+            .into_iter()
+            .partition(|id| plan.is_serialize_as_empty_motion(*id, true));
+        assert_eq!(info.target_motion_ids, enabled);
+        assert_eq!(info.unused_motions, below);
     }
 
     #[test]

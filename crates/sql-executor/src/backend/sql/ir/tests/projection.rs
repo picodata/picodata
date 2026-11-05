@@ -64,3 +64,46 @@ fn select_without_scan() {
       - Integer: 1
     "#);
 }
+
+/// The walk of the SQL text enters a subquery once per its use in the text.
+/// Entering it twice would double the work on each level of nesting.
+#[test]
+fn nested_subqueries_in_projection() {
+    let levels = 40;
+    let mut query = "SELECT a FROM global_t".to_string();
+    for _ in 0..levels {
+        query = format!("SELECT ({query}) AS a FROM global_t");
+    }
+
+    for snapshot in [Snapshot::Latest, Snapshot::Oldest] {
+        let output = check_sql_with_snapshot(&query, vec![], snapshot);
+        assert_eq!(output.pattern.matches("SELECT").count(), levels + 1);
+    }
+}
+
+#[test]
+fn nested_subqueries_in_select_without_scan() {
+    let levels = 40;
+    let mut query = "SELECT 1 AS a".to_string();
+    for _ in 0..levels {
+        query = format!("SELECT ({query}) AS a");
+    }
+
+    for snapshot in [Snapshot::Latest, Snapshot::Oldest] {
+        let output = check_sql_with_snapshot(&query, vec![], snapshot);
+        assert_eq!(output.pattern.matches("SELECT").count(), levels + 1);
+    }
+}
+
+/// The text writes a subquery once for the row of its columns, so the walk must not
+/// build its body per column.
+#[test]
+fn nested_subqueries_with_several_columns_keep_the_text_linear() {
+    let levels = 40;
+    let mut query = "SELECT 1, 2".to_string();
+    for _ in 0..levels {
+        query = format!("SELECT EXISTS ({query}), 2");
+    }
+    let pattern = check_sql_with_snapshot(&query, vec![], Snapshot::Oldest).pattern;
+    assert_eq!(pattern.matches("exists").count(), levels);
+}

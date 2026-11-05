@@ -349,9 +349,8 @@ impl SubtreeCloner {
         let mut invalid_refs = Vec::new();
         for id in nodes {
             if self.old_new_map.contains_key(&id) {
-                // IR is a DAG and our DFS traversal does not
-                // track already visited nodes, so we may
-                // visit the same node multiple times.
+                // IR is a DAG and our DFS traversal visits
+                // a shared expression node once per parent.
                 // If we already cloned the node, no need to clone it
                 // again.
                 continue;

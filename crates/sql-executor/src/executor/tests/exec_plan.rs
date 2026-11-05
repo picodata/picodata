@@ -1634,6 +1634,24 @@ fn subtree_plan_id_raw_explain() {
     );
 }
 
+/// The shape stays in the plan cache, so it keeps one entry per node, not one
+/// per occurrence of a shared node: this plan has 2^40 paths to its leaves.
+#[test]
+fn subtree_shape_has_one_entry_per_node() {
+    let mut query = "SELECT a FROM global_t".to_string();
+    for _ in 0..40 {
+        query = format!("SELECT a FROM global_t WHERE ({query}) BETWEEN 0 AND 1");
+    }
+
+    let plan = crate::test_helpers::sql_to_optimized_ir(&query, vec![]);
+    let top_id = plan.get_top().unwrap();
+    let exec_plan = ExecutionPlan::new(plan);
+    let shape = exec_plan.subtree_shape(top_id).unwrap();
+
+    let unique: std::collections::HashSet<_> = shape.node_ids.iter().collect();
+    assert_eq!(unique.len(), shape.node_ids.len());
+}
+
 #[test]
 fn subtree_hash1() {
     check_subtree_plan_ids_are_equal(
