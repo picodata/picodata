@@ -595,6 +595,9 @@ def test_read_from_global_tables(cluster: Cluster):
     )
     assert dml["row_count"] == 1
 
+    # XXX: global DML doesn't have WAIT APPLIED GLOBALLY semantics, so we insert
+    # an explicit synchronization point
+    i2.raft_wait_index(i1.raft_get_index())
     data = i2.sql(
         """
         select * from "global_t"
