@@ -11,7 +11,7 @@ use operator::Arithmetic;
 use options::{OptionParamValue, OptionSpec, Options};
 use relation::Table;
 use serde::{Deserialize, Serialize};
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr};
 use std::cell::{OnceCell, RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -23,6 +23,7 @@ use ahash::AHashMap;
 use self::relation::Relations;
 use self::transformation::redistribution::MotionPolicy;
 use crate::errors::{Action, Entity, SbroadError};
+use crate::ir::aliases::AliasGenerator;
 use crate::utils::to_user;
 
 use crate::ir::columns::RelColumn;
@@ -53,6 +54,7 @@ use self::node::{Bound, BoundType, Like, Over, Window};
 #[allow(elided_lifetimes_in_associated_constant)]
 pub mod acl;
 pub mod aggregates;
+pub mod aliases;
 pub mod block;
 pub mod bucket;
 pub mod columns;
@@ -993,10 +995,8 @@ impl PlanShapes {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct BuildContext {
     shard_col_info: ShardColumnsMap,
-    /// Any aliases that were used in the query. Used for resolving unnamed subqueries/joins
-    used_aliases: HashSet<SmolStr>,
-    unnamed_join_idx: u64,
-    unnamed_subquery_idx: u64,
+    /// Aliases for the subqueries and joins the query does not name.
+    pub aliases: AliasGenerator,
 }
 
 impl BuildContext {
@@ -1011,39 +1011,6 @@ impl BuildContext {
         plan: &Plan,
     ) -> Result<Option<&Positions>, SbroadError> {
         self.shard_col_info.get(node_id, plan)
-    }
-
-    pub fn set_used_aliases(&mut self, aliases: HashSet<SmolStr>) {
-        debug_assert!(self.used_aliases.is_empty());
-        self.used_aliases = aliases;
-    }
-
-    fn get_unique_name(&self, pattern: &str, mut counter: u64) -> (SmolStr, u64) {
-        loop {
-            let candidate_name = if counter == 0 {
-                pattern.to_smolstr()
-            } else {
-                format_smolstr!("{}_{}", pattern, counter)
-            };
-            counter += 1;
-
-            if self.used_aliases.contains(&candidate_name) {
-                continue;
-            }
-
-            break (candidate_name, counter);
-        }
-    }
-    pub fn get_unnamed_subquery_name(&mut self) -> SmolStr {
-        let (name, counter) = self.get_unique_name("unnamed_subquery", self.unnamed_subquery_idx);
-        self.unnamed_subquery_idx = counter;
-        name
-    }
-
-    pub fn get_unnamed_join_name(&mut self) -> SmolStr {
-        let (name, counter) = self.get_unique_name("unnamed_join", self.unnamed_join_idx);
-        self.unnamed_join_idx = counter;
-        name
     }
 }
 

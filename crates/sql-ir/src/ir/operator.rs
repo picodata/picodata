@@ -1011,7 +1011,7 @@ impl Plan {
     /// - `child_id` is not a relational node.
     pub fn motion_alias(&mut self, child_id: NodeId) -> Result<Option<SmolStr>, SbroadError> {
         if let Relational::Join(_) = self.get_relation_node(child_id)? {
-            return Ok(Some(self.context_mut().get_unnamed_join_name()));
+            return Ok(Some(self.context_mut().aliases.join_alias()));
         }
         self.scan_alias(child_id)
     }

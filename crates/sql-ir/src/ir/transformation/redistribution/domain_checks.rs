@@ -227,7 +227,7 @@ impl Plan {
         let dist: Option<Distribution> = self.rel_distr_ref(input).ok().cloned();
         let mut added = Vec::with_capacity(3);
         let from = if needs_subquery {
-            let name = self.context_mut().get_unnamed_subquery_name();
+            let name = self.context_mut().aliases.subquery_alias();
             let sq = self.add_sub_query(input, Some(&name))?;
             added.push(sq);
             sq

@@ -37,6 +37,7 @@ use crate::utils::to_user;
 use crate::frontend::sql::ir::Translation;
 
 use crate::ir::acl::AlterOption;
+use crate::ir::aliases::AliasGenerator;
 use crate::ir::expression::NewColumnsSource;
 use crate::ir::expression::{ColumnWithScan, ColumnsRetrievalSpec, ExpressionId, VolatilityType};
 use crate::ir::function::Function;
@@ -512,9 +513,9 @@ impl<'q> AbstractSyntaxTree<'q> {
 
         used_aliases.extend(ctes.into_keys());
         used_aliases.extend(plan.relations.tables.keys().cloned());
-        plan.context_mut().set_used_aliases(used_aliases);
+        plan.context_mut().aliases = AliasGenerator::new(used_aliases);
         for node in unnamed_subqueries {
-            let name = plan.context_mut().get_unnamed_subquery_name();
+            let name = plan.context_mut().aliases.subquery_alias();
 
             let mut scan = plan.get_mut_relation_node(node)?;
             scan.set_scan_name(Some(name))?;
