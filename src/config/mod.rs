@@ -1988,8 +1988,6 @@ pub struct InstanceConfig {
 
     pub audit: Option<String>,
 
-    // box.cfg.background currently doesn't work with our supervisor/child implementation
-    // pub background: Option<bool>,
     #[serde(default)]
     #[introspection(nested)]
     pub log: LogSection,

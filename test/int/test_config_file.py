@@ -722,7 +722,7 @@ instance:
 
     assert json_line_count != 0
     for line in non_json_lines:
-        assert line.startswith(b"[supervisor")
+        assert line.startswith(b"can't grow log pipe")
 
     box_cfg = i1.eval("return box.cfg")
 
