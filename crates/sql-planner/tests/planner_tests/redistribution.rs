@@ -27,10 +27,8 @@ fn prepared_optimized_ir(query: &str, params: &[DerivedType]) -> Plan {
 fn optimized_to_motions(query: &str) -> Plan {
     let mut plan = sql_to_ir(query, vec![]);
     let top = plan.get_top().unwrap();
-    plan.optimize_before(top, Stage::AddMotions)
-        .unwrap()
-        .add_motions()
-        .unwrap();
+    let mut state = plan.optimize_before(top, Stage::AddMotions).unwrap();
+    plan.add_motions(&mut state).unwrap();
     plan
 }
 

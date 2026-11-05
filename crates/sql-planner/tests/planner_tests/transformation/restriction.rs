@@ -9,16 +9,14 @@ use sql::ir::Plan;
 /// Build the input the restriction pass sees in production (`IN` already
 /// `OR`-expanded, `(a, b) = (1, 2)` already split into per-column equalities)
 /// via [`Plan::optimize_before`], then run the restriction pass itself and
-/// return the restrictions it stored on the plan.
+/// return the restrictions it stored in the planning state.
 fn restrictions(query: &str) -> (Plan, Restrictions) {
     let mut plan = sql_to_ir_without_bind(query, &[]);
     let top = plan.get_top().unwrap();
-    plan.optimize_before(top, Stage::Restrictions)
-        .unwrap()
-        .analyze_restrictions_in_subtree(top)
+    let mut state = plan.optimize_before(top, Stage::Restrictions).unwrap();
+    plan.analyze_restrictions_in_subtree(top, &mut state)
         .unwrap();
-    let restrictions = plan.restrictions.clone().unwrap();
-    (plan, restrictions)
+    (plan, state.restrictions.unwrap())
 }
 
 /// The single restriction for queries that have exactly one filter-bearing node.
@@ -268,10 +266,11 @@ fn left_join_condition_is_skipped() {
 
 #[test]
 fn cleared_after_optimize() {
-    //  Parity guard: after a full optimize the field is cleared, proving step 1
-    //     changes nothing downstream.
+    // Parity guard: a full optimize builds the restrictions and leaves them in
+    // the planning state it returns, so an optimized plan carries none.
     use sql::helpers::sql_to_ir;
     let mut plan = sql_to_ir(r#"SELECT "a" FROM "t" WHERE "b" = 1"#, vec![]);
-    plan.optimize().unwrap();
-    assert!(plan.restrictions.is_none());
+    let top = plan.get_top().unwrap();
+    let state = plan.optimize_before(top, Stage::End).unwrap();
+    assert!(state.restrictions.is_some());
 }

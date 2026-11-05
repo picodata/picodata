@@ -14,12 +14,14 @@ use crate::{
 };
 
 use super::{MotionOpcode, MotionPolicy, Program, Strategy};
+use crate::ir::transformation::PlanningState;
 
 impl Plan {
     pub(super) fn calculate_strategy_for_left_join_with_global_tbl(
         &mut self,
         join_id: NodeId,
         join_kind: &JoinKind,
+        state: &mut PlanningState,
     ) -> Result<Option<Strategy>, SbroadError> {
         let is_left_join = matches!(join_kind, JoinKind::LeftOuter);
         let is_outer_global = matches!(
@@ -70,6 +72,7 @@ impl Plan {
                     outer_id,
                     &MotionPolicy::Full,
                     Program::default(),
+                    state,
                 )?;
                 self.change_child(join_id, outer_id, motion_id)?;
                 self.replace_target_in_relational(join_id, outer_id, motion_id)?;

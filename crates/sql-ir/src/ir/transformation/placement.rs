@@ -8,14 +8,15 @@
 //! registers the inserted nodes in the equality facts. How a pass picks the
 //! placement of its clauses stays its own.
 
-use crate::errors::{Entity, SbroadError};
+use crate::errors::SbroadError;
 use crate::ir::columns::RelColumn;
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{BoolExpr, Constant, Join, NodeId, Selection, SubQueryReference};
 use crate::ir::operator::{Bool, JoinKind};
-use crate::ir::transformation::restriction::{RestrictInfo, Restriction};
+use crate::ir::transformation::restriction::RestrictInfo;
+use crate::ir::transformation::PlanningState;
 use crate::ir::tree::traversal::REL_CAPACITY;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -65,6 +66,7 @@ impl Plan {
         &mut self,
         mut grouped: Grouped,
         mut dropped: Dropped,
+        state: &mut PlanningState,
     ) -> Result<(Vec<(NodeId, NodeId)>, Hosts), SbroadError> {
         for &placement in dropped.keys() {
             grouped.entry(placement).or_default();
@@ -96,11 +98,12 @@ impl Plan {
                 clauses,
                 lost.as_ref(),
                 &mut passthroughs,
+                state,
             )?;
             hosts.insert(placement, rel);
             attached.extend(ids.into_iter().map(|clause| (rel, clause)));
         }
-        if let Some(facts) = self.facts.as_mut() {
+        if let Some(facts) = state.facts.as_mut() {
             facts.register_passthroughs(&passthroughs);
         }
         Ok((attached, hosts))
@@ -138,6 +141,7 @@ impl Plan {
         derived: Vec<RestrictInfo>,
         dropped: Option<&AHashSet<NodeId>>,
         passthroughs: &mut Passthroughs,
+        state: &mut PlanningState,
     ) -> Result<NodeId, SbroadError> {
         debug_assert!(
             matches!(
@@ -154,7 +158,7 @@ impl Plan {
                 else {
                     unreachable!("caller checked Selection");
                 };
-                let filter = self.rebuild_condition(selection, *filter, dropped, derived)?;
+                let filter = self.rebuild_condition(selection, *filter, dropped, derived, state)?;
                 let MutRelational::Selection(Selection {
                     filter: filter_id, ..
                 }) = self.get_mut_relation_node(selection)?
@@ -171,7 +175,8 @@ impl Plan {
                 let Relational::Join(Join { condition, .. }) = self.get_relation_node(join)? else {
                     unreachable!("caller checked Join");
                 };
-                let condition = self.rebuild_condition(join, *condition, dropped, derived)?;
+                let condition =
+                    self.rebuild_condition(join, *condition, dropped, derived, state)?;
                 let MutRelational::Join(Join {
                     condition: condition_id,
                     ..
@@ -184,15 +189,15 @@ impl Plan {
                 join
             }
             Placement::NewSelection { parent, child } => {
-                let new_sel = self.add_filter_over(child, derived)?;
-                self.splice_over(parent, child, new_sel)?;
+                let new_sel = self.add_filter_over(child, derived, state)?;
+                self.splice_over(parent, child, new_sel, state)?;
                 passthroughs.push((child, smallvec![new_sel]));
                 new_sel
             }
             // A join / set-op operand must be a named relation: wrap `child` in a
             // single-alias subquery that preserves its output columns.
             Placement::NewSubquery { parent, child } => {
-                let new_sel = self.add_filter_over(child, derived)?;
+                let new_sel = self.add_filter_over(child, derived, state)?;
                 let alias = self
                     .scan_name(RelColumn::new(child, 0))?
                     .map(smol_str::ToSmolStr::to_smolstr);
@@ -200,7 +205,7 @@ impl Plan {
                 // column references. Keep the shard column for routing.
                 let new_proj = self.add_proj_star(new_sel, true)?;
                 let sub_query = self.add_sub_query(new_proj, alias.as_deref())?;
-                self.splice_over(parent, child, sub_query)?;
+                self.splice_over(parent, child, sub_query, state)?;
                 passthroughs.push((child, smallvec![new_sel, new_proj, sub_query]));
                 new_sel
             }
@@ -216,13 +221,14 @@ impl Plan {
         &mut self,
         child: NodeId,
         derived: Vec<RestrictInfo>,
+        state: &mut PlanningState,
     ) -> Result<NodeId, SbroadError> {
         let filter = self.and_of(derived.iter().map(RestrictInfo::clause).collect())?;
         self.remember_in_lists(filter)?;
         let new_sel = self.add_select(child, filter)?;
         // `add_select` starts with no subqueries: the filter's own come next.
         self.sync_condition_subqueries(new_sel, filter)?;
-        if let Some(restrictions) = self.restrictions.as_mut() {
+        if let Some(restrictions) = state.restrictions.as_mut() {
             restrictions.extend(new_sel, derived);
         }
         Ok(new_sel)
@@ -301,9 +307,10 @@ impl Plan {
         base: NodeId,
         dropped: Option<&AHashSet<NodeId>>,
         mut derived: Vec<RestrictInfo>,
+        state: &mut PlanningState,
     ) -> Result<NodeId, SbroadError> {
         let clauses: Vec<NodeId> = derived.iter().map(RestrictInfo::clause).collect();
-        let (condition, kept_none) = match self.without_conjuncts(owner, base, dropped)? {
+        let (condition, kept_none) = match self.without_conjuncts(owner, base, dropped, state)? {
             // Fold onto the remaining condition; a bare `true` may be replaced.
             Some(kept) => self.fold_onto(kept, clauses)?,
             None if clauses.is_empty() => {
@@ -316,7 +323,7 @@ impl Plan {
             }
             None => (self.and_of(clauses)?, true),
         };
-        if let Some(restrictions) = self.restrictions.as_mut() {
+        if let Some(restrictions) = state.restrictions.as_mut() {
             if kept_none {
                 restrictions.set(owner, derived);
             } else {
@@ -427,11 +434,12 @@ impl Plan {
         owner: NodeId,
         base: NodeId,
         dropped: Option<&AHashSet<NodeId>>,
+        state: &PlanningState,
     ) -> Result<Option<NodeId>, SbroadError> {
         let Some(dropped) = dropped.filter(|dropped| !dropped.is_empty()) else {
             return Ok(Some(base));
         };
-        let clauses = self.owner_restriction(owner)?.clauses();
+        let clauses = state.owner_restriction(owner)?.clauses();
         let kept: Vec<NodeId> = clauses
             .iter()
             .map(RestrictInfo::clause)
@@ -461,11 +469,12 @@ impl Plan {
         parent: NodeId,
         child: NodeId,
         spliced: NodeId,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         // References first (as motion insertion does), then the child pointer.
         self.replace_target_in_relational(parent, child, spliced)?;
         self.change_child(parent, child, spliced)?;
-        if let Some(restrictions) = self.restrictions.as_mut() {
+        if let Some(restrictions) = state.restrictions.as_mut() {
             restrictions.retarget(parent, child, spliced);
         }
         Ok(())
@@ -511,25 +520,6 @@ impl Plan {
             filter = self.concat_and(filter, clause)?;
         }
         Ok(filter)
-    }
-
-    /// The restriction of `owner`, a `Selection` or INNER join of the
-    /// analyzed subtree; missing one breaks the pass's precondition.
-    ///
-    /// # Errors
-    /// - `owner` has no restriction.
-    pub(super) fn owner_restriction(&self, owner: NodeId) -> Result<&Restriction, SbroadError> {
-        self.restrictions
-            .as_ref()
-            .and_then(|restrictions| restrictions.for_rel(owner))
-            .ok_or_else(|| {
-                SbroadError::Invalid(
-                    Entity::Plan,
-                    Some(smol_str::ToSmolStr::to_smolstr(&format!(
-                        "placement: no restriction for {owner:?}"
-                    ))),
-                )
-            })
     }
 
     /// Choose a placement for a new filter on the edge `parent -> child`:

@@ -29,6 +29,7 @@ use crate::ir::node::{
     Selection, SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, Window,
 };
 use crate::ir::transformation::equality_facts::EqualityFacts;
+use crate::ir::transformation::PlanningState;
 use crate::ir::tree::traversal::{NodeIter, PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
 use crate::ir::{Node, Plan};
@@ -1096,7 +1097,11 @@ impl Plan {
     /// Create Motions from the strategy map.
     /// Note: If we call this function, every child of strategy `parent_id` must be presented in the map.
     ///       For such a case we have `MotionPolicy::None` that won't create additional Motion nodes.
-    fn insert_motion_nodes(&mut self, mut strategy: Strategy) -> Result<(), SbroadError> {
+    fn insert_motion_nodes(
+        &mut self,
+        mut strategy: Strategy,
+        state: &mut PlanningState,
+    ) -> Result<(), SbroadError> {
         let parent_id = strategy.parent_id;
         let children = self.get_relation_children(parent_id)?;
         let subqueries = self.get_relation_subqueries(parent_id)?;
@@ -1134,7 +1139,7 @@ impl Plan {
             }
 
             let program = std::mem::take(program);
-            let motion_id = self.add_motion_with_domain_checks(*child, policy, program)?;
+            let motion_id = self.add_motion_with_domain_checks(*child, policy, program, state)?;
             if let Some(alias_hint) = strategy.children_alias_hints.get(child) {
                 if let MutRelational::Motion(Motion {
                     alias: motion_alias,
@@ -1165,7 +1170,7 @@ impl Plan {
             }
 
             let program = std::mem::take(program);
-            let motion_id = self.add_motion_with_domain_checks(*sq, policy, program)?;
+            let motion_id = self.add_motion_with_domain_checks(*sq, policy, program, state)?;
             self.replace_target_in_relational(parent_id, *sq, motion_id)?;
             *sq = motion_id;
         }
@@ -1547,21 +1552,22 @@ impl Plan {
         rel_id: NodeId,
         cond_id: NodeId,
         join_kind: &JoinKind,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         // If one of the children has Distribution::Single, then we can't compute Distribution of
         // Rows in condition, because in case of Single it depends on join condition, and computing
         // distribution of Row in condition makes no sense, so we handle the single distribution separately
         if let Some(strategy) =
-            self.calculate_strategy_for_single_distribution(rel_id, join_kind)?
+            self.calculate_strategy_for_single_distribution(rel_id, join_kind, state)?
         {
-            self.insert_motion_nodes(strategy)?;
+            self.insert_motion_nodes(strategy, state)?;
             return Ok(());
         }
 
         if let Some(strategy) =
-            self.calculate_strategy_for_left_join_with_global_tbl(rel_id, join_kind)?
+            self.calculate_strategy_for_left_join_with_global_tbl(rel_id, join_kind, state)?
         {
-            self.insert_motion_nodes(strategy)?;
+            self.insert_motion_nodes(strategy, state)?;
             return Ok(());
         }
 
@@ -1577,7 +1583,7 @@ impl Plan {
         };
         let (outer, inner) = (*outer, *inner);
 
-        let facts_policy = self.motion_policy_for_inner_via_facts(rel_id)?;
+        let facts_policy = self.motion_policy_for_inner_via_facts(rel_id, state)?;
         strategy.upsert_child(inner, facts_policy, Program::default());
 
         // If at least one child is Global, default subquery strategies set by
@@ -1592,7 +1598,7 @@ impl Plan {
             self.correct_sq_strategy_for_global_tbl(rel_id, cond_id, &mut strategy)?;
         }
 
-        self.insert_motion_nodes(strategy)?;
+        self.insert_motion_nodes(strategy, state)?;
 
         Ok(())
     }
@@ -1768,6 +1774,7 @@ impl Plan {
         &mut self,
         join_id: NodeId,
         join_kind: &JoinKind,
+        state: &PlanningState,
     ) -> Result<Option<Strategy>, SbroadError> {
         let Relational::Join(Join {
             left,
@@ -1815,7 +1822,7 @@ impl Plan {
                 (MotionPolicy::None, MotionPolicy::None)
             }
             (Distribution::Single, Distribution::Segment { keys }) => {
-                let Some(facts) = self.facts.as_ref() else {
+                let Some(facts) = state.facts.as_ref() else {
                     unreachable!("Facts should be set")
                 };
                 Self::compute_policies_for_segment_vs_single(
@@ -1829,7 +1836,7 @@ impl Plan {
                 )
             }
             (Distribution::Segment { keys }, Distribution::Single) => {
-                let Some(facts) = self.facts.as_ref() else {
+                let Some(facts) = state.facts.as_ref() else {
                     unreachable!("Facts should be set")
                 };
                 Self::compute_policies_for_segment_vs_single(
@@ -2225,6 +2232,7 @@ impl Plan {
         rel_id: NodeId,
         in_place: bool,
         cache: &mut MotionsCache,
+        state: &mut PlanningState,
     ) -> Result<Strategy, SbroadError> {
         if !matches!(self.get_relation_node(rel_id)?, Relational::Except(_)) {
             return Err(SbroadError::Invalid(
@@ -2235,7 +2243,7 @@ impl Plan {
 
         let mut map = Strategy::new(rel_id);
 
-        if self.resolve_except_global_vs_sharded(rel_id)? {
+        if self.resolve_except_global_vs_sharded(rel_id, state)? {
             return Ok(map);
         }
 
@@ -2362,7 +2370,11 @@ impl Plan {
     ///             Projection a
     ///                 scan g
     /// ```
-    fn resolve_except_global_vs_sharded(&mut self, except_id: NodeId) -> Result<bool, SbroadError> {
+    fn resolve_except_global_vs_sharded(
+        &mut self,
+        except_id: NodeId,
+        state: &mut PlanningState,
+    ) -> Result<bool, SbroadError> {
         let left_id = self.get_rel_child(except_id, 0)?;
         let right_id = self.get_rel_child(except_id, 1)?;
         let left_dist = self.rel_distr_ref(left_id)?;
@@ -2391,7 +2403,7 @@ impl Plan {
 
         let mut map = Strategy::new(except_id);
         map.upsert_child(intersect_id, MotionPolicy::Full, Program::default());
-        self.insert_motion_nodes(map)?;
+        self.insert_motion_nodes(map, state)?;
 
         Ok(true)
     }
@@ -2622,6 +2634,7 @@ impl Plan {
         &mut self,
         rel_id: NodeId,
         to_skip: &AHashSet<NodeId>,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         let mut strategy = Strategy::new(rel_id);
 
@@ -2688,13 +2701,13 @@ impl Plan {
                 strategy.upsert_child(sq_id, MotionPolicy::Full, Program::default());
             }
         }
-        self.insert_motion_nodes(strategy)?;
+        self.insert_motion_nodes(strategy, state)?;
         Ok(())
     }
 
-    pub fn add_motions(&mut self) -> Result<&mut Self, SbroadError> {
+    pub fn add_motions(&mut self, state: &mut PlanningState) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
-        self.add_motions_to_subtree(top_id)
+        self.add_motions_to_subtree(top_id, state)
     }
 
     /// Add motion nodes to the plan tree.
@@ -2703,7 +2716,11 @@ impl Plan {
     /// - failed to get relational nodes (plan is invalid?)
     /// - failed to resolve distribution conflicts
     /// - failed to set distribution
-    pub fn add_motions_to_subtree(&mut self, mut top_id: NodeId) -> Result<&mut Self, SbroadError> {
+    pub fn add_motions_to_subtree(
+        &mut self,
+        mut top_id: NodeId,
+        state: &mut PlanningState,
+    ) -> Result<&mut Self, SbroadError> {
         type CteChildId = ChildId;
         type MotionId = ChildId;
         let mut cte_motions: AHashMap<CteChildId, MotionId> = AHashMap::with_capacity(CTE_CAPACITY);
@@ -2712,7 +2729,7 @@ impl Plan {
             PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
                 .map(|(id, _)| id)
                 .collect();
-        self.check_motion_inputs_analyzed(&nodes)?;
+        self.check_motion_inputs_analyzed(&nodes, state)?;
         let mut cte_ref_counts: AHashMap<CteChildId, usize> = AHashMap::with_capacity(CTE_CAPACITY);
         let mut counted_cte_refs = AHashSet::with_capacity(nodes.len());
         for id in &nodes {
@@ -2754,7 +2771,8 @@ impl Plan {
                 continue;
             }
 
-            let node = self.prepare_node_for_motions(id, &mut values_covered, &mut old_new)?;
+            let node =
+                self.prepare_node_for_motions(id, &mut values_covered, &mut old_new, state)?;
 
             match node {
                 RelOwned::Motion { .. } => {
@@ -2763,7 +2781,7 @@ impl Plan {
                     panic!("IR mustn't contain Motion nodes at the stage of redistribution.")
                 }
                 RelOwned::Limit(Limit { limit, .. }) => {
-                    self.add_motions_for_limit(id, limit, &mut old_new, &mut cache)?;
+                    self.add_motions_for_limit(id, limit, &mut old_new, &mut cache, state)?;
                 }
                 RelOwned::ScanRelation(ScanRelation { .. })
                 | RelOwned::ScanSubQuery(ScanSubQuery { .. })
@@ -2777,12 +2795,26 @@ impl Plan {
                     // (native or resulted from children).
                     self.set_rel_output_distribution(id)?;
                 }
-                RelOwned::Values(Values { rows, .. }) => self.add_motions_for_values(id, &rows)?,
+                RelOwned::Values(Values { rows, .. }) => {
+                    self.add_motions_for_values(id, &rows, state)?
+                }
                 RelOwned::GroupBy(GroupBy { gr_exprs, .. }) => {
-                    self.add_motions_for_group_by(id, &gr_exprs, &gathered_by_windows, &mut cache)?;
+                    self.add_motions_for_group_by(
+                        id,
+                        &gr_exprs,
+                        &gathered_by_windows,
+                        &mut cache,
+                        state,
+                    )?;
                 }
                 RelOwned::Selection(Selection { filter: data, .. }) => {
-                    self.add_motions_for_selection(id, data, &gathered_by_windows, &mut cache)?;
+                    self.add_motions_for_selection(
+                        id,
+                        data,
+                        &gathered_by_windows,
+                        &mut cache,
+                        state,
+                    )?;
                 }
                 RelOwned::OrderBy(OrderBy {
                     order_by_elements, ..
@@ -2791,6 +2823,7 @@ impl Plan {
                     &order_by_elements,
                     &gathered_by_windows,
                     &mut cache,
+                    state,
                 )?,
                 RelOwned::Projection(Projection {
                     output,
@@ -2807,6 +2840,7 @@ impl Plan {
                         having,
                         &gathered_by_windows,
                         &mut cache,
+                        state,
                     )? {
                         continue;
                     }
@@ -2814,7 +2848,7 @@ impl Plan {
                 RelOwned::ScanFunction(ScanFunction { function, .. }) => {
                     // Every instance must compute the same rows, so the
                     // subqueries in the arguments are brought to every instance.
-                    self.add_motions_for_global(id, function)?;
+                    self.add_motions_for_global(id, function, state)?;
                 }
                 RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. })
                     if in_place.contains(&id)
@@ -2827,32 +2861,36 @@ impl Plan {
                     self.set_rel_distr(id, Distribution::Any)?;
                 }
                 RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. }) => {
-                    self.add_motions_for_global(id, output)?;
+                    self.add_motions_for_global(id, output, state)?;
                 }
                 RelOwned::Join(Join {
                     condition, kind, ..
                 }) => {
-                    self.resolve_join_conflicts(id, condition, &kind)?;
+                    self.resolve_join_conflicts(id, condition, &kind, state)?;
                     self.try_dist_from_subqueries(id)?;
                 }
                 RelOwned::Delete { .. } => {
                     let strategy = self.resolve_delete_conflicts(id)?;
-                    self.insert_motion_nodes(strategy)?;
+                    self.insert_motion_nodes(strategy, state)?;
                 }
                 RelOwned::Insert { .. } => {
                     // Insert output tuple already has relation's distribution.
                     let strategy = self.resolve_insert_conflicts(id)?;
-                    self.insert_motion_nodes(strategy)?;
+                    self.insert_motion_nodes(strategy, state)?;
                 }
                 RelOwned::Update(Update { .. }) => {
                     let strategy = self.resolve_update_conflicts(id)?;
-                    self.insert_motion_nodes(strategy)?;
+                    self.insert_motion_nodes(strategy, state)?;
                     self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::Except(Except { .. }) => {
-                    let strategy =
-                        self.resolve_except_conflicts(id, in_place.contains(&id), &mut cache)?;
-                    self.insert_motion_nodes(strategy)?;
+                    let strategy = self.resolve_except_conflicts(
+                        id,
+                        in_place.contains(&id),
+                        &mut cache,
+                        state,
+                    )?;
+                    self.insert_motion_nodes(strategy, state)?;
                     self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::Union(Union { .. }) => {
@@ -2861,11 +2899,12 @@ impl Plan {
                         in_place.contains(&id),
                         &mut old_new,
                         &mut cache,
+                        state,
                     )?;
                 }
                 RelOwned::UnionAll(UnionAll { .. }) => {
                     let strategy = self.resolve_union_conflicts(id, &mut cache)?;
-                    self.insert_motion_nodes(strategy)?;
+                    self.insert_motion_nodes(strategy, state)?;
                     self.set_rel_output_distribution(id)?;
                 }
                 RelOwned::ScanCte(ScanCte { child, .. }) => {
@@ -2875,6 +2914,7 @@ impl Plan {
                         &mut cte_motions,
                         &cte_ref_counts,
                         &mut cache,
+                        state,
                     )?;
                 }
             }
@@ -2904,6 +2944,7 @@ impl Plan {
         id: NodeId,
         values_covered: &mut AHashSet<NodeId>,
         old_new: &mut AHashMap<NodeId, NodeId>,
+        state: &mut PlanningState,
     ) -> Result<RelOwned, SbroadError> {
         // Before processing the node itself we ensure that each of its children that is a
         // `Values` node is covered with a `Motion::Full`.
@@ -2925,7 +2966,7 @@ impl Plan {
                 }
             }
             if !strategy.children_policy.is_empty() {
-                self.insert_motion_nodes(strategy)?;
+                self.insert_motion_nodes(strategy, state)?;
             }
         }
 
@@ -2947,14 +2988,19 @@ impl Plan {
         Ok(node)
     }
 
-    fn add_motions_for_values(&mut self, id: NodeId, rows: &[NodeId]) -> Result<(), SbroadError> {
+    fn add_motions_for_values(
+        &mut self,
+        id: NodeId,
+        rows: &[NodeId],
+        state: &mut PlanningState,
+    ) -> Result<(), SbroadError> {
         let mut correct_nodes = AHashSet::new();
         for row in rows {
             let row_strategy = self.resolve_sq_conflicts(id, *row)?;
             correct_nodes.extend(row_strategy.get_rel_ids());
-            self.insert_motion_nodes(row_strategy)?;
+            self.insert_motion_nodes(row_strategy, state)?;
         }
-        self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
+        self.adjust_sqs_of_rel_node(id, &correct_nodes, state)?;
 
         self.set_rel_distr(id, Distribution::Global)
     }
@@ -2965,6 +3011,7 @@ impl Plan {
         gr_exprs: &[NodeId],
         gathered_by_windows: &AHashSet<NodeId>,
         cache: &mut MotionsCache,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
         let mut correct_nodes = colocated.clone();
@@ -2972,9 +3019,9 @@ impl Plan {
             let mut gr_expr_strategy = self.resolve_sq_conflicts(id, *gr_expr)?;
             gr_expr_strategy.keep_in_place(&colocated);
             correct_nodes.extend(gr_expr_strategy.get_rel_ids());
-            self.insert_motion_nodes(gr_expr_strategy)?;
+            self.insert_motion_nodes(gr_expr_strategy, state)?;
         }
-        self.adjust_sqs_of_rel_node(id, &correct_nodes)?;
+        self.adjust_sqs_of_rel_node(id, &correct_nodes, state)?;
 
         self.try_dist_from_subqueries(id)
     }
@@ -2985,24 +3032,30 @@ impl Plan {
         data: NodeId,
         gathered_by_windows: &AHashSet<NodeId>,
         cache: &mut MotionsCache,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
         let mut strategy = self.resolve_sq_conflicts(id, data)?;
         strategy.keep_in_place(&colocated);
         let correct_rel_ids = strategy.get_rel_ids();
-        self.insert_motion_nodes(strategy)?;
-        self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+        self.insert_motion_nodes(strategy, state)?;
+        self.adjust_sqs_of_rel_node(id, &correct_rel_ids, state)?;
 
         self.try_dist_from_subqueries(id)
     }
 
     /// Brings the subqueries of `expr_id` to every instance: the node
     /// `id` has the `Global` distribution.
-    fn add_motions_for_global(&mut self, id: NodeId, expr_id: NodeId) -> Result<(), SbroadError> {
+    fn add_motions_for_global(
+        &mut self,
+        id: NodeId,
+        expr_id: NodeId,
+        state: &mut PlanningState,
+    ) -> Result<(), SbroadError> {
         let strategy = self.resolve_sq_conflicts(id, expr_id)?;
         let correct_rel_ids = strategy.get_rel_ids();
-        self.insert_motion_nodes(strategy)?;
-        self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+        self.insert_motion_nodes(strategy, state)?;
+        self.adjust_sqs_of_rel_node(id, &correct_rel_ids, state)?;
         self.set_rel_distr(id, Distribution::Global)
     }
 
@@ -3012,6 +3065,7 @@ impl Plan {
         in_place: bool,
         old_new: &mut AHashMap<NodeId, NodeId>,
         cache: &mut MotionsCache,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         let strategy = self.resolve_union_conflicts(id, cache)?;
         // Both branches are on one bucket: the local UNION removes
@@ -3030,13 +3084,14 @@ impl Plan {
                 .disjunct(&self.single_node_buckets(right, cache)?)
                 .is_single_node_filtered()
         };
-        self.insert_motion_nodes(strategy)?;
+        self.insert_motion_nodes(strategy, state)?;
         self.set_rel_output_distribution(id)?;
         if !local {
             let new_top_id = self.add_motion_with_domain_checks(
                 id,
                 &MotionPolicy::Full,
                 Program::new(vec![MotionOpcode::RemoveDuplicates]),
+                state,
             )?;
             old_new.insert(id, new_top_id);
         }
@@ -3049,6 +3104,7 @@ impl Plan {
         limit: u64,
         old_new: &mut AHashMap<NodeId, NodeId>,
         cache: &mut MotionsCache,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         let rel_child_id = self.get_first_rel_child(id)?;
         let child_dist = self.rel_distr_ref(rel_child_id)?.clone();
@@ -3075,7 +3131,7 @@ impl Plan {
                 old_new.insert(id, limit_id);
                 let mut strategy = Strategy::new(limit_id);
                 strategy.upsert_child(id, MotionPolicy::Full, Program::default());
-                self.insert_motion_nodes(strategy)?;
+                self.insert_motion_nodes(strategy, state)?;
                 self.set_rel_distr(id, child_dist)?;
             }
         }
@@ -3088,6 +3144,7 @@ impl Plan {
         order_by_elements: &[OrderByElement],
         gathered_by_windows: &AHashSet<NodeId>,
         cache: &mut MotionsCache,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         let rel_child_id = self.get_first_rel_child(id)?;
 
@@ -3098,10 +3155,10 @@ impl Plan {
                 let mut strategy = self.resolve_sq_conflicts(id, expr_id)?;
                 strategy.keep_in_place(&colocated);
                 correct_rel_ids.extend(strategy.get_rel_ids());
-                self.insert_motion_nodes(strategy)?;
+                self.insert_motion_nodes(strategy, state)?;
             }
         }
-        self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+        self.adjust_sqs_of_rel_node(id, &correct_rel_ids, state)?;
 
         let child_dist = self.rel_distr_ref(rel_child_id)?;
         match child_dist {
@@ -3119,7 +3176,7 @@ impl Plan {
                 // that child relational node outputs.
                 let mut strategy = Strategy::new(id);
                 strategy.upsert_child(rel_child_id, MotionPolicy::Full, Program::default());
-                self.insert_motion_nodes(strategy)?;
+                self.insert_motion_nodes(strategy, state)?;
                 self.set_rel_distr(id, Distribution::Single)?
             }
         }
@@ -3137,6 +3194,7 @@ impl Plan {
         having: Option<NodeId>,
         gathered_by_windows: &AHashSet<NodeId>,
         cache: &mut MotionsCache,
+        state: &mut PlanningState,
     ) -> Result<bool, SbroadError> {
         // Picodata for distributed SQL `DISTINCT` operator logic uses GroupBy
         // For now GroupBy inside Projection (if it is) is USER defined
@@ -3147,8 +3205,8 @@ impl Plan {
         let mut strategy = self.resolve_sq_conflicts(id, output)?;
         strategy.keep_in_place(&colocated);
         let correct_rel_ids = strategy.get_rel_ids();
-        self.insert_motion_nodes(strategy)?;
-        self.adjust_sqs_of_rel_node(id, &correct_rel_ids)?;
+        self.insert_motion_nodes(strategy, state)?;
+        self.adjust_sqs_of_rel_node(id, &correct_rel_ids, state)?;
 
         let target_dist_node = match (group_by, having) {
             (_, Some(having_id)) => having_id,
@@ -3189,7 +3247,7 @@ impl Plan {
             let group_by_child_id = self.get_first_rel_child(group_by_id)?;
             gb_strategy.upsert_child(group_by_child_id, MotionPolicy::Full, Program::default());
             self.add_proj_for_strategy(&mut gb_strategy, group_by_id, group_by_child_id)?;
-            self.insert_motion_nodes(gb_strategy)?;
+            self.insert_motion_nodes(gb_strategy, state)?;
             self.set_rel_distr(group_by_id, Distribution::Single)?;
             self.set_rel_distr(id, Distribution::Single)?;
 
@@ -3203,7 +3261,7 @@ impl Plan {
 
         if windows.is_empty()
             && !self.is_single_node_subtree(target_dist_node, cache)?
-            && self.add_two_stage_aggregation(id)?
+            && self.add_two_stage_aggregation(id, state)?
         {
             // We have successfully added two stage aggregation.
             return Ok(false);
@@ -3212,7 +3270,7 @@ impl Plan {
         if !windows.is_empty() {
             // If we have window functions without aggregates, lets deal with them.
             let strategy = self.resolve_window_conflicts(id, windows_in_place, cache)?;
-            self.insert_motion_nodes(strategy)?;
+            self.insert_motion_nodes(strategy, state)?;
         }
 
         // A GroupBy gets here only when it runs on a single node.
@@ -3232,6 +3290,7 @@ impl Plan {
         cte_motions: &mut AHashMap<ChildId, ChildId>,
         cte_ref_counts: &AHashMap<ChildId, usize>,
         cache: &mut MotionsCache,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         // Possible, current CTE subtree has already been resolved and we
         // can just copy the corresponding motion node.
@@ -3248,7 +3307,7 @@ impl Plan {
             // Global CTEs still need VALUES and reuse materialization checks.
             if !is_single_node || matches!(self.rel_distr_ref(body_id)?, Distribution::Global) {
                 let strategy = self.resolve_cte_conflicts(id, is_reused)?;
-                self.insert_motion_nodes(strategy)?;
+                self.insert_motion_nodes(strategy, state)?;
                 let new_child_id = self.get_first_rel_child(id)?;
                 let new_child_node = self.get_relation_node(new_child_id)?;
                 if let Relational::Motion { .. } = new_child_node {

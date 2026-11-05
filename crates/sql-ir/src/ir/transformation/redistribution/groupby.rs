@@ -12,6 +12,7 @@ use crate::ir::node::{
 };
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::redistribution::{MotionPolicy, Program, Strategy};
+use crate::ir::transformation::PlanningState;
 use crate::ir::tree::traversal::{NodeIter, PostOrder, EXPR_CAPACITY};
 use crate::ir::types::UnrestrictedType;
 use crate::ir::Plan;
@@ -1263,6 +1264,7 @@ impl Plan {
         &mut self,
         final_proj: NodeId,
         upper_local_proj: NodeId,
+        state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
         let final_having = self.get_having(final_proj)?;
         let final_group_by = self.get_group_by(final_proj)?;
@@ -1275,7 +1277,7 @@ impl Plan {
 
         let mut strategy = Strategy::new(lower_final_node);
         strategy.upsert_child(upper_local_proj, MotionPolicy::Full, Program::default());
-        self.insert_motion_nodes(strategy)?;
+        self.insert_motion_nodes(strategy, state)?;
 
         self.set_rel_distr(final_proj, Distribution::Single)?;
         if let Some(id) = final_group_by {
@@ -1297,14 +1299,18 @@ impl Plan {
     ///
     /// # Returns:
     /// - nothing if succeed
-    fn adjust_sqs_under_having(&mut self, having: NodeId) -> Result<(), SbroadError> {
+    fn adjust_sqs_under_having(
+        &mut self,
+        having: NodeId,
+        state: &mut PlanningState,
+    ) -> Result<(), SbroadError> {
         if let Relational::Having(Having { filter, .. }) = self.get_relation_node(having)? {
             let filter = *filter;
             let strategy = self.resolve_sq_conflicts(having, filter)?;
 
             let correct_rel_ids = strategy.get_rel_ids();
-            self.insert_motion_nodes(strategy)?;
-            self.adjust_sqs_of_rel_node(having, &correct_rel_ids)?;
+            self.insert_motion_nodes(strategy, state)?;
+            self.adjust_sqs_of_rel_node(having, &correct_rel_ids, state)?;
 
             self.try_dist_from_subqueries(having)?;
         } else {
@@ -1357,7 +1363,11 @@ impl Plan {
     ///
     /// # Returns
     /// - `true` if there are any aggregate functions, distinct qualifier or `GroupBy` is present. Otherwise, `false`.
-    pub fn add_two_stage_aggregation(&mut self, final_proj: NodeId) -> Result<bool, SbroadError> {
+    pub fn add_two_stage_aggregation(
+        &mut self,
+        final_proj: NodeId,
+        state: &mut PlanningState,
+    ) -> Result<bool, SbroadError> {
         let mut groupby_info = {
             let gb_id = self.get_group_by(final_proj)?;
             gb_id.map(GroupByInfo::new)
@@ -1479,10 +1489,10 @@ impl Plan {
 
         self.adjust_finals(final_proj, upper_local_proj, &aggrs, &groupby_info)?;
 
-        self.add_motion_to_two_stage(final_proj, upper_local_proj)?;
+        self.add_motion_to_two_stage(final_proj, upper_local_proj, state)?;
 
         if let Some(id) = final_having {
-            self.adjust_sqs_under_having(id)?;
+            self.adjust_sqs_under_having(id, state)?;
         }
 
         Ok(true)

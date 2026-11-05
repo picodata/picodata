@@ -30,6 +30,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{Join, NodeId};
 use crate::ir::transformation::equality_facts::{EqualityFacts, Slot};
 use crate::ir::transformation::redistribution::MotionPolicy;
+use crate::ir::transformation::PlanningState;
 use crate::ir::Plan;
 use smol_str::format_smolstr;
 
@@ -43,6 +44,7 @@ impl Plan {
     pub fn motion_policy_for_inner_via_facts(
         &self,
         join_id: NodeId,
+        state: &PlanningState,
     ) -> Result<MotionPolicy, SbroadError> {
         let Relational::Join(Join {
             left: outer_id,
@@ -57,7 +59,7 @@ impl Plan {
         };
         let (outer_id, inner_id) = (*outer_id, *inner_id);
 
-        let Some(facts) = self.facts.as_ref() else {
+        let Some(facts) = state.facts.as_ref() else {
             return Err(SbroadError::Other(format_smolstr!(
                 "facts are not available for this plan"
             )));

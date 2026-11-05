@@ -42,8 +42,6 @@ use crate::ir::node::{
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity};
 use crate::ir::relation::Column;
 use crate::ir::subtree_cloner::SubtreeCloner;
-use crate::ir::transformation::equality_facts::EqualityFacts;
-use crate::ir::transformation::restriction::Restrictions;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::undo::TransformationLog;
 use crate::ir::value::Value;
@@ -840,10 +838,6 @@ pub struct Plan {
     /// Effective subtree shapes that survive across executions of a
     /// prepared plan.
     pub(crate) shapes: PlanShapes,
-    /// Equality facts
-    pub facts: Option<EqualityFacts>,
-    /// Per-relational-node value restrictions (PG `RestrictInfo` analog).
-    pub restrictions: Option<Restrictions>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1117,8 +1111,6 @@ impl Plan {
             context: Some(RefCell::new(BuildContext::default())),
             tier: None,
             shapes: PlanShapes::default(),
-            facts: None,
-            restrictions: None,
         }
     }
 

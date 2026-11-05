@@ -137,6 +137,8 @@ use crate::ir::node::{
 };
 use crate::ir::operator::{Bool, JoinKind, Unary};
 use crate::ir::transformation::equality_facts::DeriveOutcome::Facts;
+use crate::ir::transformation::restriction::Restrictions;
+use crate::ir::transformation::PlanningState;
 use crate::ir::types::DerivedType;
 use crate::ir::value::{Trivalent, Value};
 use crate::ir::Plan;
@@ -1440,6 +1442,8 @@ impl EqualityFactsBuilder {
 /// [`Plan::analyze_equality_facts`].
 pub struct EqualityAnalysis<'p> {
     plan: &'p Plan,
+    /// The restrictions of the analyzed subtree, built by the pass before.
+    restrictions: Option<&'p Restrictions>,
     builder: EqualityFactsBuilder,
     next_domain_id: DomainId,
     // IR is a DAG: shared bodies (subquery or CTE) must be analyzed only
@@ -1458,9 +1462,11 @@ impl<'p> EqualityAnalysis<'p> {
     pub fn get_equality_facts(
         plan: &'p Plan,
         top_id: NodeId,
+        restrictions: Option<&'p Restrictions>,
     ) -> Result<EqualityFacts, SbroadError> {
         let mut analyzer = Self {
             plan,
+            restrictions,
             builder: EqualityFactsBuilder::new(plan.nodes.len()),
             next_domain_id: DomainId(0),
             visited_shared_bodies: AHashSet::with_hasher(equality_facts_hash_state()),
@@ -1877,12 +1883,7 @@ impl<'p> EqualityAnalysis<'p> {
     /// Derives the global equality facts for one relational node's filter or INNER
     /// join condition and merges them into the global builder.
     fn apply_expr_facts(&mut self, rel_id: NodeId, domain: DomainId) -> Result<(), SbroadError> {
-        let Some(restr) = self
-            .plan
-            .restrictions
-            .as_ref()
-            .and_then(|r| r.for_rel(rel_id))
-        else {
+        let Some(restr) = self.restrictions.and_then(|r| r.for_rel(rel_id)) else {
             return Err(SbroadError::Invalid(
                 Entity::Plan,
                 Some("Restrictions should be set".to_smolstr()),
@@ -2434,13 +2435,19 @@ impl Plan {
     pub fn analyze_equality_facts_in_subtree(
         &mut self,
         top_id: NodeId,
+        state: &mut PlanningState,
     ) -> Result<&mut Self, SbroadError> {
-        self.facts = EqualityAnalysis::get_equality_facts(self, top_id).map(Some)?;
+        state.facts =
+            EqualityAnalysis::get_equality_facts(self, top_id, state.restrictions.as_ref())
+                .map(Some)?;
         Ok(self)
     }
 
-    pub fn analyze_equality_facts(&mut self) -> Result<&mut Self, SbroadError> {
+    pub fn analyze_equality_facts(
+        &mut self,
+        state: &mut PlanningState,
+    ) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
-        self.analyze_equality_facts_in_subtree(top_id)
+        self.analyze_equality_facts_in_subtree(top_id, state)
     }
 }

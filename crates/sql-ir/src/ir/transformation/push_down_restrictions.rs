@@ -50,6 +50,7 @@ use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::equality_facts::{EqualityFacts, Slot};
 use crate::ir::transformation::placement::{Dropped, Grouped, Placement};
 use crate::ir::transformation::restriction::RestrictInfo;
+use crate::ir::transformation::PlanningState;
 use crate::ir::tree::traversal::REL_CAPACITY;
 use crate::ir::Plan;
 use ahash::{AHashMap, AHashSet};
@@ -116,8 +117,12 @@ impl Plan {
     ///
     /// # Errors
     /// - Reading a node, copying a clause or splicing a filter fails.
-    pub fn push_down_restrictions(&mut self, top_id: NodeId) -> Result<&mut Self, SbroadError> {
-        let PushDown { plans, moves } = self.plan_push_down(top_id)?;
+    pub fn push_down_restrictions(
+        &mut self,
+        top_id: NodeId,
+        state: &mut PlanningState,
+    ) -> Result<&mut Self, SbroadError> {
+        let PushDown { plans, moves } = self.plan_push_down(top_id, state)?;
         if moves.is_empty() {
             return Ok(self);
         }
@@ -143,9 +148,9 @@ impl Plan {
             let info = self.restrict_info(moved)?;
             grouped.entry(*placement).or_default().push(info);
         }
-        let _ = self.apply_placements(grouped, dropped)?;
+        let _ = self.apply_placements(grouped, dropped, state)?;
         #[cfg(debug_assertions)]
-        self.debug_assert_restrictions_fresh(top_id);
+        self.debug_assert_restrictions_fresh(top_id, state);
         Ok(self)
     }
 
@@ -155,9 +160,13 @@ impl Plan {
     ///
     /// # Errors
     /// - Reading a node fails.
-    fn plan_push_down(&self, top_id: NodeId) -> Result<PushDown, SbroadError> {
+    fn plan_push_down(
+        &self,
+        top_id: NodeId,
+        state: &PlanningState,
+    ) -> Result<PushDown, SbroadError> {
         let mut planned = PushDown::default();
-        let (Some(restrictions), Some(facts)) = (self.restrictions.as_ref(), self.facts.as_ref())
+        let (Some(restrictions), Some(facts)) = (state.restrictions.as_ref(), state.facts.as_ref())
         else {
             return Ok(planned);
         };

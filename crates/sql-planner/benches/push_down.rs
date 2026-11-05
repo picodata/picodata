@@ -34,7 +34,7 @@ use sql_ir::ir::node::expression::MutExpression;
 use sql_ir::ir::node::relational::Relational;
 use sql_ir::ir::node::{NodeId, Projection, Selection, SubQueryReference};
 use sql_ir::ir::transformation::equality_facts::Slot;
-use sql_ir::ir::transformation::Stage;
+use sql_ir::ir::transformation::{PlanningState, Stage};
 use sql_ir::ir::types::UnrestrictedType;
 use sql_ir::ir::Plan;
 
@@ -111,7 +111,7 @@ fn share_one_body(plan: &mut Plan) {
 }
 
 /// The plan right before the push-down, ready to time it.
-fn prepared(sql: &str, edit: impl FnOnce(&mut Plan)) -> (Plan, NodeId) {
+fn prepared(sql: &str, edit: impl FnOnce(&mut Plan)) -> (Plan, NodeId, PlanningState) {
     prepared_with(sql, &RouterConfigurationMock::new(), edit)
 }
 
@@ -119,13 +119,14 @@ fn prepared_with(
     sql: &str,
     metadata: &impl Metadata,
     edit: impl FnOnce(&mut Plan),
-) -> (Plan, NodeId) {
+) -> (Plan, NodeId, PlanningState) {
     let mut plan = transform_into_plan(sql, &[], metadata).unwrap();
     edit(&mut plan);
     let top = plan.get_top().unwrap();
-    plan.optimize_before(top, Stage::PushDownRestrictions)
+    let state = plan
+        .optimize_before(top, Stage::PushDownRestrictions)
         .unwrap();
-    (plan, top)
+    (plan, top, state)
 }
 
 fn bench_shape(
@@ -136,12 +137,12 @@ fn bench_shape(
 ) {
     let mut group = c.benchmark_group(group_name);
     for n in SIZES {
-        let (plan, top) = prepared(&sql(n), edit);
+        let (plan, top, state) = prepared(&sql(n), edit);
         group.bench_with_input(BenchmarkId::from_parameter(n), &plan, |b, plan| {
             b.iter_batched(
-                || plan.clone(),
-                |mut plan| {
-                    plan.push_down_restrictions(top).unwrap();
+                || (plan.clone(), state.clone()),
+                |(mut plan, mut state)| {
+                    plan.push_down_restrictions(top, &mut state).unwrap();
                     black_box(plan)
                 },
                 BatchSize::LargeInput,
@@ -191,9 +192,16 @@ fn wide_sql(n: usize, width: usize, in_subquery: bool) -> String {
 /// Check the prepared top `WHERE` holds `conjuncts` conjuncts over `slots`
 /// distinct columns and `bodies` subqueries, and that one run moves them all
 /// to one new owner listing every body.
-fn check_shape(plan: &Plan, top: NodeId, conjuncts: usize, slots: usize, bodies: usize) {
+fn check_shape(
+    plan: &Plan,
+    top: NodeId,
+    state: &PlanningState,
+    conjuncts: usize,
+    slots: usize,
+    bodies: usize,
+) {
     let owner = top_where(plan);
-    let restriction = plan.restrictions.as_ref().unwrap().for_rel(owner).unwrap();
+    let restriction = state.restrictions.as_ref().unwrap().for_rel(owner).unwrap();
     assert_eq!(restriction.clauses().len(), conjuncts);
     let mut distinct: Vec<Slot> = restriction
         .clauses()
@@ -207,13 +215,14 @@ fn check_shape(plan: &Plan, top: NodeId, conjuncts: usize, slots: usize, bodies:
     assert_eq!(listed, bodies);
 
     let mut moved = plan.clone();
-    moved.push_down_restrictions(top).unwrap();
+    let mut moved_state = state.clone();
+    moved.push_down_restrictions(top, &mut moved_state).unwrap();
     assert!(moved
         .get_relation_node(owner)
         .unwrap()
         .subqueries()
         .is_empty());
-    let left = moved
+    let left = moved_state
         .restrictions
         .as_ref()
         .unwrap()
@@ -252,7 +261,7 @@ fn check_shape(plan: &Plan, top: NodeId, conjuncts: usize, slots: usize, bodies:
     listed.sort_unstable_by_key(|id| (id.arena_type, id.offset));
     listed.dedup();
     assert_eq!(listed.len(), bodies, "a body is listed twice");
-    let gained = moved
+    let gained = moved_state
         .restrictions
         .as_ref()
         .unwrap()
@@ -271,14 +280,14 @@ fn bench_wide(c: &mut Criterion, group_name: &'static str, many_bodies: bool) {
         let width = if many_bodies { 8 } else { n };
         let catalog = wide_catalog(width);
         let edit: fn(&mut Plan) = if many_bodies { |_| {} } else { share_one_body };
-        let (plan, top) = prepared_with(&wide_sql(n, width, many_bodies), &catalog, edit);
+        let (plan, top, state) = prepared_with(&wide_sql(n, width, many_bodies), &catalog, edit);
         let bodies = if many_bodies { n } else { 1 };
-        check_shape(&plan, top, n, width.min(n), bodies);
+        check_shape(&plan, top, &state, n, width.min(n), bodies);
         group.bench_with_input(BenchmarkId::from_parameter(n), &plan, |b, plan| {
             b.iter_batched(
-                || plan.clone(),
-                |mut plan| {
-                    plan.push_down_restrictions(top).unwrap();
+                || (plan.clone(), state.clone()),
+                |(mut plan, mut state)| {
+                    plan.push_down_restrictions(top, &mut state).unwrap();
                     black_box(plan)
                 },
                 BatchSize::LargeInput,

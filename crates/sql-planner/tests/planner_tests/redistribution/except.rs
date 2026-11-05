@@ -3,6 +3,7 @@ use sql::helpers::get_motion_id;
 use sql::helpers::sql_to_ir;
 use sql::ir::distribution::Key;
 use sql::ir::transformation::redistribution::MotionPolicy;
+use sql::ir::transformation::PlanningState;
 use sql::ir::Slices;
 
 use sql::ir::node::relational::Relational;
@@ -15,7 +16,7 @@ fn except1() {
         SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist""#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -32,7 +33,7 @@ fn except2() {
         SELECT "identification_number" as "id", "product_code" as "pc" FROM "hash_testing_hist" AS "t""#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     assert_eq!(Slices::empty(), *plan.slices());
 }
 
@@ -43,7 +44,7 @@ fn except3() {
         SELECT 1, '2' FROM "hash_testing_hist""#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -72,7 +73,7 @@ fn except4() {
         ) as t"#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -101,7 +102,7 @@ fn except5() {
         ) as t"#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {

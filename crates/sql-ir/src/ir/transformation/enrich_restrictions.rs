@@ -61,6 +61,7 @@ use crate::ir::transformation::equality_facts::{
 };
 use crate::ir::transformation::placement::{Dropped, Grouped, Placement};
 use crate::ir::transformation::restriction::RestrictInfo;
+use crate::ir::transformation::PlanningState;
 use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
 use crate::ir::Plan;
@@ -190,21 +191,23 @@ impl Plan {
     pub fn enrich_restrictions_from_facts(
         &mut self,
         top_id: NodeId,
+        state: &mut PlanningState,
     ) -> Result<&mut Self, SbroadError> {
         // Anchors name nodes of this subtree; facts from another would misplace.
         debug_assert!(
-            self.facts
+            state
+                .facts
                 .as_ref()
                 .is_none_or(|facts| facts.analyzed_top() == top_id),
             "facts analyzed for another subtree"
         );
-        if self.restrictions.is_none() {
+        if state.restrictions.is_none() {
             return Ok(self);
         }
         // Three phases, kept apart so the search never depends on the order of
         // already-inserted nodes: plan where each class emits (reads the tree),
         // build the predicate expressions, then apply the relational changes.
-        let Some(mut planned) = self.plan_enrichment(top_id)? else {
+        let Some(mut planned) = self.plan_enrichment(top_id, state)? else {
             return Ok(self);
         };
         let replaced = std::mem::take(&mut planned.replaced);
@@ -214,13 +217,13 @@ impl Plan {
         // `(owner, clause)` of every derived clause, emitted exactly once.
         // `hosts`: the node each placement materialized as, the host of its checks.
         #[cfg_attr(not(debug_assertions), allow(unused_variables))]
-        let (emitted, hosts) = self.apply_placements(grouped, replaced)?;
+        let (emitted, hosts) = self.apply_placements(grouped, replaced, state)?;
         #[cfg(debug_assertions)]
         {
-            self.debug_assert_restrictions_fresh(top_id);
-            self.debug_assert_emitted_once(&emitted);
+            self.debug_assert_restrictions_fresh(top_id, state);
+            self.debug_assert_emitted_once(&emitted, state);
         }
-        if let Some(facts) = self.facts.as_mut() {
+        if let Some(facts) = state.facts.as_mut() {
             // The conditions they name are rewritten now.
             facts.clear_source_equalities();
             // Save checks and their hosts for redistribution.
@@ -248,8 +251,12 @@ impl Plan {
     ///
     /// # Errors
     /// - Reading a relational node or an output column fails.
-    fn plan_enrichment(&self, top_id: NodeId) -> Result<Option<Enrichment>, SbroadError> {
-        let Some(facts) = self.facts.as_ref() else {
+    fn plan_enrichment(
+        &self,
+        top_id: NodeId,
+        state: &PlanningState,
+    ) -> Result<Option<Enrichment>, SbroadError> {
+        let Some(facts) = state.facts.as_ref() else {
             return Ok(None);
         };
         let mut candidates: Vec<(ClassId, &EquivalenceClass, ClassAction<'_>)> = facts
@@ -334,6 +341,7 @@ impl Plan {
                         &mut lift_index,
                         &mut stated_pairs,
                         &mut planned.pairs,
+                        state,
                     )?;
                 }
             }
@@ -346,7 +354,7 @@ impl Plan {
         // `false` makes bucket discovery see the condition as empty.
         for &(placement, _) in &planned.empty {
             if let Placement::ExistingSelection(owner) | Placement::InnerJoinOn(owner) = placement {
-                let conjuncts = self.owner_restriction(owner)?.clauses();
+                let conjuncts = state.owner_restriction(owner)?.clauses();
                 planned
                     .replaced
                     .entry(placement)
@@ -361,8 +369,8 @@ impl Plan {
     /// their expected owners. This checks materialization by identity, not
     /// semantic deduplication; the provenance is local to this debug check.
     #[cfg(debug_assertions)]
-    fn debug_assert_emitted_once(&self, emitted: &[(NodeId, NodeId)]) {
-        let Some(restrictions) = self.restrictions.as_ref() else {
+    fn debug_assert_emitted_once(&self, emitted: &[(NodeId, NodeId)], state: &PlanningState) {
+        let Some(restrictions) = state.restrictions.as_ref() else {
             return;
         };
         let owners: AHashMap<NodeId, NodeId> = emitted
@@ -572,6 +580,7 @@ impl Plan {
         lift_index: &mut AHashMap<NodeId, AHashMap<RelColumn, usize>>,
         stated_pairs: &mut StatedPairs<'_>,
         pairs: &mut Vec<ColPair>,
+        state: &PlanningState,
     ) -> Result<(), SbroadError> {
         let member_set: AHashSet<Slot> = class.members.iter().copied().collect();
         let mut lowest_of: AHashMap<Slot, Slot> = AHashMap::with_capacity(member_set.len());
@@ -682,9 +691,11 @@ impl Plan {
                     // Prefer an edge the `ON` already states: any one will do.
                     let stated = match stated_pairs.by_join.entry(join) {
                         Entry::Occupied(entry) => entry.into_mut(),
-                        Entry::Vacant(entry) => {
-                            entry.insert(self.stated_pairs_by_class(stated_pairs.facts, join)?)
-                        }
+                        Entry::Vacant(entry) => entry.insert(self.stated_pairs_by_class(
+                            stated_pairs.facts,
+                            join,
+                            state,
+                        )?),
                     };
                     let (left, right) = stated
                         .get(&class_id)
@@ -793,6 +804,7 @@ impl Plan {
         &self,
         facts: &EqualityFacts,
         join: NodeId,
+        state: &PlanningState,
     ) -> Result<AHashMap<ClassId, (Slot, Slot)>, SbroadError> {
         let mut first_by_class = AHashMap::new();
         let Relational::Join(Join { left, right, .. }) = self.get_relation_node(join)? else {
@@ -810,7 +822,7 @@ impl Plan {
         };
         // Slots alone do not tell an equality from an `OR`, a cast or another
         // term over the same columns: read each clause itself.
-        for info in self.owner_restriction(join)?.clauses() {
+        for info in state.owner_restriction(join)?.clauses() {
             let Expression::Bool(BoolExpr {
                 op: Bool::Eq,
                 left: l,

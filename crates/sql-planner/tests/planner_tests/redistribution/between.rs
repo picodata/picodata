@@ -4,6 +4,7 @@ use sql::helpers::sql_to_ir;
 use sql::ir::node::relational::Relational;
 use sql::ir::node::Motion;
 use sql::ir::transformation::redistribution::MotionPolicy;
+use sql::ir::transformation::PlanningState;
 use sql::ir::Slices;
 
 #[test]
@@ -14,7 +15,7 @@ fn between1() {
             WHERE "identification_number" = 2) BETWEEN 1 AND 2"#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -32,7 +33,7 @@ fn between2() {
         WHERE "identification_number" BETWEEN 1 AND 2"#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     assert_eq!(Slices::empty(), *plan.slices());
 }
 
@@ -44,7 +45,7 @@ fn between3() {
             WHERE "identification_number" = 3)"#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     let motion_id = *get_motion_id(&plan, 0, 0).unwrap();
     let motion = plan.get_relation_node(motion_id).unwrap();
     if let Relational::Motion(Motion { policy, .. }) = motion {
@@ -62,6 +63,6 @@ fn between4() {
         WHERE 1 BETWEEN "identification_number" AND 2"#;
 
     let mut plan = sql_to_ir(query, vec![]);
-    plan.add_motions().unwrap();
+    plan.add_motions(&mut PlanningState::default()).unwrap();
     assert_eq!(Slices::empty(), *plan.slices());
 }

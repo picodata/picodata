@@ -9,7 +9,7 @@ use sql::ir::node::relational::Relational;
 use sql::ir::node::{
     Join, Node, NodeId, Projection, ScalarFunction, ScanRelation, Selection, SubQueryReference,
 };
-use sql::ir::transformation::Stage;
+use sql::ir::transformation::{PlanningState, Stage};
 use sql::ir::tree::traversal::{NodeIter, PostOrder};
 use sql::ir::types::{DerivedType, UnrestrictedType};
 use sql::ir::Plan;
@@ -19,14 +19,14 @@ use sql::ir::Plan;
 /// consistent and a second run changes nothing.
 fn push_down(mut plan: Plan) -> Plan {
     let top = plan.get_top().unwrap();
-    plan.optimize_before(top, Stage::PushDownRestrictions)
-        .unwrap()
-        .push_down_restrictions(top)
+    let mut state = plan
+        .optimize_before(top, Stage::PushDownRestrictions)
         .unwrap();
-    assert_restrictions_are_fresh(&plan, top);
-    assert_selections_keep_input_classes(&plan, top);
+    plan.push_down_restrictions(top, &mut state).unwrap();
+    assert_restrictions_are_fresh(&plan, top, &state);
+    assert_selections_keep_input_classes(&plan, top, &state);
     assert_subquery_lists_match_conditions(&plan, top);
-    assert_rerun_changes_nothing(&plan, top);
+    assert_rerun_changes_nothing(&plan, top, &state);
     plan
 }
 
@@ -37,19 +37,19 @@ fn run_push_down(query: &str) -> Plan {
 
 /// The stored restrictions equal a full rebuild over `top`.
 #[track_caller]
-fn assert_restrictions_are_fresh(plan: &Plan, top: NodeId) {
-    let mut fresh = plan.clone();
-    fresh.restrictions = None;
-    fresh.analyze_restrictions_in_subtree(top).unwrap();
-    let fresh = fresh.restrictions;
-    assert_eq!(plan.restrictions, fresh, "stale restrictions");
+fn assert_restrictions_are_fresh(plan: &Plan, top: NodeId, state: &PlanningState) {
+    let mut fresh = PlanningState::default();
+    plan.clone()
+        .analyze_restrictions_in_subtree(top, &mut fresh)
+        .unwrap();
+    assert_eq!(state.restrictions, fresh.restrictions, "stale restrictions");
 }
 
 /// Every `Selection` passes its input's equality classes through unchanged,
 /// the new ones included.
 #[track_caller]
-fn assert_selections_keep_input_classes(plan: &Plan, top: NodeId) {
-    let facts = plan.facts.as_ref().expect("facts are analyzed");
+fn assert_selections_keep_input_classes(plan: &Plan, top: NodeId, state: &PlanningState) {
+    let facts = state.facts.as_ref().expect("facts are analyzed");
     for id in rel_nodes(plan, top) {
         let Relational::Selection(Selection { child, .. }) = plan.get_relation_node(id).unwrap()
         else {
@@ -100,12 +100,13 @@ fn assert_subquery_lists_match_conditions(plan: &Plan, top: NodeId) {
 
 /// A second push-down moves no clause and leaves the restrictions as they are.
 #[track_caller]
-fn assert_rerun_changes_nothing(plan: &Plan, top: NodeId) {
+fn assert_rerun_changes_nothing(plan: &Plan, top: NodeId, state: &PlanningState) {
     let mut again = plan.clone();
-    again.push_down_restrictions(top).unwrap();
+    let mut again_state = state.clone();
+    again.push_down_restrictions(top, &mut again_state).unwrap();
     assert_eq!(logical(&again), logical(plan), "rerun moved a clause");
     assert_eq!(
-        again.restrictions, plan.restrictions,
+        again_state.restrictions, state.restrictions,
         "rerun changed restrictions"
     );
 }

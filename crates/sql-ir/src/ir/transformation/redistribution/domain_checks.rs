@@ -30,6 +30,7 @@ use crate::ir::node::{Delete, NodeId};
 use crate::ir::operator::Bool;
 use crate::ir::transformation::equality_facts::{DomainCheck, DomainCheckKind, Pin};
 use crate::ir::transformation::redistribution::{MotionPolicy, Program};
+use crate::ir::transformation::PlanningState;
 use crate::ir::tree::traversal::REL_CAPACITY;
 use crate::ir::types::DerivedType;
 use crate::ir::value::Value;
@@ -67,8 +68,12 @@ impl Plan {
     ///
     /// # Errors
     /// - A node outside the analysis while some domain has checks.
-    pub(super) fn check_motion_inputs_analyzed(&self, nodes: &[NodeId]) -> Result<(), SbroadError> {
-        let Some(facts) = self
+    pub(super) fn check_motion_inputs_analyzed(
+        &self,
+        nodes: &[NodeId],
+        state: &PlanningState,
+    ) -> Result<(), SbroadError> {
+        let Some(facts) = state
             .facts
             .as_ref()
             .filter(|facts| facts.has_domain_checks())
@@ -108,8 +113,9 @@ impl Plan {
         input: NodeId,
         policy: &MotionPolicy,
         program: Program,
+        state: &mut PlanningState,
     ) -> Result<NodeId, SbroadError> {
-        let checks = self.motion_input_checks(input, policy)?;
+        let checks = self.motion_input_checks(input, policy, state)?;
         if checks.is_empty() {
             return self.add_motion(input, policy, program);
         }
@@ -131,8 +137,9 @@ impl Plan {
         &self,
         input: NodeId,
         policy: &MotionPolicy,
+        state: &PlanningState,
     ) -> Result<Vec<DomainCheck>, SbroadError> {
-        let Some(facts) = self
+        let Some(facts) = state
             .facts
             .as_ref()
             .filter(|facts| facts.has_domain_checks())

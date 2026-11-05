@@ -26,10 +26,8 @@ fn sql_to_optimized_ir_add_motions_err(query: &str) -> SbroadError {
     let top_id = plan.get_top().unwrap();
     // Everything up to motion planning succeeds; the error we assert on is
     // produced by `add_motions` itself.
-    plan.optimize_before(top_id, Stage::AddMotions)
-        .unwrap()
-        .add_motions()
-        .unwrap_err()
+    let mut state = plan.optimize_before(top_id, Stage::AddMotions).unwrap();
+    plan.add_motions(&mut state).unwrap_err()
 }
 
 #[test]

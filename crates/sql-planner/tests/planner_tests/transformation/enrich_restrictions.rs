@@ -7,7 +7,7 @@ use sql::helpers::sql_to_ir_without_bind;
 use sql::ir::node::relational::Relational;
 use sql::ir::node::{Join, NodeId};
 use sql::ir::operator::JoinKind;
-use sql::ir::transformation::Stage;
+use sql::ir::transformation::{PlanningState, Stage};
 use sql::ir::tree::Snapshot;
 use sql::ir::types::{DerivedType, UnrestrictedType};
 use sql::ir::Plan;
@@ -17,29 +17,35 @@ use sql::ir::Plan;
 ///
 /// Parameters are left unbound so a clause over one still prints as `$n`.
 fn run_enrich(query: &str, params: &[DerivedType]) -> Plan {
+    run_enrich_with_state(query, params).0
+}
+
+/// [`run_enrich`] with the planning state the passes left.
+fn run_enrich_with_state(query: &str, params: &[DerivedType]) -> (Plan, PlanningState) {
     let mut plan = sql_to_ir_without_bind(query, params);
     let top_id = plan.get_top().unwrap();
-    plan.optimize_before(top_id, Stage::EnrichRestrictions)
-        .unwrap()
-        .enrich_restrictions_from_facts(top_id)
+    let mut state = plan
+        .optimize_before(top_id, Stage::EnrichRestrictions)
         .unwrap();
-    assert_restrictions_match_ir(&plan, top_id, query);
-    plan
+    plan.enrich_restrictions_from_facts(top_id, &mut state)
+        .unwrap();
+    assert_restrictions_match_ir(&plan, top_id, &state, query);
+    (plan, state)
 }
 
 /// The restrictions stored after a pass describe the current IR: they equal a
 /// full rebuild over `top_id`, made without the stored cache. The sources the
 /// pass consumed are gone from the facts.
 #[track_caller]
-fn assert_restrictions_match_ir(plan: &Plan, top_id: NodeId, context: &str) {
-    let stored = plan.restrictions.clone();
-    let mut fresh = plan.clone();
-    fresh.restrictions = None;
-    fresh.analyze_restrictions_in_subtree(top_id).unwrap();
-    let fresh = fresh.restrictions;
-    assert_eq!(stored, fresh, "{context}");
+fn assert_restrictions_match_ir(plan: &Plan, top_id: NodeId, state: &PlanningState, context: &str) {
+    let mut fresh = PlanningState::default();
+    plan.clone()
+        .analyze_restrictions_in_subtree(top_id, &mut fresh)
+        .unwrap();
+    assert_eq!(state.restrictions, fresh.restrictions, "{context}");
     assert!(
-        plan.facts
+        state
+            .facts
             .as_ref()
             .is_none_or(|facts| facts.source_equalities().is_empty()),
         "{context}"
@@ -1414,7 +1420,7 @@ fn a_carrier_survives_a_motion_spliced_above_its_landing_scan() {
 
     let mut plan = sql_to_ir_without_bind(query, &[]);
     let top_id = plan.get_top().unwrap();
-    let plan = plan.optimize_before(top_id, Stage::End).unwrap();
+    plan.optimize_before(top_id, Stage::End).unwrap();
 
     assert_snapshot!(logical(&plan), @r"
     projection (t1.a::int -> a, t1.b::int -> b, t1.c::int -> c, t1.d::int -> d, t2.a::int -> a, t2.b::int -> b, t2.c::int -> c, t2.d::int -> d)
@@ -1482,12 +1488,14 @@ fn wide_carriers_allocate_only_one_output_per_operand() {
         )
         .unwrap();
         let top = plan.get_top().unwrap();
-        let plan = plan
+        let mut state = plan
             .optimize_before(top, Stage::EnrichRestrictions)
             .unwrap();
         let before = output_counts(&plan);
         let old_nodes64 = plan.get_nodes().iter64().len();
-        let plan = plan.enrich_restrictions_from_facts(top).unwrap();
+        let plan = plan
+            .enrich_restrictions_from_facts(top, &mut state)
+            .unwrap();
         let after = output_counts(&plan);
 
         // Each projection includes the hidden bucket_id; the two new predicates
@@ -1833,10 +1841,11 @@ fn a_sharded_join_bucket_id_clash_folds_into_the_inner_on() {
                  JOIN t3 ON r.y = t3.a AND t3.a = 1";
     let mut plan = join_plan(query, true);
     let top = plan.get_top().unwrap();
-    let plan = plan
+    let mut state = plan
         .optimize_before(top, Stage::EnrichRestrictions)
-        .unwrap()
-        .enrich_restrictions_from_facts(top)
+        .unwrap();
+    let plan = plan
+        .enrich_restrictions_from_facts(top, &mut state)
         .unwrap();
     assert_snapshot!(logical(&plan), @r"
     projection (l.x::int -> x, r.y::int -> y)
@@ -2033,10 +2042,11 @@ fn a_param_gate_never_builds_a_carrier_over_a_join() {
         "SELECT r.a, count(*) FROM t l JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1 GROUP BY r.a";
     let mut plan = join_plan(query, false);
     let top = plan.get_top().unwrap();
-    let plan = plan
+    let mut state = plan
         .optimize_before(top, Stage::EnrichRestrictions)
-        .unwrap()
-        .enrich_restrictions_from_facts(top)
+        .unwrap();
+    let plan = plan
+        .enrich_restrictions_from_facts(top, &mut state)
         .unwrap();
     // Assert the IR: SQL generation for an unbound parameter in JOIN ON is not
     // supported by this test's backend path.
@@ -2084,10 +2094,11 @@ fn a_param_gate_stays_inside_its_domain() {
     ) s ON o.a = s.k";
     let mut plan = join_plan(query, false);
     let top = plan.get_top().unwrap();
-    let plan = plan
+    let mut state = plan
         .optimize_before(top, Stage::EnrichRestrictions)
-        .unwrap()
-        .enrich_restrictions_from_facts(top)
+        .unwrap();
+    let plan = plan
+        .enrich_restrictions_from_facts(top, &mut state)
         .unwrap();
     assert_snapshot!(logical(&plan), @r"
     projection (o.a::int -> a)
@@ -2159,12 +2170,13 @@ fn a_parameter_only_class_at_a_left_join_anchor_lands_in_the_source_join_on() {
 }
 
 /// Enrichment's input: `query` optimized up to, but not including, the pass.
-fn before_enrich(query: &str, params: &[DerivedType]) -> Plan {
+fn before_enrich(query: &str, params: &[DerivedType]) -> (Plan, PlanningState) {
     let mut plan = sql_to_ir_without_bind(query, params);
     let top_id = plan.get_top().unwrap();
-    plan.optimize_before(top_id, Stage::EnrichRestrictions)
+    let state = plan
+        .optimize_before(top_id, Stage::EnrichRestrictions)
         .unwrap();
-    plan
+    (plan, state)
 }
 
 #[test]
@@ -2209,8 +2221,8 @@ fn a_contradiction_at_a_left_join_anchor_lands_in_the_source_join_on() {
          FROM (SELECT a FROM t WHERE a = 1) l \
          JOIN (SELECT a FROM t WHERE a = 2) r ON l.a = r.a \
          LEFT JOIN t o ON r.a = o.a GROUP BY l.a";
-    let plan = before_enrich(query, &[]);
-    let facts = plan.facts.as_ref().unwrap();
+    let (plan, state) = before_enrich(query, &[]);
+    let facts = state.facts.as_ref().unwrap();
     let contradictory: Vec<_> = facts
         .classes
         .iter()
@@ -2316,11 +2328,11 @@ fn a_required_check_without_placement_is_an_error() {
     // Synthetic IR, not a reachable SQL counterexample: re-anchor a pinned
     // class with a parameter at a bare scan, which hosts nothing. The missing
     // `$1 = 1` must surface as an error, not as a silently dropped check.
-    let mut plan = before_enrich(
+    let (mut plan, mut state) = before_enrich(
         "SELECT l.a FROM t l JOIN t r ON l.a = r.b AND r.b = $1 AND r.b = 1",
         &[DerivedType::new(UnrestrictedType::Integer)],
     );
-    let facts = plan.facts.as_ref().unwrap();
+    let facts = state.facts.as_ref().unwrap();
     let class = facts
         .classes
         .iter()
@@ -2337,9 +2349,9 @@ fn a_required_check_without_placement_is_an_error() {
             )
         })
         .unwrap();
-    plan.facts.as_mut().unwrap().classes[class].anchor = scan;
+    state.facts.as_mut().unwrap().classes[class].anchor = scan;
     let top_id = plan.get_top().unwrap();
-    let Err(error) = plan.enrich_restrictions_from_facts(top_id) else {
+    let Err(error) = plan.enrich_restrictions_from_facts(top_id, &mut state) else {
         panic!("a check without placement must fail enrichment");
     };
     assert!(
@@ -2616,7 +2628,7 @@ fn enrich_of_a_subtree_keeps_restrictions_outside_it() {
     // body. The body is refreshed, the outer filter's entry stays as it was,
     // and the whole cache still matches a full rebuild.
     let query = "SELECT a FROM t WHERE b IN (SELECT e FROM t2 WHERE e = f AND f = 1) AND a = c";
-    let mut plan = before_enrich(query, &[]);
+    let (mut plan, mut state) = before_enrich(query, &[]);
     let top_id = plan.get_top().unwrap();
     let Relational::Projection(sql::ir::node::Projection {
         child: Some(selection),
@@ -2627,7 +2639,7 @@ fn enrich_of_a_subtree_keeps_restrictions_outside_it() {
     };
     let selection = *selection;
     let body = plan.get_relation_node(selection).unwrap().subqueries()[0];
-    let outer = plan
+    let outer = state
         .restrictions
         .as_ref()
         .unwrap()
@@ -2636,19 +2648,20 @@ fn enrich_of_a_subtree_keeps_restrictions_outside_it() {
     assert!(outer.is_some());
 
     let plan = plan
-        .analyze_equality_facts_in_subtree(body)
+        .analyze_equality_facts_in_subtree(body, &mut state)
         .unwrap()
-        .enrich_restrictions_from_facts(body)
+        .enrich_restrictions_from_facts(body, &mut state)
         .unwrap();
     assert_eq!(
-        plan.restrictions
+        state
+            .restrictions
             .as_ref()
             .unwrap()
             .for_rel(selection)
             .cloned(),
         outer
     );
-    assert_restrictions_match_ir(&plan, top_id, query);
+    assert_restrictions_match_ir(&plan, top_id, &state, query);
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a)
       selection ((t.b::int in ROW($0) and t.a::int = t.c::int))
@@ -2674,15 +2687,16 @@ fn enrich_is_idempotent_on_a_reanalyzed_plan() {
         "SELECT l.a FROM t l LEFT JOIN t r ON l.a = r.a LEFT JOIN t o ON l.a = o.a \
          WHERE l.b = r.b AND r.b = o.b",
     ] {
-        let mut once = run_enrich(query, &[DerivedType::new(UnrestrictedType::Integer); 2]);
+        let (mut once, mut state) =
+            run_enrich_with_state(query, &[DerivedType::new(UnrestrictedType::Integer); 2]);
         let top_id = once.get_top().unwrap();
         let expected = logical(&once);
         let twice = once
-            .analyze_restrictions_in_subtree(top_id)
+            .analyze_restrictions_in_subtree(top_id, &mut state)
             .unwrap()
-            .analyze_equality_facts_in_subtree(top_id)
+            .analyze_equality_facts_in_subtree(top_id, &mut state)
             .unwrap()
-            .enrich_restrictions_from_facts(top_id)
+            .enrich_restrictions_from_facts(top_id, &mut state)
             .unwrap();
         assert_eq!(logical(&twice), expected, "{query}");
     }
@@ -2951,8 +2965,10 @@ fn domain_checks_are_planning_only() {
         r#"SELECT * FROM t JOIN (SELECT a, b FROM t3) s ON t.a = s.b WHERE $1 = 1"#,
         &[DerivedType::new(UnrestrictedType::Integer)],
     );
-    let plan = plan.optimize().unwrap();
-    assert!(plan.facts.is_none());
+    // The facts live in the planning state the run returns, not in the plan.
+    let top_id = plan.get_top().unwrap();
+    let state = plan.optimize_before(top_id, Stage::End).unwrap();
+    assert!(state.facts.is_some());
 }
 
 #[test]
@@ -3056,13 +3072,13 @@ fn false_replaces_param_checks_on_every_motion_input() {
     // its `false` for redistribution.
     let mut plan = sql_to_ir_without_bind(&empty, &[DerivedType::new(UnrestrictedType::Integer)]);
     let top_id = plan.get_top().unwrap();
-    let plan = plan.optimize_before(top_id, Stage::AddMotions).unwrap();
+    let state = plan.optimize_before(top_id, Stage::AddMotions).unwrap();
     assert!(
         !logical(&plan).contains("$1::int = 1::int"),
         "{}",
         logical(&plan)
     );
-    let checks = plan.facts.as_ref().unwrap().domain_checks_of(top_id);
+    let checks = state.facts.as_ref().unwrap().domain_checks_of(top_id);
     assert!(!checks.is_empty());
     assert!(
         checks

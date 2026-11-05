@@ -21,13 +21,13 @@ mod split_columns;
 
 use crate::ir::PlanKind;
 use ahash::AHashMap;
-use smol_str::ToSmolStr as _;
+use smol_str::{format_smolstr, ToSmolStr as _};
 use std::fmt;
 
 use super::node::expression::Expression;
 use super::node::relational::{MutRelational, Relational};
 use super::tree::traversal::{NodeIter, PostOrder};
-use crate::errors::SbroadError;
+use crate::errors::{Entity, SbroadError};
 use crate::ir::node::block::{BlockOwned, MutBlock};
 use crate::ir::node::{
     AnonymousBlock, BlockEntriesMut, BoolExpr, Insert, Join, Motion, NodeId, Selection, Values,
@@ -35,7 +35,9 @@ use crate::ir::node::{
 use crate::ir::operator::Bool;
 use crate::ir::options::Options;
 use crate::ir::subtree_cloner::SubtreeCloner;
+use crate::ir::transformation::equality_facts::EqualityFacts;
 use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target};
+use crate::ir::transformation::restriction::{Restriction, Restrictions};
 use crate::ir::value::Value;
 use crate::ir::Plan;
 
@@ -268,6 +270,38 @@ impl Plan {
     }
 }
 
+/// State of one optimizer run that the plan does not keep: the equality facts
+/// and restrictions the passes exchange. [`Plan::optimize_before`] creates and
+/// returns it, so a test can inspect what a pass produced and run the next
+/// pass on it. Production drops it with the run: a plan in the statement cache
+/// and its per-execution clones carry none of it.
+#[derive(Clone, Debug, Default)]
+pub struct PlanningState {
+    pub facts: Option<EqualityFacts>,
+    /// Per-relational-node value restrictions (PG `RestrictInfo` analog).
+    pub restrictions: Option<Restrictions>,
+}
+
+impl PlanningState {
+    /// The restriction of `owner`, a `Selection` or INNER join of the
+    /// analyzed subtree; missing one breaks the pass's precondition.
+    ///
+    /// # Errors
+    /// - `owner` has no restriction.
+    #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
+    pub(crate) fn owner_restriction(&self, owner: NodeId) -> Result<&Restriction, SbroadError> {
+        self.restrictions
+            .as_ref()
+            .and_then(|restrictions| restrictions.for_rel(owner))
+            .ok_or_else(|| {
+                SbroadError::Invalid(
+                    Entity::Plan,
+                    Some(format_smolstr!("placement: no restriction for {owner:?}")),
+                )
+            })
+    }
+}
+
 /// A pass in the [`Plan::optimize_before`] transformation pipeline, used as a
 /// stop point when running the pipeline only partway (e.g. in tests):
 /// `optimize_before(Stage::X)` runs everything up to but *not including* `X`.
@@ -434,16 +468,18 @@ impl Plan {
         &mut self,
         top_id: NodeId,
         stop: Stage,
-    ) -> Result<&mut Self, SbroadError> {
-        // Each `stage!` returns the current plan right before its pass would run
-        // if that pass is the stop point. The order of these lines *is* the
-        // pipeline order. `plan` is passed as an ident arg so the return value
-        // and the `$call` both bind to this function's `plan` (macro hygiene).
+    ) -> Result<PlanningState, SbroadError> {
+        // Each `stage!` returns the state right before its pass would run if
+        // that pass is the stop point. The order of these lines *is* the
+        // pipeline order. `plan` and `state` are passed as ident args so the
+        // return value and the `$call` both bind to this function's locals
+        // (macro hygiene).
         let plan = self;
+        let mut state = PlanningState::default();
         macro_rules! stage {
-            ($plan:ident, $s:expr, $call:expr) => {
+            ($plan:ident, $state:ident, $s:expr, $call:expr) => {
                 if stop == $s {
-                    return Ok($plan);
+                    return Ok($state);
                 }
                 $call;
             };
@@ -451,82 +487,94 @@ impl Plan {
 
         stage!(
             plan,
+            state,
             Stage::ReplaceInOperator,
             plan.replace_in_operator_in_subtree(top_id)?
         );
         stage!(
             plan,
+            state,
             Stage::PushDownNot,
             plan.push_down_not_in_subtree(top_id)?
         );
         // In the case if the query was not fully parameterized
         // and contains some constants, lets apply constant folding.
-        stage!(plan, Stage::CastConstants, plan.cast_constants()?);
-        stage!(plan, Stage::FoldBooleanTree, plan.fold_boolean_tree()?);
+        stage!(plan, state, Stage::CastConstants, plan.cast_constants()?);
         stage!(
             plan,
+            state,
+            Stage::FoldBooleanTree,
+            plan.fold_boolean_tree()?
+        );
+        stage!(
+            plan,
+            state,
             Stage::SplitColumns,
             plan.split_columns_in_subtree(top_id)?
         );
         // Build per-node restrictions over the raw boolean tree (before DNF blow-up).
         stage!(
             plan,
+            state,
             Stage::Restrictions,
-            plan.analyze_restrictions_in_subtree(top_id)?
+            plan.analyze_restrictions_in_subtree(top_id, &mut state)?
         );
         stage!(
             plan,
+            state,
             Stage::EqualityFacts,
-            plan.analyze_equality_facts_in_subtree(top_id)?
+            plan.analyze_equality_facts_in_subtree(top_id, &mut state)?
         );
         // Derive what the equality classes imply back onto Plan
         #[cfg(feature = "enrich_restrictions")]
         {
             stage!(
                 plan,
+                state,
                 Stage::EnrichRestrictions,
-                plan.enrich_restrictions_from_facts(top_id)?
+                plan.enrich_restrictions_from_facts(top_id, &mut state)?
             );
             // Move the conjuncts enrichment left in place to the deepest node
             // that can evaluate them.
             stage!(
                 plan,
+                state,
                 Stage::PushDownRestrictions,
-                plan.push_down_restrictions(top_id)?
+                plan.push_down_restrictions(top_id, &mut state)?
             );
         }
-        stage!(plan, Stage::Dnf, plan.set_dnf_in_subtree(top_id)?);
+        stage!(plan, state, Stage::Dnf, plan.set_dnf_in_subtree(top_id)?);
         stage!(
             plan,
+            state,
             Stage::MergeTuples,
             plan.merge_tuples_in_subtree(top_id)?
         );
         stage!(
             plan,
+            state,
             Stage::AddMotions,
-            plan.add_motions_to_subtree(top_id)?
+            plan.add_motions_to_subtree(top_id, &mut state)?
         );
-        stage!(plan, Stage::UpdateSubstring, plan.update_substring()?);
+        stage!(
+            plan,
+            state,
+            Stage::UpdateSubstring,
+            plan.update_substring()?
+        );
         // After all transformations we can finally determine what parameters are unique.
         stage!(
             plan,
+            state,
             Stage::MarkUniqueParameters,
             plan.mark_unique_parameters()?
         );
 
-        Ok(plan)
+        Ok(state)
     }
 
     pub fn optimize_subtree(&mut self, top_id: NodeId) -> Result<&mut Self, SbroadError> {
         self.optimize_before(top_id, Stage::End)?;
-
-        // Facts are only used during planning. Afterward they're dead state. Drop them
-        // so they don't bloat the plan clones made on the execution/dispatch path.
-        self.facts = None;
-        // Restrictions are planning-only too. Clear them
-        // for the same reason.
-        self.restrictions = None;
-
         Ok(self)
     }
 

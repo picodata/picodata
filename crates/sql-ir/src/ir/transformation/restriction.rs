@@ -19,6 +19,7 @@ use crate::ir::node::relational::Relational;
 use crate::ir::node::{Join, NodeId, Reference, Selection, SubQueryReference};
 use crate::ir::operator::JoinKind;
 use crate::ir::transformation::equality_facts::Slot;
+use crate::ir::transformation::PlanningState;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::Plan;
 
@@ -233,15 +234,16 @@ impl<'p> RestrictionBuilder<'p> {
 }
 
 impl Plan {
-    /// Build the [`Restrictions`] for a subtree and store them on the plan.
+    /// Build the [`Restrictions`] for a subtree and store them in `state`.
     ///
     /// # Errors
     /// - Malformed plan node encountered while walking the expression trees.
     pub fn analyze_restrictions_in_subtree(
         &mut self,
         top_id: NodeId,
+        state: &mut PlanningState,
     ) -> Result<&mut Self, SbroadError> {
-        self.restrictions = RestrictionBuilder::build(self, top_id).map(Some)?;
+        state.restrictions = RestrictionBuilder::build(self, top_id).map(Some)?;
         Ok(self)
     }
 
@@ -266,8 +268,8 @@ impl Plan {
     /// checked, so a pass over part of the plan keeps them as they are.
     #[cfg(debug_assertions)]
     #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
-    pub(super) fn debug_assert_restrictions_fresh(&self, top_id: NodeId) {
-        let Some(stored) = self.restrictions.as_ref() else {
+    pub(super) fn debug_assert_restrictions_fresh(&self, top_id: NodeId, state: &PlanningState) {
+        let Some(stored) = state.restrictions.as_ref() else {
             return;
         };
         let fresh = RestrictionBuilder::build(self, top_id).expect("restrictions rebuild");
