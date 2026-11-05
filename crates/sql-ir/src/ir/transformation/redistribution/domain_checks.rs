@@ -24,6 +24,7 @@
 //! operands, expression subqueries and CTE bodies.
 
 use crate::errors::{Entity, SbroadError};
+use crate::ir::aliases::AliasGenerator;
 use crate::ir::distribution::Distribution;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Delete, NodeId};
@@ -117,10 +118,10 @@ impl Plan {
     ) -> Result<NodeId, SbroadError> {
         let checks = self.motion_input_checks(input, policy, state)?;
         if checks.is_empty() {
-            return self.add_motion(input, policy, program);
+            return self.add_motion(input, policy, program, &mut state.aliases);
         }
-        let alias = self.motion_alias(input)?;
-        let carrier = self.add_domain_check_carrier(input, &checks)?;
+        let alias = self.motion_alias(input, &mut state.aliases)?;
+        let carrier = self.add_domain_check_carrier(input, &checks, &mut state.aliases)?;
         self.add_motion_with_alias(carrier, alias, policy, program)
     }
 
@@ -227,6 +228,7 @@ impl Plan {
         &mut self,
         input: NodeId,
         checks: &[DomainCheck],
+        aliases: &mut AliasGenerator,
     ) -> Result<NodeId, SbroadError> {
         let Some(needs_subquery) = self.check_carrier_from(input)? else {
             unreachable!("motion_input_checks returns no checks for this input");
@@ -234,7 +236,7 @@ impl Plan {
         let dist: Option<Distribution> = self.rel_distr_ref(input).ok().cloned();
         let mut added = Vec::with_capacity(3);
         let from = if needs_subquery {
-            let name = self.context_mut().aliases.subquery_alias();
+            let name = aliases.subquery_alias(self);
             let sq = self.add_sub_query(input, Some(&name))?;
             added.push(sq);
             sq

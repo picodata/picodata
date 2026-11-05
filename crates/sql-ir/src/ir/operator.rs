@@ -2,6 +2,7 @@
 //!
 //! Contains operator nodes that transform the tuples in IR tree.
 
+use crate::ir::aliases::AliasGenerator;
 use crate::ir::api::children::{self, Children};
 use crate::ir::columns::RelColumn;
 use crate::ir::expression::PlanExpr;
@@ -38,7 +39,6 @@ use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql_protocol::dml::insert::ConflictPolicy;
 use sql_protocol::dml::update::UpdateType;
-use std::borrow::BorrowMut;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
@@ -527,8 +527,7 @@ impl Plan {
     /// - failed to oupdate shard columns info due to invalid plan subtree
     pub fn add_relational(&mut self, node: NodeAligned) -> Result<NodeId, SbroadError> {
         let rel_id = self.nodes.push(node);
-        let mut context = self.context_mut();
-        context.shard_col_info.update_node(rel_id, self)?;
+        self.shard_columns.borrow_mut().update_node(rel_id, self)?;
         Ok(rel_id)
     }
 
@@ -971,6 +970,7 @@ impl Plan {
         child_id: NodeId,
         policy: &MotionPolicy,
         program: Program,
+        aliases: &mut AliasGenerator,
     ) -> Result<NodeId, SbroadError> {
         // Local only asks not to move data: keep the movement (and the
         // materialization) of a child motion below a pass-through projection.
@@ -1001,7 +1001,7 @@ impl Plan {
             return Ok(child_id);
         }
 
-        let alias = self.motion_alias(child_id)?;
+        let alias = self.motion_alias(child_id, aliases)?;
         self.add_motion_with_alias(child_id, alias, policy, program)
     }
 
@@ -1009,9 +1009,13 @@ impl Plan {
     ///
     /// # Errors
     /// - `child_id` is not a relational node.
-    pub fn motion_alias(&mut self, child_id: NodeId) -> Result<Option<SmolStr>, SbroadError> {
+    pub fn motion_alias(
+        &self,
+        child_id: NodeId,
+        aliases: &mut AliasGenerator,
+    ) -> Result<Option<SmolStr>, SbroadError> {
         if let Relational::Join(_) = self.get_relation_node(child_id)? {
-            return Ok(Some(self.context_mut().aliases.join_alias()));
+            return Ok(Some(aliases.join_alias(self)));
         }
         self.scan_alias(child_id)
     }
@@ -1085,9 +1089,7 @@ impl Plan {
             distribution: Some(Box::new(dist)),
         };
         let motion_id = self.add_relational(motion.into())?;
-        let mut context = self.context_mut();
-        context
-            .shard_col_info
+        self.shard_columns
             .borrow_mut()
             .handle_node_insertion(motion_id, self)?;
         Ok(motion_id)

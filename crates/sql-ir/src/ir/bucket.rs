@@ -340,13 +340,7 @@ impl Plan {
         if let Some((_, positions)) = cache.iter().find(|(id, _)| *id == node_id) {
             return Ok(*positions);
         }
-        let Some(context) = self.context.as_ref() else {
-            return Ok(None);
-        };
-        let positions = context
-            .borrow_mut()
-            .get_shard_columns_positions(node_id, self)?
-            .copied();
+        let positions = self.shard_column_positions(node_id)?;
         cache.push((node_id, positions));
         Ok(positions)
     }

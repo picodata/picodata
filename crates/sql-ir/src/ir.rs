@@ -12,18 +12,18 @@ use options::{OptionParamValue, OptionSpec, Options};
 use relation::Table;
 use serde::{Deserialize, Serialize};
 use smol_str::{format_smolstr, SmolStr};
-use std::cell::{OnceCell, RefCell, RefMut};
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::slice::{Iter, IterMut};
 use types::{DerivedType, UnrestrictedType};
 
 use ahash::AHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use self::relation::Relations;
 use self::transformation::redistribution::MotionPolicy;
 use crate::errors::{Action, Entity, SbroadError};
-use crate::ir::aliases::AliasGenerator;
 use crate::utils::to_user;
 
 use crate::ir::columns::RelColumn;
@@ -825,13 +825,11 @@ pub struct Plan {
     pub effective_options: Options,
     pub table_version_map: Rc<VersionMap>,
     pub index_version_map: Rc<HashMap<[u32; 2], u64, RepeatableState>>,
-    /// Exists only on the router during plan build.
-    /// RefCell is used because context can be mutated
-    /// independently of the plan. It is just stored
-    /// in the plan for convenience: otherwise we'd
-    /// have to explictly pass context to every method
-    /// of the pipeline.
-    pub context: Option<RefCell<BuildContext>>,
+    /// Positions of the `bucket_id` column in the output of each relational
+    /// node, kept up to date as nodes are added. Bucket discovery reads it on
+    /// every execution, so it stays with the plan. Planning-only state lives
+    /// in `transformation::PlanningState`.
+    shard_columns: RefCell<ShardColumnsMap>,
     /// Any sharded table must belongs to a single tier,
     /// global tables use `None`.
     pub tier: Option<SmolStr>,
@@ -984,30 +982,6 @@ impl PlanShapes {
     }
 }
 
-/// Helper structures used to build the plan
-/// on the router.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct BuildContext {
-    shard_col_info: ShardColumnsMap,
-    /// Aliases for the subqueries and joins the query does not name.
-    pub aliases: AliasGenerator,
-}
-
-impl BuildContext {
-    /// Returns positions in node's output
-    /// referring to the shard column.
-    ///
-    /// # Errors
-    /// - Invalid plan
-    pub fn get_shard_columns_positions(
-        &mut self,
-        node_id: NodeId,
-        plan: &Plan,
-    ) -> Result<Option<&Positions>, SbroadError> {
-        self.shard_col_info.get(node_id, plan)
-    }
-}
-
 impl Default for Plan {
     fn default() -> Self {
         Self::new()
@@ -1016,15 +990,15 @@ impl Default for Plan {
 
 #[allow(dead_code)]
 impl Plan {
-    /// Get mut reference to build context
+    /// Positions of the `bucket_id` column in the output of `node_id`.
     ///
-    /// # Panics
-    /// - There are other mut refs
-    pub fn context_mut(&self) -> RefMut<'_, BuildContext> {
-        self.context
-            .as_ref()
-            .expect("context always exists during plan build")
-            .borrow_mut()
+    /// # Errors
+    /// - Invalid plan
+    pub fn shard_column_positions(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Option<Positions>, SbroadError> {
+        Ok(self.shard_columns.borrow_mut().get(node_id, self)?.copied())
     }
 
     pub fn get_nodes(&self) -> &Nodes {
@@ -1108,7 +1082,7 @@ impl Plan {
             effective_options: Options::default(),
             table_version_map: Rc::default(),
             index_version_map: Rc::default(),
-            context: Some(RefCell::new(BuildContext::default())),
+            shard_columns: RefCell::default(),
             tier: None,
             shapes: PlanShapes::default(),
         }
@@ -3198,20 +3172,17 @@ impl Plan {
 /// Target positions in the reference.
 pub type Positions = [Option<Position>; 2];
 
-/// Relational node id -> positions of columns in output that refer to sharding column.
-pub type ShardColInfo = ahash::AHashMap<NodeId, Positions>;
-
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ShardColumnsMap {
     /// Maps node id to positions of bucket_id column in
     /// the node output. Currently we track only two
     /// bucket_id columns appearences for perf reasons.
-    pub memo: ahash::AHashMap<NodeId, Positions>,
+    pub memo: FxHashMap<NodeId, Positions>,
     /// ids of nodes which were inserted into the middle
     /// of the plan and changed the bucket_id columns
     /// positions and thus invalidated all the nodes
     /// in the memo which are located above this node.
-    pub invalid_ids: ahash::AHashSet<NodeId>,
+    pub invalid_ids: FxHashSet<NodeId>,
 }
 
 impl ShardColumnsMap {

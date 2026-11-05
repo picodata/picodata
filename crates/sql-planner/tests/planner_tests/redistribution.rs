@@ -4,6 +4,7 @@ use sql::explain::explain_logical;
 use sql::helpers::sql_to_ir;
 use sql::helpers::sql_to_ir_without_bind;
 use sql::helpers::sql_to_optimized_ir;
+use sql::ir::aliases::AliasGenerator;
 use sql::ir::node::relational::Relational;
 use sql::ir::node::Motion;
 use sql::ir::node::NodeId;
@@ -467,8 +468,14 @@ fn test_slices_3() {
     // 4. [m6]
 
     let add_motion = |plan: &mut Plan, child_id: NodeId| -> NodeId {
-        plan.add_motion(child_id, &MotionPolicy::Full, Program::default())
-            .unwrap()
+        let mut aliases = AliasGenerator::default();
+        plan.add_motion(
+            child_id,
+            &MotionPolicy::Full,
+            Program::default(),
+            &mut aliases,
+        )
+        .unwrap()
     };
 
     // We can't add multiple motions in a row because they will be squeezed

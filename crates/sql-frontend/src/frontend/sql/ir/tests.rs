@@ -824,11 +824,7 @@ fn front_sql_subquery_column_duplicates() {
 }
 
 fn get_positions(plan: &Plan, node_id: NodeId) -> Option<Positions> {
-    let mut context = plan.context_mut();
-    context
-        .get_shard_columns_positions(node_id, plan)
-        .unwrap()
-        .copied()
+    plan.shard_column_positions(node_id).unwrap()
 }
 
 #[test]

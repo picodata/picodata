@@ -4027,6 +4027,7 @@ dependencies = [
  "rmp",
  "rmp-serde",
  "rmpv",
+ "rustc-hash 2.1.2",
  "serde",
  "serde_yaml",
  "smallvec",

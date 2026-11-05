@@ -1022,8 +1022,7 @@ impl Plan {
 						)),
                     ));
                 };
-                let mut context = self.context_mut();
-                if let Some(positions) = context.get_shard_columns_positions(*child_id, self)? {
+                if let Some(positions) = self.shard_column_positions(*child_id)? {
                     if positions[0] != Some(*ref_pos) && positions[1] != Some(*ref_pos) {
                         continue;
                     }
@@ -2204,16 +2203,10 @@ impl Plan {
         left_id: NodeId,
         right_id: NodeId,
     ) -> Result<bool, SbroadError> {
-        let mut context = self.context_mut();
-        let Some(left_shard_positions) =
-            context.get_shard_columns_positions(left_id, self)?.copied()
-        else {
+        let Some(left_shard_positions) = self.shard_column_positions(left_id)? else {
             return Ok(false);
         };
-        let Some(right_shard_positions) = context
-            .get_shard_columns_positions(right_id, self)?
-            .copied()
-        else {
+        let Some(right_shard_positions) = self.shard_column_positions(right_id)? else {
             return Ok(false);
         };
         for l in &left_shard_positions {

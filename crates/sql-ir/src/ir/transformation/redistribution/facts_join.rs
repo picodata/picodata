@@ -139,18 +139,10 @@ impl Plan {
         inner_id: NodeId,
         facts: &EqualityFacts,
     ) -> Result<bool, SbroadError> {
-        let outer_positions = {
-            let mut ctx = self.context_mut();
-            ctx.get_shard_columns_positions(outer_id, self)?.copied()
-        };
-        let Some(outer_positions) = outer_positions else {
+        let Some(outer_positions) = self.shard_column_positions(outer_id)? else {
             return Ok(false);
         };
-        let inner_positions = {
-            let mut ctx = self.context_mut();
-            ctx.get_shard_columns_positions(inner_id, self)?.copied()
-        };
-        let Some(inner_positions) = inner_positions else {
+        let Some(inner_positions) = self.shard_column_positions(inner_id)? else {
             return Ok(false);
         };
 

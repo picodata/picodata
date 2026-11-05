@@ -652,8 +652,7 @@ impl Plan {
                 continue;
             };
             let child_id = self.get_relational_from_reference_node(*expr_id)?;
-            let mut context = self.context_mut();
-            if let Some(shard_positions) = context.get_shard_columns_positions(child_id, self)? {
+            if let Some(shard_positions) = self.shard_column_positions(child_id)? {
                 if shard_positions[0] == Some(*position) || shard_positions[1] == Some(*position) {
                     return Ok(true);
                 }

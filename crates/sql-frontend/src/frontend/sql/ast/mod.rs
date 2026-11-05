@@ -513,9 +513,9 @@ impl<'q> AbstractSyntaxTree<'q> {
 
         used_aliases.extend(ctes.into_keys());
         used_aliases.extend(plan.relations.tables.keys().cloned());
-        plan.context_mut().aliases = AliasGenerator::new(used_aliases);
+        let mut aliases = AliasGenerator::new(used_aliases);
         for node in unnamed_subqueries {
-            let name = plan.context_mut().aliases.subquery_alias();
+            let name = aliases.subquery_alias(&plan);
 
             let mut scan = plan.get_mut_relation_node(node)?;
             scan.set_scan_name(Some(name))?;
