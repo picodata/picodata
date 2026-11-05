@@ -777,8 +777,35 @@ def check_binary(path: Path) -> tuple[str, str]:
     sys.exit(f"{path}: not an ELF or a 64-bit Mach-O file")
 
 
+def rust_llvm_objdump() -> str | None:
+    """The llvm-objdump of the Rust toolchain, from the rustup component llvm-tools.
+
+    It demangles the v0 symbols that rustc emits; GNU objdump does so only from
+    binutils 2.36, and a mangled name does not match a filter on the crate.
+    """
+    rustc = shutil.which("rustc")
+    if rustc is None:
+        return None
+    try:
+        sysroot = subprocess.run(
+            [rustc, "--print", "sysroot"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+        version = subprocess.run([rustc, "-vV"], capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    host = next((line.split(" ", 1)[1] for line in version.splitlines() if line.startswith("host: ")), None)
+    if host is None:
+        return None
+    path = Path(sysroot) / "lib" / "rustlib" / host / "bin" / "llvm-objdump"
+    return str(path) if path.is_file() else None
+
+
 def default_objdump(fmt: str, arch: str) -> str:
     """The GNU objdump of the host can usually read only ELF files of the host architecture."""
+    if (objdump := rust_llvm_objdump()) is not None:
+        return objdump
+    if shutil.which("llvm-objdump"):
+        return "llvm-objdump"
     if fmt == "elf" and arch == HOST_ARCH:
         return "objdump"
     candidates = ["llvm-objdump"]
@@ -942,7 +969,11 @@ def main():
     result = [f for f in all_frames if not args.filter or args.filter.search(f.name)]
     if not result:
         # Else a check with --max and a wrong filter passes and checks nothing.
-        sys.exit(f"{args.binary}: no function matches --filter {args.filter.pattern!r}")
+        sys.exit(
+            f"{args.binary}: no function matches --filter {args.filter.pattern!r}. If the names are "
+            "mangled, the objdump does not demangle the Rust v0 names (GNU objdump before binutils 2.36): "
+            "install the rustup component llvm-tools, or use --objdump"
+        )
     result.sort(key=lambda f: (-f.size, f.name))
 
     if not args.quiet:

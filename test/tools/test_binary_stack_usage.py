@@ -118,6 +118,22 @@ def check_frame_sizes(build: Build, objdump: str, tmp_path: Path) -> None:
     assert {name: actual.get(name) for name in expected} == expected
 
 
+def test_rust_v0_names(tmp_path: Path) -> None:
+    """A filter on a crate needs demangled names. GNU objdump before binutils
+    2.36 leaves the v0 names of rustc mangled; then the filter matches nothing,
+    and the error must give this cause."""
+    require("llvm-objdump")
+    obj = assemble(Build("x86_64-linux-gnu", "v0.s", "llvm-objdump"), tmp_path)
+    result = run_script(obj, "--objdump", "llvm-objdump", "--filter", r"^sql_ir::", "--min", "0")
+    assert result.returncode == 0, result.stderr
+    assert re.findall(r"^\d+\t(\S+)", result.stdout, re.MULTILINE) == ["sql_ir::e24_sub", "sql_ir::e8_push"]
+
+    # --no-demangle gives the same names as an objdump that cannot demangle them.
+    result = run_script(obj, "--objdump", "llvm-objdump", "--no-demangle", "--filter", r"^sql_ir::", "--max", "1")
+    assert result.returncode == 1
+    assert "does not demangle the Rust v0 names" in result.stderr
+
+
 def test_max_and_filter(tmp_path: Path) -> None:
     require("llvm-objdump")
     obj = assemble(BUILDS[0], tmp_path)
