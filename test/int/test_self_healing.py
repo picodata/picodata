@@ -531,16 +531,23 @@ cluster:
     # Disable the replication error check so that we know what we're missing and start valueing it
     leader.sql("ALTER SYSTEM SET governor_check_replication_error = false")
 
+    # Instances going offline/online make the governor reconfigure the vshard
+    # router, which may outdate the replicaset objects of an SQL request which
+    # is being dispatched concurrently. Nothing is sent to the storages in this
+    # case, so it's safe to retry. Any other error is fatal.
+    def retry_if_outdated():
+        return Retriable(fatal_predicate=lambda e: "Object is outdated" not in str(e))
+
     # Put one of the instance to sleep...
     storage_1_2.terminate()
 
-    leader.sql("INSERT INTO foo VALUES (1337, 'v1')")
+    retry_if_outdated().call(leader.sql, "INSERT INTO foo VALUES (1337, 'v1')")
 
     storage_1_1.terminate()
     storage_1_2.start()
     storage_1_2.wait_online()
 
-    leader.sql("INSERT INTO foo VALUES (1337, 'v2')")
+    retry_if_outdated().call(leader.sql, "INSERT INTO foo VALUES (1337, 'v2')")
 
     auto_online_failure = "SENTINEL_CONNECTION_POOL_CALL_FAILURE"
     storage_1_1.env[f"PICODATA_ERROR_INJECTION_{auto_online_failure}"] = "1"
