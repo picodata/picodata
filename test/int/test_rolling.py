@@ -747,6 +747,23 @@ def test_upgraded_schema_matches_fresh_cluster(
                 local fields_to_remove = path_dependent_fields[catalog_name] or {}
                 for _, tuple in box.space[catalog_name]:pairs() do
                     local normalized_row = tuple:tomap({ names_only = true })
+
+                    -- normalize is_nullable representation in index fields
+                    if catalog_name == "_index" then
+                        local format = box.space[normalized_row.id]:format()
+                        for _, part in ipairs(normalized_row.parts) do
+                            -- Detect the legacy array representation, such as {0, "string"}.
+                            if part.field == nil then
+                                part.field, part.type = part[1], part[2]
+                                part[1], part[2] = nil, nil
+                                local field = format[part.field + 1]
+                                part.is_nullable = field ~= nil and field.is_nullable == true
+                            elseif part.is_nullable == nil then
+                                part.is_nullable = false
+                            end
+                        end
+                    end
+
                     for field_name in pairs(fields_to_remove) do
                         normalized_row[field_name] = nil
                     end
