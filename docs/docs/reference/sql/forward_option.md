@@ -183,7 +183,7 @@ ERROR:  invalid option: cannot satisfy "forward = off":
 buckets span multiple nodes and are not present on the current node, try using "forward = on" instead
 ```
 
-т.к. результатом подзапроса будут значения `1` и `2`, соответствующие бакетaм
+т.к. результатом подзапроса будут значения `1` и `2`, соответствующие бакетам
 `1934` и `1410`, лежащим на разных узлах.
 
 ## Анализ допустимой опции FORWARD с помощью EXPLAIN {: #explain }
