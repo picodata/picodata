@@ -100,3 +100,44 @@ fn raw_explain_block_bind_insert_do_update_param_rhs() {
     );
     assert!(!params.contains(&iocdu_param));
 }
+
+// The block pattern renders a reference with the name the local SQL gives to
+// the column. A column of a table function has its tarantool name there, so
+// the projection keeps the alias that the outer query references.
+#[test]
+fn block_pattern_keeps_alias_of_table_function_column() {
+    let sql = r#"do $$ begin
+           return query select s.value
+               from (select * from generate_series(1, 3) g) s;
+           end $$"#;
+    let coordinator = RouterRuntimeMock::new();
+    let prepared = PreparedStatement::parse(&coordinator, sql, &[]).unwrap();
+    let mut query = ExecutingQuery::from_bound_statement(
+        &coordinator,
+        prepared.bind(vec![], Options::default()).unwrap(),
+    )
+    .unwrap();
+    let exec_plan = query.get_mut_exec_plan();
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+    let BlockOwned::Anonymous(block) = exec_plan
+        .get_ir_plan()
+        .get_owned_block_node(top_id)
+        .unwrap()
+    else {
+        panic!("expected anonymous block");
+    };
+    let query_id = match block.statements.first() {
+        Some(BlockStatement::ReturnQuery(query_id)) => *query_id,
+        other => panic!("expected return query, got {other:?}"),
+    };
+
+    let (query, params) =
+        generate_pattern_with_params_for_block(exec_plan, query_id, BlockRenderOptions::EXECUTE)
+            .unwrap();
+
+    assert_eq!(
+        query.pattern,
+        r#"SELECT "s"."value" FROM (SELECT "g"."VALUE" as "value" FROM generate_series (:1::int, :2::int) as "g") as "s""#
+    );
+    assert_eq!(params, vec![Value::Integer(1), Value::Integer(3)]);
+}

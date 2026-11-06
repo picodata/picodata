@@ -1405,19 +1405,14 @@ fn mock_dispatch<'p>(
 }
 
 fn to_sql(plan: &ExecutionPlan, top_id: NodeId) -> (String, Vec<Value>) {
-    let subtree = plan
-        .freeze()
-        .execution_view()
-        .dql_subtree(top_id)
-        .expect("dql subtree");
-    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest).unwrap();
+    let sp = SyntaxPlan::new(plan, top_id, Snapshot::Oldest).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let params = plan
         .local_sql_params(top_id, Snapshot::Oldest)
         .expect("local sql params");
     let (constant_ids, params) = params.into_parts();
-    let sql = subtree
+    let sql = plan
         .generate_sql(&nodes, TEMPLATE, table_name, Some(constant_ids.as_slice()))
         .unwrap();
     (sql, params)

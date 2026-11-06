@@ -1647,12 +1647,11 @@ fn join_plan(query: &str, sharded: bool) -> Plan {
 }
 
 fn join_sql(ex_plan: &ExecutionPlan, top: NodeId, snapshot: Snapshot) -> String {
-    let subtree = ex_plan.freeze().execution_view().dql_subtree(top).unwrap();
     let params = ex_plan.local_sql_params(top, snapshot).unwrap();
-    let syntax = SyntaxPlan::new_for_dql_subtree(&subtree, snapshot).unwrap();
+    let syntax = SyntaxPlan::new(ex_plan, top, snapshot).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(syntax).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
-    subtree
+    ex_plan
         .generate_sql(&nodes, 0, table_name, Some(params.constant_ids().to_vec()))
         .unwrap()
 }

@@ -120,85 +120,11 @@ pub struct ExecutionPlan {
     unlinked_motions: HashSet<NodeId>,
 }
 
-/// Read-only execution plan borrow.
-///
-/// While this value exists, Rust's borrow checker prevents mutable access to
-/// the underlying `ExecutionPlan`.
-#[derive(Clone, Copy, Debug)]
-pub struct FrozenPlan<'plan> {
-    exec_plan: &'plan ExecutionPlan,
-}
-
-impl<'plan> FrozenPlan<'plan> {
-    /// Creates a read-only view over the frozen execution plan.
-    ///
-    /// The returned view keeps the same borrow lifetime and can be narrowed to
-    /// a DQL subtree without cloning or mutating the plan.
-    #[must_use]
-    pub fn execution_view(self) -> ExecutionView<'plan> {
-        ExecutionView { frozen: self }
-    }
-}
-
-/// Read-only execution plan view available after the plan is frozen.
-#[derive(Debug)]
-pub struct ExecutionView<'plan> {
-    frozen: FrozenPlan<'plan>,
-}
-
-impl<'plan> ExecutionView<'plan> {
-    /// Narrows the read-only view to a DQL subtree rooted at `sql_top_id`.
-    ///
-    /// # Errors
-    /// - If `sql_top_id` does not reference a node in the underlying plan.
-    pub fn dql_subtree(self, sql_top_id: NodeId) -> Result<DqlSubtree<'plan>, SbroadError> {
-        self.get_ir_plan().get_node(sql_top_id)?;
-        Ok(DqlSubtree {
-            view: self,
-            sql_top_id,
-        })
-    }
-
-    /// Returns the execution plan behind this read-only view.
-    #[must_use]
-    pub(crate) fn as_execution_plan(&self) -> &'plan ExecutionPlan {
-        self.frozen.exec_plan
-    }
-
-    /// Returns the IR plan behind this read-only view.
-    #[must_use]
-    pub fn get_ir_plan(&self) -> &'plan Plan {
-        self.as_execution_plan().get_ir_plan()
-    }
-}
-
-/// Read-only DQL subtree view available after the plan is frozen.
-#[derive(Debug)]
-pub struct DqlSubtree<'plan> {
-    view: ExecutionView<'plan>,
-    sql_top_id: NodeId,
-}
-
-impl<'plan> DqlSubtree<'plan> {
-    /// Returns the node id used as the SQL root for this subtree.
-    #[must_use]
-    pub(crate) fn sql_top_id(&self) -> NodeId {
-        self.sql_top_id
-    }
-
-    /// Returns the execution plan behind this DQL subtree view.
-    #[must_use]
-    pub(crate) fn as_execution_plan(&self) -> &'plan ExecutionPlan {
-        self.view.as_execution_plan()
-    }
-
-    /// Returns the IR plan behind this DQL subtree view.
-    #[must_use]
-    pub fn get_ir_plan(&self) -> &'plan Plan {
-        self.view.get_ir_plan()
-    }
-
-    fn effective_reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
+impl ExecutionPlan {
+    /// The name a reference is rendered with in the local SQL: the column
+    /// name of a materialized motion or of a renamed projection output when
+    /// one applies, else the alias in the plan.
+    pub(crate) fn reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
         let plan = self.get_ir_plan();
         let Some(rel_col) = reference_target(expr) else {
             return plan.get_alias_from_reference_node(expr);
@@ -305,90 +231,6 @@ fn reference_target(expr: &Expression) -> Option<RelColumn> {
             rel_id, position, ..
         }) => Some(RelColumn::new(*rel_id, *position)),
         _ => None,
-    }
-}
-
-/// Common SQL rendering interface for a full plan or a read-only subtree view.
-pub(crate) trait SqlExecutionView: std::fmt::Debug {
-    /// Returns the underlying execution plan used for shared metadata access.
-    fn as_execution_plan(&self) -> &ExecutionPlan;
-
-    /// Returns the IR plan visible through this view.
-    fn get_ir_plan(&self) -> &Plan {
-        self.as_execution_plan().get_ir_plan()
-    }
-
-    /// Returns virtual tables visible through this view.
-    fn get_vtables(&self) -> &VirtualTableMap {
-        self.as_execution_plan().get_vtables()
-    }
-
-    /// Returns the virtual table materialized for `motion_id`.
-    fn get_motion_vtable(&self, motion_id: NodeId) -> Result<Rc<VirtualTable>, SbroadError> {
-        self.as_execution_plan().get_motion_vtable(motion_id)
-    }
-
-    /// Returns whether `motion_id` has a materialized virtual table.
-    fn contains_vtable_for_motion(&self, motion_id: NodeId) -> bool {
-        self.as_execution_plan()
-            .contains_vtable_for_motion(motion_id)
-    }
-
-    /// Resolves a reference alias as it should be rendered in SQL.
-    fn reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
-        self.get_ir_plan().get_alias_from_reference_node(expr)
-    }
-
-    /// Returns the synthetic `bucket_id` reference for a selection node.
-    fn get_bucket_ref(&self, selection_id: NodeId) -> Option<RelColumn> {
-        self.as_execution_plan().get_bucket_ref(selection_id)
-    }
-
-    /// Returns bucket ids appended as SQL parameters by the active bucket filter.
-    fn get_bucket_filter_ids(&self) -> Option<&[u64]> {
-        self.as_execution_plan().get_bucket_filter_ids()
-    }
-
-    /// Returns the effective child of a motion after execution overlays.
-    fn effective_motion_child(&self, motion_id: NodeId) -> Result<Option<NodeId>, SbroadError> {
-        self.as_execution_plan().effective_motion_child(motion_id)
-    }
-
-    /// Whether the motion is rendered as a leaf in this view.
-    fn is_effective_motion_leaf(&self, node_id: NodeId) -> bool {
-        self.as_execution_plan().is_effective_motion_leaf(node_id)
-    }
-
-    /// Returns the effective `SerializeAsEmptyTable` state for a motion.
-    fn effective_serialize_as_empty_state(
-        &self,
-        motion_id: NodeId,
-        program: &Program,
-    ) -> SerializeAsEmptyState {
-        self.as_execution_plan()
-            .effective_serialize_as_empty_state(motion_id, program)
-    }
-}
-
-impl SqlExecutionView for ExecutionPlan {
-    fn as_execution_plan(&self) -> &ExecutionPlan {
-        self
-    }
-}
-
-impl SqlExecutionView for ExecutionView<'_> {
-    fn as_execution_plan(&self) -> &ExecutionPlan {
-        ExecutionView::as_execution_plan(self)
-    }
-}
-
-impl SqlExecutionView for DqlSubtree<'_> {
-    fn as_execution_plan(&self) -> &ExecutionPlan {
-        DqlSubtree::as_execution_plan(self)
-    }
-
-    fn reference_alias(&self, expr: &Expression) -> Result<SmolStr, SbroadError> {
-        self.effective_reference_alias(expr)
     }
 }
 
@@ -608,15 +450,6 @@ impl ExecutionPlan {
     #[must_use]
     pub fn get_request_uuid(&self) -> Uuid {
         self.request_id
-    }
-
-    /// Freeze this execution plan as a read-only borrow.
-    ///
-    /// The guarantee is provided by Rust borrow checking: code holding the
-    /// returned value cannot also hold a mutable borrow of this plan.
-    #[must_use]
-    pub fn freeze(&self) -> FrozenPlan<'_> {
-        FrozenPlan { exec_plan: self }
     }
 
     pub fn has_segment_motion(&self, top_id: NodeId) -> bool {

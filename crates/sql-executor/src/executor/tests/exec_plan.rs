@@ -42,107 +42,14 @@ pub(super) fn get_sql_from_execution_plan(
     snapshot: Snapshot,
     name_base: u64,
 ) -> PatternWithParams {
-    let subtree = exec_plan
-        .freeze()
-        .execution_view()
-        .dql_subtree(top_id)
-        .unwrap();
-    let sp = SyntaxPlan::new_for_dql_subtree(&subtree, snapshot).unwrap();
+    let sp = SyntaxPlan::new(exec_plan, top_id, snapshot).unwrap();
     let ordered = OrderedSyntaxNodes::try_from(sp).unwrap();
     let nodes = ordered.to_syntax_data().unwrap();
     let params = exec_plan.local_sql_params(top_id, snapshot).unwrap();
-    let sql = subtree
+    let sql = exec_plan
         .generate_sql(&nodes, name_base, table_name, Some(params.constant_ids()))
         .unwrap();
     PatternWithParams::new(sql, params.params().to_vec())
-}
-
-#[test]
-fn frozen_plan_borrows_execution_plan_read_only() {
-    let plan = sql_to_optimized_ir(r#"select "id" from "test_space""#, vec![]);
-    let mut exec_plan = ExecutionPlan::new(plan);
-    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    exec_plan.set_plan_id(top_id).unwrap();
-
-    let view = exec_plan.freeze().execution_view();
-
-    assert_eq!(top_id, view.get_ir_plan().get_top().unwrap());
-    assert_eq!(
-        exec_plan.get_ir_plan().get_top().unwrap(),
-        view.as_execution_plan().get_ir_plan().get_top().unwrap()
-    );
-
-    drop(view);
-
-    exec_plan.set_plan_id(top_id).unwrap();
-}
-
-#[test]
-fn dql_subtree_borrows_execution_view_read_only() {
-    let plan = sql_to_optimized_ir(r#"select "id" from "test_space""#, vec![]);
-    let mut exec_plan = ExecutionPlan::new(plan);
-    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    exec_plan.set_plan_id(top_id).unwrap();
-
-    let subtree = exec_plan
-        .freeze()
-        .execution_view()
-        .dql_subtree(top_id)
-        .unwrap();
-
-    assert_eq!(top_id, subtree.sql_top_id());
-    assert_eq!(top_id, subtree.get_ir_plan().get_top().unwrap());
-    assert_eq!(
-        exec_plan.get_ir_plan().get_top().unwrap(),
-        subtree.as_execution_plan().get_ir_plan().get_top().unwrap()
-    );
-
-    drop(subtree);
-
-    exec_plan.set_plan_id(top_id).unwrap();
-}
-
-#[test]
-fn dql_subtree_generates_same_sql_as_execution_plan() {
-    let exec_plan = ExecutionPlan::new(sql_to_optimized_ir(
-        r#"select "id" from "test_space" where "id" = 1"#,
-        vec![],
-    ));
-    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-    let params = exec_plan
-        .local_sql_params(top_id, Snapshot::Oldest)
-        .unwrap();
-
-    let old_sp = SyntaxPlan::new(&exec_plan, top_id, Snapshot::Oldest).unwrap();
-    let old_ordered = OrderedSyntaxNodes::try_from(old_sp).unwrap();
-    let old_nodes = old_ordered.to_syntax_data().unwrap();
-    let old_sql = exec_plan
-        .generate_sql(
-            &old_nodes,
-            TEMPLATE,
-            table_name,
-            Some(params.constant_ids()),
-        )
-        .unwrap();
-
-    let subtree = exec_plan
-        .freeze()
-        .execution_view()
-        .dql_subtree(top_id)
-        .unwrap();
-    let new_sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest).unwrap();
-    let new_ordered = OrderedSyntaxNodes::try_from(new_sp).unwrap();
-    let new_nodes = new_ordered.to_syntax_data().unwrap();
-    let new_sql = subtree
-        .generate_sql(
-            &new_nodes,
-            TEMPLATE,
-            table_name,
-            Some(params.constant_ids()),
-        )
-        .unwrap();
-
-    assert_eq!(old_sql, new_sql);
 }
 
 #[test]
@@ -177,8 +84,7 @@ fn update_delete_tuple_len_overlay_keeps_ir_intact() {
         explain_logical(exec_plan.get_ir_plan()).unwrap()
     );
 
-    let view = exec_plan.freeze().execution_view();
-    assert_eq!(update_id, view.get_ir_plan().get_top().unwrap());
+    assert_eq!(update_id, exec_plan.get_ir_plan().get_top().unwrap());
 }
 
 #[test]
@@ -1846,7 +1752,7 @@ fn subtree_hash7() {
 }
 
 #[test]
-fn dql_subtree_projection_windows_stay_in_original_plan() {
+fn syntax_plan_projection_windows_stay_in_original_plan() {
     let mut plan = Plan::default();
 
     let a_value = plan.nodes.add_const(1.into());
@@ -1978,12 +1884,7 @@ fn dql_subtree_projection_windows_stay_in_original_plan() {
     }
 
     let execution_plan = ExecutionPlan::new(plan);
-    let subtree = execution_plan
-        .freeze()
-        .execution_view()
-        .dql_subtree(projection)
-        .unwrap();
-    SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest).unwrap();
+    SyntaxPlan::new(&execution_plan, projection, Snapshot::Oldest).unwrap();
 
     {
         let Node::Relational(Relational::Projection(Projection { windows, .. })) =

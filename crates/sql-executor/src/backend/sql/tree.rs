@@ -1,6 +1,6 @@
 use super::ir;
 use crate::errors::{Action, Entity, SbroadError};
-use crate::executor::ir::{DqlSubtree, ExecutionPlan, SerializeAsEmptyState, SqlExecutionView};
+use crate::executor::ir::{ExecutionPlan, SerializeAsEmptyState};
 use crate::ir::columns::RelColumn;
 use crate::ir::expression::{FunctionFeature, TrimKind};
 use crate::ir::helpers::{formatted_tabulate, writeln_with_tabulation};
@@ -791,16 +791,7 @@ pub struct SyntaxPlan<'p> {
     pub(crate) nodes: SyntaxNodes,
     /// Id of top `SyntaxNode`.
     pub(crate) top: Option<usize>,
-    /// Vec of Window ids in in `nodes`.
-    /// Windows are children of Projection node but have to
-    /// be placed between HAVING and ORDER BY clauses so we store them
-    /// here during Projection traversal so that they can be retrieved later
-    /// during HAVING traversal.
-    ///
-    /// This vec should be empty after WINDOWS are handled.
-    ///
-    /// map of { name, sn_id }.
-    plan: &'p dyn SqlExecutionView,
+    plan: &'p ExecutionPlan,
     snapshot: Snapshot,
 }
 
@@ -2775,34 +2766,13 @@ impl<'p> SyntaxPlan<'p> {
         Ok(())
     }
 
-    pub(crate) fn empty(plan: &'p dyn SqlExecutionView) -> Self {
+    pub(crate) fn empty(plan: &'p ExecutionPlan) -> Self {
         SyntaxPlan {
             nodes: SyntaxNodes::with_capacity(plan.get_ir_plan().nodes.len() * 2),
             top: None,
             plan,
             snapshot: Snapshot::Latest,
         }
-    }
-
-    /// Build a new syntax tree from the execution plan.
-    ///
-    /// # Errors
-    /// - Failed to ad an IR plan to the syntax tree
-    /// - Failed to get to the top of the syntax tree
-    /// - Failed to move projection nodes under their scans
-    pub fn new(
-        plan: &'p ExecutionPlan,
-        top: NodeId,
-        snapshot: Snapshot,
-    ) -> Result<Self, SbroadError> {
-        Self::new_for_view(plan, top, snapshot)
-    }
-
-    pub fn new_for_dql_subtree(
-        plan: &'p DqlSubtree<'_>,
-        snapshot: Snapshot,
-    ) -> Result<Self, SbroadError> {
-        Self::new_for_view(plan, plan.sql_top_id(), snapshot)
     }
 
     /// The nodes must come in post-order.
@@ -2820,11 +2790,18 @@ impl<'p> SyntaxPlan<'p> {
         Ok(())
     }
 
-    fn new_for_view(
-        plan: &'p dyn SqlExecutionView,
+    /// Build the syntax tree of the subtree of the execution plan under `top`.
+    ///
+    /// # Errors
+    /// - `top` is not a node of the plan
+    /// - Failed to set the top of the syntax tree
+    /// - Failed to move projection nodes under their scans
+    pub fn new(
+        plan: &'p ExecutionPlan,
         top: NodeId,
         snapshot: Snapshot,
     ) -> Result<Self, SbroadError> {
+        plan.get_ir_plan().get_node(top)?;
         let mut sp = SyntaxPlan::empty(plan);
         sp.snapshot = snapshot;
         let ir_plan = plan.get_ir_plan();

@@ -2,7 +2,7 @@ use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{table_name, write_insert_args, TupleBuilderPattern};
 use crate::executor::engine::VersionMap;
-use crate::executor::ir::{DqlSubtree, ExecutionPlan};
+use crate::executor::ir::ExecutionPlan;
 use crate::executor::vtable::{VTableTuple, VirtualTable, VirtualTableTupleEncoder};
 use crate::ir::helpers::RepeatableState;
 use crate::ir::node::NodeId;
@@ -89,13 +89,6 @@ impl DqlProtocol {
     /// Encodes local SQL parameter values as msgpack.
     pub fn encoded_params(&self) -> Vec<u8> {
         tarantool::msgpack::encode(&self.params)
-    }
-
-    fn dql_subtree(&self) -> Result<DqlSubtree<'_>, SbroadError> {
-        self.plan
-            .freeze()
-            .execution_view()
-            .dql_subtree(self.sql_top_id)
     }
 }
 
@@ -687,11 +680,12 @@ impl TryFrom<&DqlProtocol> for ExecutionCacheMissData {
     fn try_from(value: &DqlProtocol) -> Result<Self, Self::Error> {
         let sql = {
             let plan_id = value.get_plan_id();
-            let subtree = value.dql_subtree()?;
-            let sp = SyntaxPlan::new_for_dql_subtree(&subtree, Snapshot::Oldest)?;
+            let sp = SyntaxPlan::new(&value.plan, value.sql_top_id, Snapshot::Oldest)?;
             let on = OrderedSyntaxNodes::try_from(sp)?;
             let a = on.to_syntax_data()?;
-            subtree.generate_sql(&a, plan_id, table_name, Some(value.constant_ids.as_slice()))?
+            value
+                .plan
+                .generate_sql(&a, plan_id, table_name, Some(value.constant_ids.as_slice()))?
         };
 
         let plan = value.plan.get_ir_plan();

@@ -22,7 +22,7 @@ use tarantool::tuple::{FunctionArgs, Tuple};
 use twox_hash::XxHash3_64;
 
 use crate::errors::{Action, Entity, SbroadError};
-use crate::executor::ir::{DqlSubtree, ExecutionPlan, SqlExecutionView};
+use crate::executor::ir::ExecutionPlan;
 use crate::ir::columns::RelColumn;
 use crate::ir::operator::{ConflictDoUpdate, ConflictStrategy, OrderByEntity, OrderByType};
 use crate::ir::tree::Snapshot;
@@ -189,7 +189,7 @@ fn exposed_or_output_alias(
 }
 
 pub(super) fn asterisk_exposed_column_name(
-    view: &(impl SqlExecutionView + ?Sized),
+    plan: &ExecutionPlan,
     ir: &Plan,
     col_id: NodeId,
 ) -> Result<Option<SmolStr>, SbroadError> {
@@ -207,20 +207,20 @@ pub(super) fn asterisk_exposed_column_name(
     };
 
     let source_rel_id = ir.get_reference_source_relation(ref_id)?;
-    relation_exposed_column_name(view, ir, RelColumn::new(source_rel_id, *position))
+    relation_exposed_column_name(plan, ir, RelColumn::new(source_rel_id, *position))
 }
 
 fn motion_serialize_as_empty_enabled(
-    view: &(impl SqlExecutionView + ?Sized),
+    plan: &ExecutionPlan,
     motion_id: NodeId,
     motion: &Motion,
 ) -> bool {
-    view.effective_serialize_as_empty_state(motion_id, &motion.program)
+    plan.effective_serialize_as_empty_state(motion_id, &motion.program)
         .is_enabled()
 }
 
 fn relation_exposed_column_name(
-    view: &(impl SqlExecutionView + ?Sized),
+    plan: &ExecutionPlan,
     ir: &Plan,
     rel_col: RelColumn,
 ) -> Result<Option<SmolStr>, SbroadError> {
@@ -228,73 +228,73 @@ fn relation_exposed_column_name(
     let rel_node = ir.get_relation_node(rel_id)?;
     match rel_node {
         Relational::Motion(motion) => {
-            if motion_serialize_as_empty_enabled(view, rel_id, motion) {
+            if motion_serialize_as_empty_enabled(plan, rel_id, motion) {
                 return output_alias_name(ir, rel_col);
             }
-            if let Some(vtable) = view.get_vtables().get(&rel_id) {
+            if let Some(vtable) = plan.get_vtables().get(&rel_id) {
                 return vtable_column_name(vtable.as_ref(), rel_col).map(Some);
             }
             if !motion.policy.is_local() {
-                let vtable = view.get_motion_vtable(rel_id)?;
+                let vtable = plan.get_motion_vtable(rel_id)?;
                 return vtable_column_name(vtable.as_ref(), rel_col).map(Some);
             }
             if let Some(child) = motion.child {
-                return relation_exposed_column_name(view, ir, RelColumn::new(child, position));
+                return relation_exposed_column_name(plan, ir, RelColumn::new(child, position));
             }
             output_alias_name(ir, rel_col)
         }
         Relational::ScanCte(scan) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(scan.child, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(scan.child, position))?,
             ir,
             rel_col,
         ),
         Relational::ScanSubQuery(scan) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(scan.child, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(scan.child, position))?,
             ir,
             rel_col,
         ),
         Relational::Union(set) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(set.left, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(set.left, position))?,
             ir,
             rel_col,
         ),
         Relational::UnionAll(set) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(set.left, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(set.left, position))?,
             ir,
             rel_col,
         ),
         Relational::Except(set) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(set.left, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(set.left, position))?,
             ir,
             rel_col,
         ),
         Relational::Intersect(set) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(set.left, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(set.left, position))?,
             ir,
             rel_col,
         ),
         Relational::Selection(selection) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(selection.child, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(selection.child, position))?,
             ir,
             rel_col,
         ),
         Relational::Having(having) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(having.child, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(having.child, position))?,
             ir,
             rel_col,
         ),
         Relational::OrderBy(order_by) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(order_by.child, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(order_by.child, position))?,
             ir,
             rel_col,
         ),
         Relational::Limit(limit) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(limit.child, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(limit.child, position))?,
             ir,
             rel_col,
         ),
         Relational::GroupBy(group_by) => exposed_or_output_alias(
-            relation_exposed_column_name(view, ir, RelColumn::new(group_by.child, position))?,
+            relation_exposed_column_name(plan, ir, RelColumn::new(group_by.child, position))?,
             ir,
             rel_col,
         ),
@@ -303,7 +303,7 @@ fn relation_exposed_column_name(
             let Some(col_id) = output_row.get_row_list()?.get(position).copied() else {
                 return Ok(None);
             };
-            exposed_or_output_alias(asterisk_exposed_column_name(view, ir, col_id)?, ir, rel_col)
+            exposed_or_output_alias(asterisk_exposed_column_name(plan, ir, col_id)?, ir, rel_col)
         }
         // An asterisk over a table function scan expands to its columns with
         // their names in queries (see `SyntaxPlan::is_function_column`).
@@ -313,7 +313,7 @@ fn relation_exposed_column_name(
 
 /// Resolves the column `rel_col` to the column reference rendered in SQL.
 fn sql_column_reference_at(
-    view: &(impl SqlExecutionView + ?Sized),
+    plan: &ExecutionPlan,
     ir: &Plan,
     mut rel_col: RelColumn,
 ) -> Result<Option<SqlColumnReference>, SbroadError> {
@@ -321,7 +321,7 @@ fn sql_column_reference_at(
         let rel_node = ir.get_relation_node(rel_col.rel_id)?;
         match rel_node {
             Relational::Motion(motion) => {
-                if motion_serialize_as_empty_enabled(view, rel_col.rel_id, motion) {
+                if motion_serialize_as_empty_enabled(plan, rel_col.rel_id, motion) {
                     let Some(name) = output_alias_name(ir, rel_col)? else {
                         return Ok(None);
                     };
@@ -331,17 +331,17 @@ fn sql_column_reference_at(
                         cast: None,
                     }));
                 }
-                if let Some(vtable) = view.get_vtables().get(&rel_col.rel_id) {
+                if let Some(vtable) = plan.get_vtables().get(&rel_col.rel_id) {
                     return sql_column_reference_from_vtable(vtable.as_ref(), rel_col).map(Some);
                 }
                 if !motion.policy.is_local() {
-                    let vtable = view.get_motion_vtable(rel_col.rel_id)?;
+                    let vtable = plan.get_motion_vtable(rel_col.rel_id)?;
                     return sql_column_reference_from_vtable(vtable.as_ref(), rel_col).map(Some);
                 }
             }
             Relational::ScanCte(scan) => {
                 let child_col = RelColumn::new(scan.child, rel_col.position);
-                let name = relation_exposed_column_name(view, ir, child_col)?
+                let name = relation_exposed_column_name(plan, ir, child_col)?
                     .or(output_alias_name(ir, rel_col)?);
                 return Ok(name.map(|name| SqlColumnReference {
                     name,
@@ -351,7 +351,7 @@ fn sql_column_reference_at(
             }
             Relational::ScanSubQuery(scan) => {
                 let child_col = RelColumn::new(scan.child, rel_col.position);
-                let name = relation_exposed_column_name(view, ir, child_col)?
+                let name = relation_exposed_column_name(plan, ir, child_col)?
                     .or(output_alias_name(ir, rel_col)?);
                 return Ok(name.map(|name| SqlColumnReference {
                     name,
@@ -441,7 +441,7 @@ fn is_sql_scope_boundary(rel_node: &Relational<'_>) -> bool {
 }
 
 fn write_reference_sql(
-    view: &(impl SqlExecutionView + ?Sized),
+    plan: &ExecutionPlan,
     ir: &Plan,
     sql: &mut String,
     ref_id: NodeId,
@@ -471,17 +471,17 @@ fn write_reference_sql(
         return Ok(());
     }
 
-    write_column_reference_sql(view, ir, sql, rel_col)
+    write_column_reference_sql(plan, ir, sql, rel_col)
 }
 
 /// Writes the column `rel_col` the way a reference to it is rendered in SQL.
 fn write_column_reference_sql(
-    view: &(impl SqlExecutionView + ?Sized),
+    plan: &ExecutionPlan,
     ir: &Plan,
     sql: &mut String,
     rel_col: RelColumn,
 ) -> Result<(), SbroadError> {
-    if let Some(column) = sql_column_reference_at(view, ir, rel_col)? {
+    if let Some(column) = sql_column_reference_at(plan, ir, rel_col)? {
         push_sql_column_reference(sql, &column);
         return Ok(());
     }
@@ -1081,7 +1081,7 @@ impl ExecutionPlan {
     where
         C: AsRef<[NodeId]>,
     {
-        generate_sql_from_view(self, nodes, plan_id, table_name, constants)
+        render_sql(self, nodes, plan_id, table_name, constants)
     }
 
     /// Checks if the given query subtree modifies data or not.
@@ -1097,38 +1097,18 @@ impl ExecutionPlan {
     }
 }
 
-impl DqlSubtree<'_> {
-    /// Renders local SQL for this effective DQL subtree.
-    ///
-    /// When constants are rendered as parameters, `constants` must contain their
-    /// node ids in the same order as SQL placeholders. Only nodes visible
-    /// through this subtree view are eligible for relation and vtable lookup.
-    pub fn generate_sql<C>(
-        &self,
-        nodes: &[impl AsRef<SyntaxData>],
-        plan_id: u64,
-        table_name: fn(u64, NodeId) -> SmolStr,
-        constants: Option<C>,
-    ) -> Result<String, SbroadError>
-    where
-        C: AsRef<[NodeId]>,
-    {
-        generate_sql_from_view(self, nodes, plan_id, table_name, constants)
-    }
-}
-
-fn sql_append_bucket_filter<V: SqlExecutionView + ?Sized>(
-    view: &V,
+fn sql_append_bucket_filter(
+    plan: &ExecutionPlan,
     sql: &mut String,
     params_idx: &mut AHashSet<usize>,
     selection_id: NodeId,
     parameter_count: usize,
 ) -> Result<(), SbroadError> {
-    let Some(bucket_col) = view.get_bucket_ref(selection_id) else {
+    let Some(bucket_col) = plan.get_bucket_ref(selection_id) else {
         return Ok(());
     };
 
-    let bucket_ids = view.get_bucket_filter_ids().ok_or_else(|| {
+    let bucket_ids = plan.get_bucket_filter_ids().ok_or_else(|| {
         SbroadError::Invalid(
             Entity::Buckets,
             Some(format_smolstr!(
@@ -1145,10 +1125,10 @@ fn sql_append_bucket_filter<V: SqlExecutionView + ?Sized>(
         ));
     }
 
-    let ir = view.get_ir_plan();
+    let ir = plan.get_ir_plan();
 
     sql.push(' ');
-    write_column_reference_sql(view, ir, sql, bucket_col)?;
+    write_column_reference_sql(plan, ir, sql, bucket_col)?;
     sql.push_str(" IN (");
 
     let param_type = ir.column_at(bucket_col)?.r#type;
@@ -1169,19 +1149,18 @@ fn sql_append_bucket_filter<V: SqlExecutionView + ?Sized>(
     Ok(())
 }
 
-fn generate_sql_from_view<V, N, C>(
-    view: &V,
+fn render_sql<N, C>(
+    plan: &ExecutionPlan,
     nodes: &[N],
     plan_id: u64,
     table_name: fn(u64, NodeId) -> SmolStr,
     constants: Option<C>,
 ) -> Result<String, SbroadError>
 where
-    V: SqlExecutionView + ?Sized,
     N: AsRef<SyntaxData>,
     C: AsRef<[NodeId]>,
 {
-    let mut motions = AHashSet::with_capacity(view.get_vtables().len());
+    let mut motions = AHashSet::with_capacity(plan.get_vtables().len());
     let mut params_idx: AHashSet<usize> = AHashSet::new();
 
     let mut sql = String::new();
@@ -1205,7 +1184,7 @@ where
         result
     };
 
-    let ir = view.get_ir_plan();
+    let ir = plan.get_ir_plan();
     let constants = constants.as_ref().map(|constants| {
         constants
             .as_ref()
@@ -1229,7 +1208,7 @@ where
         |constants| constants.len(),
     );
     let constants_count =
-        sql_parameter_count + view.get_bucket_filter_ids().map_or(0, |ids| ids.len());
+        sql_parameter_count + plan.get_bucket_filter_ids().map_or(0, |ids| ids.len());
 
     // The starting value of the counter for generating anonymous column names.
     // It emulates Tarantool parser (generated by lemon parser generator).
@@ -1413,7 +1392,7 @@ where
                         Relational::Selection { .. } => {
                             sql.push_str("WHERE");
                             sql_append_bucket_filter(
-                                view,
+                                plan,
                                 &mut sql,
                                 &mut params_idx,
                                 *id,
@@ -1468,10 +1447,10 @@ where
                                 push_identifier(&mut sql, &alias);
                                 continue;
                             }
-                            write_reference_sql(view, ir, &mut sql, *id)?;
+                            write_reference_sql(plan, ir, &mut sql, *id)?;
                         }
                         Expression::SubQueryReference(_) => {
-                            write_reference_sql(view, ir, &mut sql, *id)?;
+                            write_reference_sql(plan, ir, &mut sql, *id)?;
                         }
                         Expression::ScalarFunction(ScalarFunction {
                             name, is_system, ..
@@ -1563,7 +1542,7 @@ where
                     col_names
                 };
                 let col_names = {
-                    let vtable = view.get_motion_vtable(*motion_id)?;
+                    let vtable = plan.get_motion_vtable(*motion_id)?;
                     build_names(vtable.get_columns())
                 };
                 write!(sql, "SELECT {col_names} FROM \"{name}\"").map_err(|e| {
@@ -1589,7 +1568,7 @@ where
     // executing empty query and `EXPLAIN QUERY PLAN ` produces
     // different errors: `Failed to execute an empty SQL statement`
     // and `Syntax error at line 1 near ''` respectively.
-    if view.get_ir_plan().is_raw_explain() && !sql.is_empty() {
+    if plan.get_ir_plan().is_raw_explain() && !sql.is_empty() {
         sql.insert_str(0, "EXPLAIN QUERY PLAN ");
     }
 
