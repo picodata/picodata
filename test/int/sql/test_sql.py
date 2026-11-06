@@ -3555,6 +3555,9 @@ def test_distributed_sql_via_set_language(cluster: Cluster):
     """
     )
 
+    # Global DML doesn't have WAIT APPLIED GLOBALLY semantics, need explicit sync
+    i2.raft_wait_index(i1.raft_get_index())
+
     select_from_second_instance = i2.eval(
         f"""
         {prelude}
@@ -5939,6 +5942,10 @@ def test_limit(cluster: Cluster):
             VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7)
         """
     )
+
+    # Global DML doesn't have WAIT APPLIED GLOBALLY semantics, need explicit sync
+    cluster.raft_wait_index(i1.raft_get_index())
+
     data = i1.retriable_sql(""" SELECT * FROM "g" """)
     assert len(data) == 7
 

@@ -157,6 +157,9 @@ def test_cross_cluster_isolation(cluster: Cluster):
     """)
     i1.sql("INSERT INTO test_table VALUES (1, 'cluster_b_data')")
 
+    # Global DML doesn't have WAIT APPLIED GLOBALLY semantics, need explicit sync
+    i2.raft_wait_index(i1.raft_get_index())
+
     # Step 6: Check that cluster B is functional
     for instance in [i1, i2]:
         result = instance.sql("SELECT * FROM test_table WHERE id = 1")
