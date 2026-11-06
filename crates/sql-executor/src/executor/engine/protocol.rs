@@ -56,17 +56,6 @@ impl<V: Encode> MsgpackEncode for ArrayMsgpackEncoder<'_, V> {
     }
 }
 
-/// Datasource for DQL queries backed by an owned execution plan.
-pub struct ExecutionData {
-    plan_id: u64,
-    sender_id: u64,
-    vtables: HashMap<SmolStr, Rc<VirtualTable>>,
-    sql_top_id: NodeId,
-    constant_ids: Vec<NodeId>,
-    params: Vec<Value>,
-    plan: ExecutionPlan, // TODO: maybe Rc<> + top_id is better
-}
-
 /// Datasource for DQL queries over an immutable execution plan.
 pub struct DqlProtocol {
     plan_id: u64,
@@ -76,31 +65,6 @@ pub struct DqlProtocol {
     constant_ids: Vec<NodeId>,
     params: Vec<Value>,
     plan: Rc<ExecutionPlan>,
-}
-
-impl ExecutionData {
-    /// Returns the plan id used by the remote SQL cache.
-    pub fn plan_id(&self) -> u64 {
-        self.plan_id
-    }
-
-    /// Returns virtual tables that must be sent with this query.
-    pub fn vtables(&self) -> &HashMap<SmolStr, Rc<VirtualTable>> {
-        &self.vtables
-    }
-
-    /// Returns effective DQL options encoded into the protocol message.
-    pub fn options(&self) -> DQLOptions {
-        self.plan
-            .get_ir_plan()
-            .effective_options
-            .to_protocol_options()
-    }
-
-    /// Encodes local SQL parameter values as msgpack.
-    pub fn encoded_params(&self) -> Vec<u8> {
-        tarantool::msgpack::encode(&self.params)
-    }
 }
 
 impl DqlProtocol {
@@ -132,63 +96,6 @@ impl DqlProtocol {
             .freeze()
             .execution_view()
             .dql_subtree(self.sql_top_id)
-    }
-}
-
-impl DQLDataSource for ExecutionData {
-    fn get_table_schema_info(&self) -> impl ExactSizeIterator<Item = (u32, u64)> {
-        self.plan
-            .get_ir_plan()
-            .table_version_map
-            .iter()
-            .map(|(k, v)| (*k, *v))
-    }
-
-    fn get_index_schema_info(&self) -> impl ExactSizeIterator<Item = ([u32; 2], u64)> {
-        self.plan
-            .get_ir_plan()
-            .index_version_map
-            .iter()
-            .map(|(k, v)| (*k, *v))
-    }
-
-    fn get_plan_id(&self) -> u64 {
-        self.plan_id
-    }
-
-    fn get_sender_id(&self) -> u64 {
-        self.sender_id
-    }
-
-    fn get_request_id(&self) -> &str {
-        self.plan.get_request_id()
-    }
-
-    fn get_vtables(
-        &self,
-    ) -> impl ExactSizeIterator<Item = (&str, impl ExactSizeIterator<Item = impl MsgpackEncode>)>
-    {
-        self.vtables.iter().map(|(name, table)| {
-            (
-                name.as_str(),
-                table
-                    .get_tuples()
-                    .iter()
-                    .enumerate()
-                    .map(|(pk, tuple)| VirtualTableTupleEncoder::new(tuple, pk as u64)),
-            )
-        })
-    }
-
-    fn get_options(&self) -> DQLOptions {
-        self.plan
-            .get_ir_plan()
-            .effective_options
-            .to_protocol_options()
-    }
-
-    fn get_params(&self) -> impl MsgpackEncode {
-        ArrayMsgpackEncoder::new(self.params.as_slice())
     }
 }
 
@@ -774,33 +681,6 @@ fn vtables_metadata(
         .collect()
 }
 
-impl TryFrom<&ExecutionData> for ExecutionCacheMissData {
-    type Error = SbroadError;
-
-    fn try_from(value: &ExecutionData) -> Result<Self, Self::Error> {
-        let sql = {
-            let plan_id = value.get_plan_id();
-            let sp = SyntaxPlan::new(&value.plan, value.sql_top_id, Snapshot::Oldest)?;
-            let on = OrderedSyntaxNodes::try_from(sp)?;
-            let a = on.to_syntax_data()?;
-            value
-                .plan
-                .generate_sql(&a, plan_id, table_name, Some(value.constant_ids.as_slice()))?
-        };
-
-        let plan = value.plan.get_ir_plan();
-        let schema_info = PlanVersion {
-            table_version_map: (*plan.table_version_map).clone(),
-            index_version_map: (*plan.index_version_map).clone(),
-        };
-        Ok(Self {
-            schema_info,
-            vtables_meta: vtables_metadata(&value.vtables),
-            sql,
-        })
-    }
-}
-
 impl TryFrom<&DqlProtocol> for ExecutionCacheMissData {
     type Error = SbroadError;
 
@@ -853,11 +733,6 @@ impl DQLCacheMissDataSource for ExecutionCacheMissData {
     }
 }
 
-fn dql_sql_top_id(exec_plan: &ExecutionPlan) -> Result<NodeId, SbroadError> {
-    let top_id = exec_plan.get_ir_plan().get_top()?;
-    dql_sql_top_id_for_top(exec_plan, top_id)
-}
-
 fn dql_sql_top_id_for_top(
     exec_plan: &ExecutionPlan,
     top_id: NodeId,
@@ -880,19 +755,6 @@ fn dql_sql_top_id_for_top(
     }
 }
 
-/// Builds DQL protocol data for the top query of an execution plan.
-///
-/// # Errors
-/// - If the plan id is not set.
-/// - If the top query cannot be converted into a DQL subtree protocol view.
-pub fn build_dql_protocol(
-    exec_plan: ExecutionPlan,
-    sender_id: u64,
-) -> Result<DqlProtocol, SbroadError> {
-    let top_id = exec_plan.get_ir_plan().get_top()?;
-    build_dql_protocol_for_top(Rc::new(exec_plan), top_id, sender_id)
-}
-
 /// Builds DQL protocol data for an effective subtree rooted at `top_id`.
 ///
 /// Only virtual tables visible from the selected subtree are included.
@@ -912,32 +774,6 @@ pub fn build_dql_protocol_for_top(
     let (constant_ids, params) = sql_params.into_parts();
 
     Ok(DqlProtocol {
-        plan_id,
-        sender_id,
-        vtables,
-        sql_top_id,
-        constant_ids,
-        params,
-        plan: exec_plan,
-    })
-}
-
-/// Builds the legacy owned-plan DQL data source.
-///
-/// # Errors
-/// - If the plan id is not set.
-/// - If the top query cannot be inspected or parameterized.
-pub fn build_dql_data_source(
-    exec_plan: ExecutionPlan,
-    sender_id: u64,
-) -> Result<ExecutionData, SbroadError> {
-    let plan_id = exec_plan.get_plan_id()?;
-    let sql_top_id = dql_sql_top_id(&exec_plan)?;
-    let sql_params = exec_plan.local_sql_params(sql_top_id, Snapshot::Oldest)?;
-    let vtables = exec_plan.subtree_vtables(sql_top_id, plan_id)?;
-    let (constant_ids, params) = sql_params.into_parts();
-
-    Ok(ExecutionData {
         plan_id,
         sender_id,
         vtables,
@@ -998,43 +834,6 @@ mod tests {
         assert_eq!(
             dql.vtables().keys().collect::<HashSet<_>>(),
             miss.vtables_meta.keys().collect::<HashSet<_>>()
-        );
-    }
-
-    #[test]
-    fn dql_protocol_cache_miss_matches_execution_data() {
-        let mut exec_plan = ExecutionPlan::new(sql_to_optimized_ir(
-            r#"select "id" from "test_space" where "id" = 1"#,
-            vec![],
-        ));
-        let top_id = exec_plan.get_ir_plan().get_top().unwrap();
-        exec_plan.set_plan_id(top_id).unwrap();
-
-        let execution_data = build_dql_data_source(exec_plan.clone(), 42).unwrap();
-        let dql_protocol = build_dql_protocol(exec_plan.clone(), 42).unwrap();
-
-        let mut protocol_params = Vec::new();
-        dql_protocol
-            .get_params()
-            .encode_into(&mut protocol_params)
-            .unwrap();
-
-        assert_eq!(execution_data.get_plan_id(), dql_protocol.get_plan_id());
-        assert_eq!(execution_data.encoded_params(), protocol_params);
-        assert_eq!(execution_data.get_options(), dql_protocol.get_options());
-
-        let execution_miss = ExecutionCacheMissData::try_from(&execution_data).unwrap();
-        let protocol_miss = ExecutionCacheMissData::try_from(&dql_protocol).unwrap();
-
-        assert_eq!(execution_miss.sql, protocol_miss.sql);
-        assert_eq!(execution_miss.vtables_meta, protocol_miss.vtables_meta);
-        assert_eq!(
-            execution_miss.schema_info.table_version_map,
-            protocol_miss.schema_info.table_version_map
-        );
-        assert_eq!(
-            execution_miss.schema_info.index_version_map,
-            protocol_miss.schema_info.index_version_map
         );
     }
 }
