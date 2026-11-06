@@ -19,10 +19,10 @@ export function refreshSession(config: AxiosRequestConfig) {
   return axios.get<SessionModel>(sessionURL, config);
 }
 
-// TODO: enable when DELETE /session works
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export const deleteSession = (config: AxiosRequestConfig) => {
-  return Promise.resolve(); //TODO: make it as axios.delete(sessionURL, config);
+export const deleteSession = async (
+  config: AxiosRequestConfig
+): Promise<void> => {
+  await axios.delete(sessionURL, config);
 };
 
 export function isAuthError(e: AxiosError) {

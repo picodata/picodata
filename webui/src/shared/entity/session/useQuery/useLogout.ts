@@ -20,7 +20,7 @@ export const useLogout = () => {
     mutationFn: () => {
       sessionStore.clear();
       navigate(Routes.LOGIN);
-      return api.deleteSession(withToken(() => tokens.auth));
+      return api.deleteSession(withToken(() => tokens.refresh));
     },
     ...queryConfig,
   });
