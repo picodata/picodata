@@ -487,7 +487,7 @@ pub(crate) fn single_plan_dispatch<'p>(
                 max_rows,
                 timeout,
                 tier,
-                read_preference.to_string(),
+                read_preference,
                 do_two_step,
             )?
         }
@@ -552,7 +552,7 @@ pub(crate) fn custom_plan_dispatch<'p>(
                 max_rows,
                 timeout,
                 tier,
-                read_preference.to_string(),
+                read_preference,
                 do_two_step,
             )?;
         }
@@ -615,7 +615,7 @@ pub(crate) fn block_dispatch<'p>(
                 &replicasets,
                 timeout,
                 tier,
-                String::from("leader"),
+                "leader",
                 false,
             )
             .map_err(|e| SbroadError::DispatchError(format_smolstr!("{e}")))?;
@@ -1108,7 +1108,7 @@ fn single_plan_dispatch_dql<'p>(
     max_rows: u64,
     timeout: Duration,
     tier: Option<&str>,
-    read_preference: String,
+    read_preference: &str,
     do_two_step: bool,
 ) -> SqlResult<()> {
     let row_len = row_len(&ex_plan, top_id)?;
@@ -1164,7 +1164,7 @@ fn custom_plan_dispatch_dql<'p>(
     max_rows: u64,
     timeout: Duration,
     tier: Option<&str>,
-    read_preference: String,
+    read_preference: &str,
     do_two_step: bool,
 ) -> SqlResult<()> {
     let row_len = row_len(&ex_plan, top_id)?;
@@ -1609,7 +1609,7 @@ fn single_plan_dispatch_dml<'p>(
     tier: Option<&str>,
 ) -> SqlResult<()> {
     // This option is available only for DQL.
-    let read_preference = ReadPreference::default().to_string();
+    let read_preference = ReadPreference::default().as_str();
     let (message, new_plan) = build_dml_request(ex_plan, top_id)?.into_message()?;
     let _guard = put_query_meta(new_plan)?;
 
@@ -1637,7 +1637,7 @@ fn custom_plan_dispatch_dml<'p>(
     timeout: Duration,
     tier: Option<&str>,
 ) -> SqlResult<()> {
-    let read_preference = ReadPreference::default().to_string();
+    let read_preference = ReadPreference::default().as_str();
     let (rs_plan, _) = prepare_rs_to_ir_map(&rs_buckets, ex_plan.as_ref().clone(), top_id)?;
     let mut dql_encoder = None;
     let mut args = HashMap::with_capacity(rs_plan.len());

@@ -642,7 +642,7 @@ pub(crate) fn lua_single_plan_dispatch<'lua, T>(
     replicasets: &[String],
     timeout: Duration,
     tier: Option<&str>,
-    read_preference: String,
+    read_preference: &str,
     do_two_step: bool,
 ) -> Result<Rc<IbufTable<'lua>>>
 where
@@ -676,7 +676,7 @@ pub(crate) fn lua_custom_plan_dispatch<'lua, T>(
     args: T,
     timeout: Duration,
     tier: Option<&str>,
-    read_preference: String,
+    read_preference: &str,
     do_two_step: bool,
 ) -> Result<Rc<IbufTable<'lua>>>
 where
