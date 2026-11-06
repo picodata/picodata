@@ -677,6 +677,10 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     i2 = cluster.add_instance(replicaset_name="r2", wait_online=True)
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
 
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
+
     initial_term = i3.raft_term()
 
     # This is a replica which will be catching up
@@ -812,6 +816,10 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, replicaset_name="R2")
     i3 = cluster.add_instance(wait_online=True, replicaset_name="R2")
 
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
+
     i1.assert_raft_status("Leader")
 
     i3.terminate()
@@ -890,6 +898,10 @@ def test_ddl_create_table_at_catchup_with_master_switchover(cluster: Cluster):
     # This is a replica, who will become master and will catch up.
     i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
+
     i4.terminate()
 
     # TODO: check other ddl operations
@@ -951,6 +963,10 @@ cluster:
     storage_2 = cluster.add_instance(tier="storage", wait_online=False)
 
     cluster.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
 
     storage_2.terminate()
 
@@ -1068,6 +1084,9 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     i4 = cluster.add_instance(wait_online=True, replicaset_name="R99")
     i5 = cluster.add_instance(wait_online=True, replicaset_name="R99")
 
+    # Calling wait_until_buckets_balanced explicitly after adding instances
+    cluster.wait_until_buckets_balanced()
+
     # Set up.
     table_name = "trinkets"
     cluster.create_table(
@@ -1149,6 +1168,9 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, replicaset_name="r99")
     # This one will be catching up.
     i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+
+    # Calling wait_until_buckets_balanced explicitly after adding instances
+    cluster.wait_until_buckets_balanced()
 
     # Set up.
     i1.sql(
@@ -1323,6 +1345,9 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
     # This one will be catching up.
     i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
+    # Calling wait_until_buckets_balanced explicitly after adding instances
+    cluster.wait_until_buckets_balanced()
+
     # Set up.
     i1.sql(
         """
@@ -1426,6 +1451,9 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
     # This is a replica, who will become master and be catching up.
     i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+
+    # Calling wait_until_buckets_balanced explicitly after adding instances
+    cluster.wait_until_buckets_balanced()
 
     # Set up.
     i1.sql(
@@ -1570,6 +1598,10 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     i4 = cluster.add_instance(wait_online=True, replicaset_name="R2")
     i5 = cluster.add_instance(wait_online=True, replicaset_name="R2")
 
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
+
     #
     # Set up.
     #
@@ -1653,6 +1685,10 @@ cluster:
     i2 = cluster.add_instance(tier="default")
     i2.start()
     i2.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
 
     i2.create_user(with_name="andy", with_password="Testpa55", with_auth="chap-sha1")
     i2.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
@@ -1880,6 +1916,11 @@ def test_operability_of_global_and_sharded_table(cluster: Cluster):
     i1.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
     i1.start()
     i1.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
+
     i1.sql("ALTER SYSTEM SET sql_runtime_concurrency_max = 2")
 
     # GLOBAL TABLE
@@ -1953,6 +1994,11 @@ cluster:
     storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
 
     cluster.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
+
     assert storage_1_1.replicaset_name == storage_1_2.replicaset_name
 
     # Create table while there's just one replicaset
@@ -2198,6 +2244,8 @@ def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
     _i2 = cluster.add_instance(replicaset_name="r2", wait_online=True)
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
 
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
     cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("CREATE TABLE t(a int primary key) WAIT APPLIED GLOBALLY")
@@ -2225,7 +2273,6 @@ def test_truncate_is_applied_during_replica_wakeup(cluster: Cluster):
 
 def test_truncate_is_applied_during_node_wakeup_for_sharded_table(cluster: Cluster):
     i1, i2, *_ = cluster.deploy(instance_count=5)
-    cluster.wait_until_buckets_balanced()
 
     i1.sql("CREATE TABLE t(a int primary key)")
 
@@ -2300,8 +2347,6 @@ def test_truncate_is_applied_during_node_wakeup_for_global_table(cluster: Cluste
 def test_truncate_is_applied_from_snapshot_for_sharded_table(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
-    cluster.wait_until_buckets_balanced()
-
     ddl = i1.sql("CREATE TABLE t(a int primary key)")
     assert ddl["row_count"] == 1
 
@@ -2351,6 +2396,10 @@ cluster:
     storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
     storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
     cluster.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
 
     leader.sql("CREATE TABLE glob (id INT PRIMARY KEY, value TEXT) DISTRIBUTED GLOBALLY")
     leader.sql("INSERT INTO glob VALUES (1, 'foo'), (2, 'bar'), (3, 'kek')")
@@ -2435,6 +2484,10 @@ cluster:
     i2 = cluster.add_instance(tier="tier_2", wait_online=False)
     cluster.add_instance(tier="tier_2", wait_online=False)
     cluster.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
 
     ddl = i1.sql("CREATE TABLE t1(a int primary key) distributed by (a) in tier tier_1")
     assert ddl["row_count"] == 1
@@ -2563,6 +2616,10 @@ def test_alter_table_rename_ddl_execution(cluster: Cluster):
     r2_leader = cluster.add_instance(replicaset_name="r2", init_replication_factor=2)
     r2_slave = cluster.add_instance(replicaset_name="r2", init_replication_factor=2)
 
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
+
     table_name = "t1"
     r1_leader.sql(
         f"""
@@ -2647,6 +2704,8 @@ def test_drop_table_pause_rebalancing(cluster: Cluster):
     r1_leader = cluster.add_instance(replicaset_name="r1")
     _ = cluster.add_instance(replicaset_name="r2")
 
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
     cluster.wait_until_buckets_balanced()
 
     ddl = r1_leader.sql(
@@ -2729,6 +2788,10 @@ cluster:
     red = cluster.add_instance(name="red_1", tier="red", wait_online=False)
     blue = cluster.add_instance(name="blue_1", tier="blue", wait_online=False)
     cluster.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
 
     ddl = red.sql(
         """
@@ -2885,6 +2948,11 @@ def test_ddl_in_heterogeneous_cluster_is_prohibited(cluster: Cluster):
     cluster.set_service_password("secret")
 
     i1 = cluster.add_instance()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
+
     i1_version = i1.picodata_version()
 
     ddl = i1.sql(
@@ -2995,6 +3063,10 @@ cluster:
     cluster.add_instance(tier="storage", wait_online=False)
     cluster.add_instance(tier="storage", wait_online=False)
     cluster.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
 
     # Apply some DDL which is later going to be applied at catchup by a new replicaset
     leader.sql("CREATE TABLE i_have_no_brain_and_i_must_think (id UNSIGNED PRIMARY KEY)")
@@ -3122,6 +3194,10 @@ cluster:
     storage_1_1 = cluster.add_instance(tier="storage", wait_online=False)
     storage_1_2 = cluster.add_instance(tier="storage", wait_online=False)
     cluster.wait_online()
+
+    # Calling wait_until_buckets_balanced explicitly
+    # because Cluster.deploy is not used
+    cluster.wait_until_buckets_balanced()
 
     # Make it so a crashed instance is detected faster, this is used later
     leader.sql("ALTER SYSTEM SET governor_auto_offline_timeout = 3")
