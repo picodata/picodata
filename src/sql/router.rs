@@ -745,6 +745,7 @@ impl Vshard for Tier {
     fn exec_block_on_buckets<'p>(
         &self,
         metadata: Vec<MetadataColumn>,
+        write_metadata: bool,
         block: BlockExecData,
         buckets: &Buckets,
         request_id: &str,
@@ -754,6 +755,7 @@ impl Vshard for Tier {
         block_dispatch(
             port,
             metadata,
+            write_metadata,
             block,
             buckets,
             request_id,
@@ -814,6 +816,7 @@ impl Vshard for &Tier {
     fn exec_block_on_buckets<'p>(
         &self,
         metadata: Vec<MetadataColumn>,
+        write_metadata: bool,
         block: BlockExecData,
         buckets: &Buckets,
         request_id: &str,
@@ -823,6 +826,7 @@ impl Vshard for &Tier {
         block_dispatch(
             port,
             metadata,
+            write_metadata,
             block,
             buckets,
             request_id,

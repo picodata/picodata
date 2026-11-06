@@ -269,14 +269,28 @@ fn port_write_dml_response<'p>(port: &mut impl Port<'p>, changed: u64) {
 }
 
 /// Same as [`dispatch_bound_statement`], but does not collect any metrics
+/// Whether the result port of a DQL gets the metadata tuple, the column
+/// names and types, before the rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResultMetadata {
+    /// iproto clients read the columns from the port.
+    Write,
+    /// pgproto knows the columns from the describe and reads the rows only.
+    Skip,
+}
+
 fn dispatch_bound_statement_impl<'p>(
     runtime: &RouterRuntime,
     statement: BoundStatement,
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
     port: &mut impl Port<'p>,
+    metadata: ResultMetadata,
 ) -> traft::Result<()> {
     let mut query = ExecutingQuery::from_bound_statement(runtime, statement)?;
+    if metadata == ResultMetadata::Skip {
+        query.skip_result_metadata();
+    }
     if query.is_empty() {
         port.set_type(PortType::DispatchDml);
         port_write_dml_response(port, 0);
@@ -341,8 +355,10 @@ fn dispatch_bound_statement_impl<'p>(
         // Extract metadata msgpack from the binary.
         let meta_len = read_bin_len(&mut cur).map_err(Error::other)? as usize;
         let pos = cur.position() as usize;
-        let meta_mp = &mp[pos..pos + meta_len];
-        port.write_all(meta_mp).map_err(Error::other)?;
+        if metadata == ResultMetadata::Write {
+            let meta_mp = &mp[pos..pos + meta_len];
+            port.write_all(meta_mp).map_err(Error::other)?;
+        }
         cur.set_position((pos + meta_len) as u64);
 
         // Repack directory string into a single element array msgpack.
@@ -648,6 +664,7 @@ fn dispatch_bound_statement_impl<'p>(
                     override_deadline,
                     None,
                     port,
+                    metadata,
                 )
             }
             BlockOwned::Anonymous(AnonymousBlock { .. }) => {
@@ -706,11 +723,18 @@ pub fn dispatch_bound_statement<'p>(
     override_deadline: Option<Instant>,
     governor_op_id: Option<u64>,
     port: &mut impl Port<'p>,
+    metadata: ResultMetadata,
 ) -> traft::Result<()> {
     let start = Instant::now_fiber();
 
-    let result =
-        dispatch_bound_statement_impl(runtime, statement, override_deadline, governor_op_id, port);
+    let result = dispatch_bound_statement_impl(
+        runtime,
+        statement,
+        override_deadline,
+        governor_op_id,
+        port,
+        metadata,
+    );
 
     let node = node::global()?;
     let tier = node.catalog_cache.my_tier_name();
@@ -829,6 +853,7 @@ pub fn parse_and_dispatch<'p>(
         override_deadline,
         governor_op_id,
         port,
+        ResultMetadata::Write,
     )?;
     Ok(())
 }

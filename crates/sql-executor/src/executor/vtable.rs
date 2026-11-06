@@ -627,8 +627,9 @@ impl VirtualTable {
         &self,
         aliases: impl Iterator<Item = &'alias str>,
         port: &mut impl Port<'port>,
+        with_metadata: bool,
     ) -> IoResult<()> {
-        {
+        if with_metadata {
             let mut meta_mp: Vec<u8> = Vec::new();
             let Ok(len) = u32::try_from(self.columns.len()) else {
                 return Err(IoError::other("too many columns in vtable"));

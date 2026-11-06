@@ -534,10 +534,12 @@ pub trait Vshard {
 
     /// `buckets` contains one bucket, or it is [`Buckets::Any`] if no statement
     /// sets the bucket. It is not possible to execute a block on more than one
-    /// bucket.
+    /// bucket. `write_metadata` tells whether `metadata` goes into the port
+    /// before the rows.
     fn exec_block_on_buckets<'p>(
         &self,
         metadata: Vec<MetadataColumn>,
+        write_metadata: bool,
         block: BlockExecData,
         buckets: &Buckets,
         request_id: &str,

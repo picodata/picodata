@@ -1303,6 +1303,7 @@ impl Vshard for RouterRuntimeMock {
     fn exec_block_on_buckets<'p>(
         &self,
         _metadata: Vec<MetadataColumn>,
+        _write_metadata: bool,
         _block: BlockExecData,
         _buckets: &Buckets,
         _request_id: &str,
@@ -1354,6 +1355,7 @@ impl Vshard for &RouterRuntimeMock {
     fn exec_block_on_buckets<'p>(
         &self,
         _metadata: Vec<MetadataColumn>,
+        _write_metadata: bool,
         _block: BlockExecData,
         _buckets: &Buckets,
         _request_id: &str,

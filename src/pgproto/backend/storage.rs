@@ -6,6 +6,7 @@ use super::{
 use crate::audit;
 use crate::config::observer::AtomicObserver;
 use crate::sql::router::{get_table_version, RouterRuntime};
+use crate::sql::{dispatch_bound_statement, ResultMetadata};
 use crate::{
     pgproto::{
         error::{PedanticError, PgError, PgErrorCode, PgResult},
@@ -585,7 +586,7 @@ impl PortalInner {
         }
 
         let port = PinnedPort::fill(|port| {
-            crate::sql::dispatch_bound_statement(router, statement, None, None, port)?;
+            dispatch_bound_statement(router, statement, None, None, port, ResultMetadata::Skip)?;
             Ok(())
         })?;
 

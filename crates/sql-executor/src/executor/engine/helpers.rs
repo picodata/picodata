@@ -1388,7 +1388,14 @@ fn dispatch_block<'p>(
         vdbe_max_steps,
         returns_rows: !block.return_columns.is_empty(),
     };
-    tier_runtime.exec_block_on_buckets(metadata, exec_block, buckets, &request_id, port)
+    tier_runtime.exec_block_on_buckets(
+        metadata,
+        plan.must_write_result_metadata(),
+        exec_block,
+        buckets,
+        &request_id,
+        port,
+    )
 }
 
 /// Puts the plan that `dispatch_impl` froze for the dispatch back into `plan`.
@@ -1952,7 +1959,9 @@ pub fn empty_plan_write_for_top<'p>(
             port.add_mp(b"\xcc\x00".as_ref());
         }
         false => {
-            metadata_write(port, plan.get_ir_plan(), top_id)?;
+            if plan.must_write_result_metadata() {
+                metadata_write(port, plan.get_ir_plan(), top_id)?;
+            }
         }
     }
     Ok(())

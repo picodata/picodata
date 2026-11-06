@@ -2263,3 +2263,26 @@ fn exec_plan_motion_input_of_an_empty_domain() {
         @r#"SELECT * FROM (SELECT "test_space_hist"."id", "test_space_hist"."sysFrom" FROM "test_space_hist") as "s" WHERE $1::bool"#,
     );
 }
+
+#[test]
+fn empty_result_writes_metadata_unless_skipped() {
+    use crate::executor::engine::helpers::empty_plan_write_for_top;
+    use crate::executor::Port as _;
+
+    let plan = sql_to_optimized_ir(r#"select "id" from "test_space""#, vec![]);
+    let mut exec_plan = ExecutionPlan::new(plan);
+    let top_id = exec_plan.get_ir_plan().get_top().unwrap();
+
+    let mut port = PortMocked::new();
+    empty_plan_write_for_top(&mut port, &exec_plan, top_id).unwrap();
+    assert_eq!(1, port.size(), "the metadata tuple of an empty result");
+
+    exec_plan.skip_result_metadata();
+    let mut port = PortMocked::new();
+    empty_plan_write_for_top(&mut port, &exec_plan, top_id).unwrap();
+    assert_eq!(
+        0,
+        port.size(),
+        "no tuple when the consumer has the describe"
+    );
+}

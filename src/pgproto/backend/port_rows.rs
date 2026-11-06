@@ -62,17 +62,14 @@ pub struct PortRows {
 }
 
 impl PortRows {
-    /// Rows of a DQL result. The first msgpack of such a port is the metadata,
-    /// the remaining ones are the tuples, so the first one is skipped.
+    /// Rows of a DQL result. The port holds the tuples only: the dispatch was
+    /// asked to skip the metadata, since the client has the row description
+    /// from the describe.
     fn new_dql(port: PinnedPort) -> Self {
-        let mut cursor = port.port_c().cursor();
-
-        // SAFETY: the cursor was created from this very port, which can't be
-        // mutated anymore, see `PinnedPort`. The same holds for `next_row`.
-        let metadata = unsafe { cursor.next(port.port_c()) };
-        debug_assert!(metadata.is_some(), "a DQL port must contain metadata");
-
-        let remaining = port.size().saturating_sub(1);
+        // SAFETY of the cursor: it is created from this very port, which can't
+        // be mutated anymore, see `PinnedPort`. See `next_row`.
+        let cursor = port.port_c().cursor();
+        let remaining = port.size();
         Self {
             port,
             cursor,
@@ -195,12 +192,9 @@ mod tests {
     use std::borrow::Cow;
     use std::io::Cursor;
 
-    /// A port shaped like the one a DQL leaves behind: the metadata comes first,
-    /// followed by a msgpack per row.
+    /// A port shaped like the one a DQL leaves behind: a msgpack per row.
     fn dql_port(rows: &[Vec<u8>]) -> PinnedPort {
         PinnedPort::fill(|port| {
-            // The content of the metadata doesn't matter here, it's skipped.
-            port.add_mp(b"\x90");
             for row in rows {
                 port.add_mp(row);
             }

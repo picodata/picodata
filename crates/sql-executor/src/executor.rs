@@ -128,6 +128,8 @@ pub struct ExecutingQuery<'a, C> {
     /// It denotes the buckets where the output of the relational node is located.
     bucket_map: HashMap<NodeId, Buckets>,
     exec_ctx: ExecutionContext,
+    /// Whether the result port gets the metadata tuple before the rows.
+    write_metadata: bool,
 }
 
 impl<'a, C> ExecutingQuery<'a, C>
@@ -154,7 +156,14 @@ where
             coordinator: runtime,
             bucket_map: HashMap::new(),
             exec_ctx: ExecutionContext::default(),
+            write_metadata: true,
         })
+    }
+
+    /// The result port gets the rows only, without the metadata tuple in
+    /// front of them. For a consumer that knows the columns from the describe.
+    pub fn skip_result_metadata(&mut self) {
+        self.write_metadata = false;
     }
 
     /// Get the execution plan of the query.
@@ -352,6 +361,9 @@ where
             let buckets = self.calculate_block_buckets(&block)?;
             self.enforce_forward_option(&buckets)?;
 
+            if !self.write_metadata {
+                self.exec_plan.skip_result_metadata();
+            }
             return self
                 .coordinator
                 .dispatch(&mut self.exec_plan, top_id, &buckets, port);
@@ -378,10 +390,14 @@ where
                 return Err(err("there are other references for the virtual table"));
             };
 
-            // Skip metadata in case of `EXPLAIN (RAW)`
+            // `EXPLAIN (RAW)` reports the dispatch of the subtree, not its rows.
             if !self.exec_plan.get_ir_plan().is_raw_explain() {
                 table
-                    .dump_mp(aliases.iter().map(|s| s.as_str()), port)
+                    .dump_mp(
+                        aliases.iter().map(|s| s.as_str()),
+                        port,
+                        self.write_metadata,
+                    )
                     .map_err(|e| {
                         SbroadError::Invalid(Entity::VirtualTable, Some(format_smolstr!("{e}")))
                     })?;
@@ -399,6 +415,11 @@ where
         }
 
         let query_num = self.exec_plan.get_vtables().len();
+        // The motions are materialized above; only the top is dispatched
+        // into the result port.
+        if !self.write_metadata {
+            self.exec_plan.skip_result_metadata();
+        }
         self.coordinator
             .dispatch(&mut self.exec_plan, top_id, &buckets, port)
             .map_err(|err| match err.kind() {

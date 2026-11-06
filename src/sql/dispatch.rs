@@ -572,6 +572,7 @@ pub(crate) fn custom_plan_dispatch<'p>(
 pub(crate) fn block_dispatch<'p>(
     port: &mut impl Port<'p>,
     metadata: Vec<MetadataColumn>,
+    write_metadata: bool,
     block: BlockExecData,
     buckets: &Buckets,
     request_id: &str,
@@ -583,17 +584,19 @@ pub(crate) fn block_dispatch<'p>(
         Buckets::All => Err(SbroadError::other(
             "cannot execute transaction on all buckets",
         )),
-        Buckets::Any => execute_block_locally_for_dispatch(port, &metadata, block),
+        Buckets::Any => execute_block_locally_for_dispatch(port, &metadata, write_metadata, block),
         Buckets::Filtered(_) => {
             let replicasets = replicasets_from_buckets(buckets, tier, deadline)?;
             let timeout = deadline.duration_since(Instant::now_fiber());
 
             if should_single_rs_dispatch_locally(buckets, tier, &replicasets, "leader")? {
                 return with_local_bucket_ref(timeout, "leader", || {
-                    execute_block_locally_for_dispatch(port, &metadata, block)
+                    execute_block_locally_for_dispatch(port, &metadata, write_metadata, block)
                 });
             }
-            port_write_block_metadata(port, &metadata)?;
+            if write_metadata {
+                port_write_block_metadata(port, &metadata)?;
+            }
             let columns = metadata.len();
             let data = rmp_serde::encode::to_vec(&block).map_err(|e| {
                 SbroadError::DispatchError(format_smolstr!(
@@ -639,10 +642,13 @@ pub(crate) fn block_dispatch<'p>(
 fn execute_block_locally_for_dispatch<'p>(
     port: &mut impl Port<'p>,
     metadata: &[MetadataColumn],
+    write_metadata: bool,
     block: BlockExecData,
 ) -> SqlResult<()> {
     let runtime = StorageRuntime::new();
-    port_write_block_metadata(port, metadata)?;
+    if write_metadata {
+        port_write_block_metadata(port, metadata)?;
+    }
     runtime.execute_block(block, port)
 }
 
@@ -679,6 +685,9 @@ pub(crate) fn port_write_metadata_for_top<'p>(
             Some(Entity::Query),
             "Failed to get metadata from execution plan".into(),
         ));
+    }
+    if !ex_plan.must_write_result_metadata() {
+        return Ok(());
     }
     // `write_metadata` walks the columns twice and the column types are
     // derived lazily, so keep them in a buffer. The buffer is on the stack

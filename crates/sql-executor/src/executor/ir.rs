@@ -118,6 +118,10 @@ pub struct ExecutionPlan {
     /// Such motions are rendered and traversed as leaves without mutating the IR
     /// motion node.
     unlinked_motions: HashSet<NodeId>,
+    /// Whether the dispatch of the top writes the metadata tuple before the
+    /// rows of the result. iproto clients read it; pgproto has the describe
+    /// and reads the rows only.
+    must_write_result_metadata: bool,
 }
 
 impl ExecutionPlan {
@@ -408,6 +412,7 @@ impl ExecutionPlan {
             bucket_filter: None,
             serialize_as_empty_disabled_motions: HashSet::new(),
             unlinked_motions: HashSet::new(),
+            must_write_result_metadata: true,
         };
         std::mem::replace(self, placeholder)
     }
@@ -428,7 +433,22 @@ impl ExecutionPlan {
             bucket_filter: None,
             serialize_as_empty_disabled_motions: HashSet::new(),
             unlinked_motions: HashSet::new(),
+            must_write_result_metadata: true,
         }
+    }
+
+    /// Whether the dispatch of the top writes the metadata tuple into the
+    /// result port before the rows.
+    #[must_use]
+    pub fn must_write_result_metadata(&self) -> bool {
+        self.must_write_result_metadata
+    }
+
+    /// The result port of the top gets the rows only. Set it before the top
+    /// dispatch and after the motions are materialized: a materialized motion
+    /// reads its own port with the metadata tuple first.
+    pub fn skip_result_metadata(&mut self) {
+        self.must_write_result_metadata = false;
     }
 
     pub fn has_serialize_as_empty_motion(&self, top_id: NodeId) -> bool {

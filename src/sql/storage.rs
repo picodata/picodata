@@ -842,6 +842,7 @@ impl Vshard for StorageRuntime {
     fn exec_block_on_buckets<'p>(
         &self,
         _metadata: Vec<MetadataColumn>,
+        _write_metadata: bool,
         _block: BlockExecData,
         _buckets: &Buckets,
         _request_id: &str,
