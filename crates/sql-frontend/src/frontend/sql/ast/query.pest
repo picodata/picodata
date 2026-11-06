@@ -430,12 +430,13 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
                                        | "'" | ArithInfixOp | ConcatInfixOp | NotEq | GtEq
                                        | Gt | LtEq | Lt | Eq }
         KeywordCoverage = { Keyword ~ IdentifierInapplicableSymbol }
-            // Note: In case two keywords with the same prefix are met, shorter ones must go after longest.
-            //       E.g. ^"in" must go after ^"insert" because keywords traversal stops on the first match.
-            //       Please, try to keep the list in alphabetical order.
+            // PEG choices stop at the first match, not the longest one. Put longer keywords before
+            // their prefixes: otherwise current_time matches the prefix of current_timestamp,
+            // preventing the latter from being recognized as a reserved keyword.
+            // Keep alphabetical order except where this prefix ordering requires otherwise.
             Keyword = {  ^"all" | ^"and" | ^"array" | ^"asc" | ^"as"
                         | ^"begin" | ^"between" | ^"by"
-                        | ^"case" | ^"cast" | ^"current_date" | ^"current_time" | ^"current_timestamp" | ^"current_user"
+                        | ^"case" | ^"cast" | ^"current_date" | ^"current_timestamp" | ^"current_time" | ^"current_user"
                         | ^"desc" | ^"distinct"
                         | ^"else" | ^"end" | ^"except" | ^"exists"
                         | ^"false" | ^"filter" | ^"from" | ^"group"

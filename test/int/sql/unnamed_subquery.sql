@@ -33,3 +33,9 @@ select * from (select * from gt join gt as gt2 on true) join t on true;
 1, 2, 1,
 2, 1, 1,
 2, 2, 1,
+
+-- TEST: current-timestamp-reserved-alias
+-- SQL:
+SELECT 42 FROM (SELECT 1) AS current_timestamp;
+-- ERROR:
+rule parsing error
