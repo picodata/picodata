@@ -1332,7 +1332,7 @@ fn dispatch_block<'p>(
     let metadata = block
         .return_columns
         .iter()
-        .map(|(name, ty)| MetadataColumn::of_type(name.to_string(), ty))
+        .map(|(name, ty)| MetadataColumn::new(name.clone(), *ty))
         .collect();
 
     let cache_key = block_pattern_key(plan, &block.statements)?;
@@ -1921,7 +1921,7 @@ fn metadata_write<'p>(
     write_array_len(&mut mp, len).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
     for column in columns {
         let column = column?;
-        let col_type = metadata_type_name(&column.r#type);
+        let col_type = metadata_type_name(column.r#type);
 
         write_map_len(&mut mp, 2).map_err(|e| to_mp_err(format_smolstr!("{e}")))?;
         write_str(&mut mp, "name").map_err(|e| to_mp_err(format_smolstr!("{e}")))?;

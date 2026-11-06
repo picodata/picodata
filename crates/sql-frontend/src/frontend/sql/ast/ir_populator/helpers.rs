@@ -1,4 +1,4 @@
-use smol_str::format_smolstr;
+use smol_str::{format_smolstr, SmolStr};
 
 use crate::errors::Entity::AST;
 use crate::errors::{Entity, SbroadError};
@@ -29,11 +29,11 @@ pub(in crate::frontend::sql) fn can_assign(src: DerivedType, dst: UnrestrictedTy
 pub(in crate::frontend::sql) fn dql_return_columns(
     ir: &Plan,
     query_id: NodeId,
-) -> Result<Vec<(String, DerivedType)>, SbroadError> {
+) -> Result<Vec<(SmolStr, DerivedType)>, SbroadError> {
     ir.columns_of(query_id)?
         .map(|column| {
             let column = column?;
-            Ok((column.name.to_string(), column.r#type))
+            Ok((SmolStr::from(column.name), column.r#type))
         })
         .collect()
 }

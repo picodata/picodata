@@ -639,7 +639,7 @@ impl VirtualTable {
                 write_str(&mut meta_mp, "name")?;
                 write_str(&mut meta_mp, alias)?;
                 write_str(&mut meta_mp, "type")?;
-                write_str(&mut meta_mp, &metadata_type_name(&col.r#type))?;
+                write_str(&mut meta_mp, &metadata_type_name(col.r#type))?;
             }
             port.add_mp(meta_mp.as_slice());
         }

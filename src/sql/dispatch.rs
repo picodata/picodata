@@ -688,7 +688,7 @@ pub(crate) fn port_write_metadata_for_top<'p>(
     let mut metadata: SmallVec<[(Cow<'_, str>, SmolStr); 8]> = SmallVec::new();
     for column in ir.columns_of(top_id)? {
         let column = column?;
-        metadata.push((column.name, metadata_type_name(&column.r#type)));
+        metadata.push((column.name, metadata_type_name(column.r#type)));
     }
     write_metadata(
         port,

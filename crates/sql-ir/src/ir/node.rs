@@ -1856,7 +1856,7 @@ pub struct AnonymousBlock {
     pub statements: Vec<BlockStatement<NodeId>>,
     /// Vector of column names and types returned via RETURN QUERY statement(s).
     /// This vector is empty if there is no RETURN QUERY statements.
-    pub return_columns: Vec<(String, DerivedType)>,
+    pub return_columns: Vec<(SmolStr, DerivedType)>,
 }
 
 impl From<AnonymousBlock> for NodeAligned {

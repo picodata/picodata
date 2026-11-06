@@ -1784,8 +1784,8 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
     // contributes to the block's output format, so they all must agree on the
     // column types. Names are taken from the first one.
     fn merge_return_columns(
-        return_columns: &mut Vec<(String, DerivedType)>,
-        columns: Vec<(String, DerivedType)>,
+        return_columns: &mut Vec<(SmolStr, DerivedType)>,
+        columns: Vec<(SmolStr, DerivedType)>,
     ) -> Result<(), SbroadError> {
         if return_columns.is_empty() {
             *return_columns = columns;
@@ -1836,7 +1836,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         map: &Translation,
         plan: &Plan,
         scope: &LetVarScope,
-        return_columns: &mut Vec<(String, DerivedType)>,
+        return_columns: &mut Vec<(SmolStr, DerivedType)>,
         body_ast_id: usize,
     ) -> Result<BlockStatement<NodeId>, SbroadError> {
         let body_ast = ast.nodes.get_node(body_ast_id)?;
@@ -1881,7 +1881,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
         map: &Translation,
         plan: &Plan,
         scope: &LetVarScope,
-        return_columns: &mut Vec<(String, DerivedType)>,
+        return_columns: &mut Vec<(SmolStr, DerivedType)>,
         if_ast_id: usize,
     ) -> Result<BlockStatement<NodeId>, SbroadError> {
         // Children: [BlockIfCondition, BlockIfBodyStatement*, BlockElseBlock?].
@@ -1942,7 +1942,7 @@ pub(in crate::frontend::sql) fn parse_anonymous_block<M: Metadata>(
     let scope = &worker.let_scope;
     let node = ast.nodes.get_node(node_id)?;
     let mut statements = Vec::new();
-    let mut return_columns: Vec<(String, DerivedType)> = Vec::new();
+    let mut return_columns: Vec<(SmolStr, DerivedType)> = Vec::new();
     for child_id in &node.children {
         let child = ast.nodes.get_node(*child_id)?;
         match child.rule {

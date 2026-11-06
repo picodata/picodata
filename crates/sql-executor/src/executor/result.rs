@@ -23,8 +23,8 @@ pub type ExecutorTuple = Vec<Value>;
 #[derive(LuaRead, Debug, PartialEq, Eq, Clone, msgpack::Encode, msgpack::Decode)]
 #[encode(as_map)]
 pub struct MetadataColumn {
-    pub name: String,
-    pub r#type: String,
+    pub name: SmolStr,
+    pub r#type: SmolStr,
 }
 
 impl std::fmt::Display for MetadataColumn {
@@ -34,17 +34,12 @@ impl std::fmt::Display for MetadataColumn {
 }
 
 impl MetadataColumn {
-    #[must_use]
-    pub fn new(name: String, r#type: String) -> Self {
-        MetadataColumn { name, r#type }
-    }
-
     /// Metadata of a column of type `ty`.
     #[must_use]
-    pub fn of_type(name: String, ty: &DerivedType) -> Self {
+    pub fn new(name: SmolStr, ty: DerivedType) -> Self {
         MetadataColumn {
             name,
-            r#type: metadata_type_name(ty).into(),
+            r#type: metadata_type_name(ty),
         }
     }
 }
@@ -56,7 +51,7 @@ impl MetadataColumn {
 /// even though SQL itself prints the type as `text`. Every writer of
 /// result metadata must name column types with this function.
 #[must_use]
-pub fn metadata_type_name(ty: &DerivedType) -> SmolStr {
+pub fn metadata_type_name(ty: DerivedType) -> SmolStr {
     match ty.get() {
         Some(UnrestrictedType::String) => SmolStr::new_static("string"),
         Some(UnrestrictedType::Array(NestedType::Text)) => SmolStr::new_static("string[]"),
@@ -85,13 +80,13 @@ impl<'de> Deserialize<'de> for MetadataColumn {
     where
         D: Deserializer<'de>,
     {
-        let mut map = HashMap::<String, String>::deserialize(deserializer)?;
+        let mut map = HashMap::<String, SmolStr>::deserialize(deserializer)?;
         let err = |missing_key: &str| -> D::Error {
             serde::de::Error::custom(format!("expected metadata to have key: {missing_key}"))
         };
         let name = map.remove("name").ok_or_else(|| err("name"))?;
         let r#type = map.remove("type").ok_or_else(|| err("type"))?;
-        Ok(MetadataColumn::new(name, r#type))
+        Ok(MetadataColumn { name, r#type })
     }
 }
 
@@ -151,7 +146,7 @@ mod tests {
 
     #[test]
     fn metadata_type_keeps_string_spelling() {
-        let of = |ty| metadata_type_name(&ty);
+        let of = metadata_type_name;
 
         assert_eq!(of(DerivedType::new(UnrestrictedType::String)), "string");
         assert_eq!(
