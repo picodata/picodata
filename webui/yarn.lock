@@ -5039,7 +5039,6 @@ __metadata:
     eslint-plugin-prettier: "npm:^4.2.1"
     eslint-plugin-react: "npm:^7.32.2"
     eslint-plugin-react-hooks: "npm:^5.2.0"
-    follow-redirects: "npm:^1.16.0"
     globals: "npm:^17.5.0"
     husky: "npm:^8.0.0"
     lint-staged: "npm:^16.1.2"
