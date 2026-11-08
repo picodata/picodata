@@ -29,8 +29,10 @@ use crate::executor::vdbe::ExecutionInsight;
 use crate::ir::bucket::Buckets;
 use crate::ir::node::block::BlockOwned;
 use crate::ir::node::relational::Relational;
+#[cfg(test)]
+use crate::ir::node::NodeId;
 use crate::ir::node::{AnonymousBlock, BlockEntries, StatementLocation};
-use crate::ir::node::{Insert, Motion, NodeId};
+use crate::ir::node::{Insert, Motion};
 use crate::ir::options::Forward;
 use crate::ir::transformation::redistribution::MotionPolicy;
 use crate::ir::value::Value;
@@ -39,7 +41,6 @@ use crate::ir::{Plan, Slices};
 use smol_str::format_smolstr;
 use sql_ir::ir::bucket::BucketSet;
 use sql_protocol::dml::insert::ConflictPolicy;
-use std::collections::HashMap;
 use std::io;
 use std::rc::Rc;
 use tarantool::msgpack;
@@ -125,9 +126,6 @@ pub struct ExecutingQuery<'a, C> {
     pub(crate) exec_plan: ExecutionPlan,
     /// Coordinator runtime
     coordinator: &'a C,
-    /// Bucket map of view { relational node id -> `Buckets` }.
-    /// It denotes the buckets where the output of the relational node is located.
-    bucket_map: HashMap<NodeId, Buckets>,
     exec_ctx: ExecutionContext,
     /// Whether the result port gets the metadata tuple before the rows.
     write_metadata: bool,
@@ -155,7 +153,6 @@ where
         Ok(Self {
             exec_plan: ExecutionPlan::from_shared_plan(plan),
             coordinator: runtime,
-            bucket_map: HashMap::new(),
             exec_ctx: ExecutionContext::default(),
             write_metadata: true,
         })

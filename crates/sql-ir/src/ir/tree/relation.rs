@@ -27,6 +27,16 @@ impl<'n> Nodes {
         }
     }
 
+    /// Like [`Self::rel_iter`], for a node that the caller already has.
+    #[must_use]
+    pub fn rel_iter_of(&'n self, node: Node<'n>) -> RelationalIterator<'n> {
+        RelationalIterator {
+            node: Some(node),
+            child: Cell::new(0),
+            nodes: self,
+        }
+    }
+
     #[must_use]
     pub fn empty_rel_iter(&'n self) -> RelationalIterator<'n> {
         RelationalIterator {

@@ -27,6 +27,7 @@ use crate::ir::node::{
 use crate::ir::operator::UpdateStrategy;
 use crate::ir::relation::{SpaceEngine, Table};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
+use crate::ir::tree::relation::RelationalIterator;
 use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::tree::Snapshot;
@@ -708,6 +709,26 @@ impl ExecutionPlan {
             self.get_ir_plan()
                 .exec_plan_subtree_iter_of(node, snapshot, false),
         )
+    }
+
+    /// Iterates the relational children of an execution subtree node: the
+    /// relational nodes of [`Self::effective_exec_plan_subtree_iter`] without
+    /// the expressions, the children first and then the subqueries.
+    ///
+    /// A non-local motion is a leaf even without a virtual table, as
+    /// `ExecPlanSubtreeIterator` does not enter its subtree.
+    pub(crate) fn exec_rel_children<'p>(
+        &'p self,
+        id: NodeId,
+        rel: &Relational<'p>,
+    ) -> RelationalIterator<'p> {
+        let nodes = &self.get_ir_plan().nodes;
+        if let Relational::Motion(Motion { policy, .. }) = rel {
+            if !policy.is_local() || self.is_motion_subtree_unlinked(id) {
+                return nodes.empty_rel_iter();
+            }
+        }
+        nodes.rel_iter_of(Node::Relational(rel.clone()))
     }
 
     /// Iterates a SQL subtree after all SQL-rendering overlays.
