@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
 use itertools::Itertools;
+use rustc_hash::FxHashSet;
 use smol_str::{format_smolstr, SmolStr};
 use uuid::Uuid;
 
@@ -117,7 +118,7 @@ pub struct ExecutionPlan {
     ///
     /// Such motions are rendered and traversed as leaves without mutating the IR
     /// motion node.
-    unlinked_motions: HashSet<NodeId>,
+    unlinked_motions: FxHashSet<NodeId>,
     /// Whether the dispatch of the top writes the metadata tuple before the
     /// rows of the result. iproto clients read it; pgproto has the describe
     /// and reads the rows only.
@@ -406,13 +407,13 @@ impl ExecutionPlan {
             request_id: Uuid::nil(),
             request_id_text: OnceCell::new(),
             plan: Plan::empty(),
-            vtables: VirtualTableMap::new(),
+            vtables: VirtualTableMap::default(),
             plan_id: None,
             plan_id_sql_parameter_count: None,
             update_delete_tuple_lens: NodeMap::default(),
             bucket_filter: None,
             serialize_as_empty_disabled_motions: HashSet::new(),
-            unlinked_motions: HashSet::new(),
+            unlinked_motions: FxHashSet::default(),
             must_write_result_metadata: true,
         };
         std::mem::replace(self, placeholder)
@@ -427,13 +428,13 @@ impl ExecutionPlan {
             request_id: Uuid::new_v4(),
             request_id_text: OnceCell::new(),
             plan,
-            vtables: VirtualTableMap::new(),
+            vtables: VirtualTableMap::default(),
             plan_id: None,
             plan_id_sql_parameter_count: None,
             update_delete_tuple_lens: NodeMap::default(),
             bucket_filter: None,
             serialize_as_empty_disabled_motions: HashSet::new(),
-            unlinked_motions: HashSet::new(),
+            unlinked_motions: FxHashSet::default(),
             must_write_result_metadata: true,
         }
     }

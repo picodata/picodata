@@ -5,6 +5,7 @@ use crate::executor::engine::helpers::table_name;
 use crate::executor::engine::helpers::vshard::disable_serialize_as_empty_for_subtree;
 use crate::executor::engine::mock::TEMPLATE;
 use crate::executor::engine::mock::{DispatchInfo, PortMocked, RouterRuntimeMock};
+use crate::executor::vtable::VirtualTableMap;
 use crate::ir::node::block::BlockOwned;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, Node, Over, Projection, ReferenceTarget, Window};
@@ -97,7 +98,7 @@ fn exec_plan_subtree_test() {
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = virtual_table_23(None);
     reshard_vtable(&query, motion_id, &mut virtual_table);
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -195,7 +196,7 @@ fn subtree_dispatch_flags_track_segmented_vtables() {
     reshard_vtable(&query, motion_id, &mut virtual_table);
 
     let exec_plan = query.get_mut_exec_plan();
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
     exec_plan.set_vtables(vtables);
 
@@ -212,7 +213,7 @@ fn subtree_dispatch_flags_track_segmented_vtables() {
         .unwrap();
     assert!(!flags.has_segmented_tables);
 
-    exec_plan.set_vtables(HashMap::new());
+    exec_plan.set_vtables(VirtualTableMap::default());
     let flags = exec_plan.subtree_dispatch_flags_at(top_id).unwrap();
     assert!(!flags.has_segmented_tables);
 }
@@ -269,7 +270,7 @@ fn exec_plan_subtree_two_stage_groupby_test() {
 
     reshard_vtable(&query, motion_id, &mut virtual_table);
 
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -312,7 +313,7 @@ fn exec_plan_subtree_two_stage_groupby_test_2() {
     virtual_table.add_column(vcolumn_user_non_null(Type::String));
     reshard_vtable(&query, motion_id, &mut virtual_table);
 
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -365,7 +366,7 @@ fn exec_plan_subtree_aggregates() {
     virtual_table.add_column(vcolumn_integer_user_non_null());
     reshard_vtable(&query, motion_id, &mut virtual_table);
 
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -403,7 +404,7 @@ fn exec_plan_subtree_aggregates_no_groupby() {
     virtual_table.add_column(vcolumn_integer_user_non_null());
     reshard_vtable(&query, motion_id, &mut virtual_table);
 
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -449,7 +450,7 @@ fn exec_plan_subquery_under_motion_without_alias() {
     // name would be added during materialization from subquery
     let mut virtual_table = virtual_table_23(Some("unnamed_subquery_1"));
     reshard_vtable(&query, motion_id, &mut virtual_table);
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -479,7 +480,7 @@ fn exec_plan_subquery_under_motion_with_alias() {
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = virtual_table_23(Some("hti"));
     reshard_vtable(&query, motion_id, &mut virtual_table);
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -503,7 +504,7 @@ fn exec_plan_motion_under_in_operator() {
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = virtual_table_23(None);
     reshard_vtable(&query, motion_id, &mut virtual_table);
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -530,7 +531,7 @@ fn exec_plan_motion_under_except() {
     let motion_id = query.get_motion_id(0, 0);
     let mut virtual_table = virtual_table_23(None);
     reshard_vtable(&query, motion_id, &mut virtual_table);
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -555,7 +556,7 @@ fn exec_plan_subtree_count_asterisk() {
     virtual_table.add_column(vcolumn_integer_user_non_null());
     reshard_vtable(&query, motion_id, &mut virtual_table);
 
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -604,7 +605,7 @@ fn exec_plan_subtree_having() {
     virtual_table.add_column(vcolumn_integer_user_non_null());
     reshard_vtable(&query, motion_id, &mut virtual_table);
 
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -657,7 +658,7 @@ fn exec_plan_subtree_having_without_groupby() {
     virtual_table.add_column(vcolumn_integer_user_non_null());
     reshard_vtable(&query, motion_id, &mut virtual_table);
 
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -1030,7 +1031,7 @@ fn exec_plan_order_by() {
     {
         virtual_table.reshard(key, query.get_coordinator()).unwrap();
     }
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -1251,7 +1252,7 @@ fn exec_plan_order_by_with_subquery() {
     {
         virtual_table.reshard(key, query.get_coordinator()).unwrap();
     }
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();
@@ -1289,7 +1290,7 @@ fn exec_plan_order_by_with_join() {
 
     let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
     let slices = query.get_exec_plan().get_ir_plan().clone_slices();
-    let mut sq_vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut sq_vtables = VirtualTableMap::default();
 
     let sq_motion_id = *slices.slice(0).unwrap().position(0).unwrap();
     let mut sq_vtable = VirtualTable::new();
@@ -2161,7 +2162,7 @@ fn exec_plan_motion_input_with_a_param_check() {
     assert_eq!(alias.as_deref(), Some("s"));
     let mut virtual_table = virtual_table_23(Some("s"));
     reshard_vtable(&query, motion_id, &mut virtual_table);
-    let mut vtables: HashMap<NodeId, Rc<VirtualTable>> = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(virtual_table));
 
     let exec_plan = query.get_mut_exec_plan();

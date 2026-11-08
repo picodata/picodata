@@ -1,4 +1,5 @@
 use super::*;
+use crate::executor::vtable::VirtualTableMap;
 use insta::assert_snapshot;
 
 /// Puts each clause of the local SQL on its own line, so that the snapshots
@@ -189,7 +190,7 @@ fn get_two_stage_sql(
         vtable.set_alias(alias);
     }
     reshard_vtable(&query, motion_id, &mut vtable);
-    let mut vtables = HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     vtables.insert(motion_id, Rc::new(vtable));
 
     let next_motion_id = next_motion.map(|(slice, pos)| query.get_motion_id(slice, pos));

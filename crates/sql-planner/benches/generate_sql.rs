@@ -20,7 +20,7 @@ use sql_executor::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sql_executor::executor::engine::helpers::table_name;
 use sql_executor::executor::engine::mock::RouterConfigurationMock;
 use sql_executor::executor::ir::ExecutionPlan;
-use sql_executor::executor::vtable::{VTableColumn, VirtualTable};
+use sql_executor::executor::vtable::{VTableColumn, VirtualTable, VirtualTableMap};
 use sql_frontend::frontend::sql::transform_into_plan;
 use sql_ir::errors::SbroadError;
 use sql_ir::ir::metadata::Metadata;
@@ -46,7 +46,7 @@ fn prepare(sql: &str, metadata: &impl Metadata) -> Result<Prepared, SbroadError>
         .flat_map(|slice| slice.positions().iter().copied())
         .collect();
     let mut roots = Vec::new();
-    let mut vtables = std::collections::HashMap::new();
+    let mut vtables = VirtualTableMap::default();
     for motion_id in motions {
         let Relational::Motion(motion) = ir.get_relation_node(motion_id)? else {
             unreachable!("slices contain motions");

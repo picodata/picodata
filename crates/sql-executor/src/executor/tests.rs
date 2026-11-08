@@ -17,7 +17,6 @@ use crate::test_helpers::ExecutingQueryExt;
 use crate::utils::MutexLike;
 use insta::assert_snapshot;
 use sql_frontend::frontend::sql::transform_into_plan;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 // Helper function to format back sql.

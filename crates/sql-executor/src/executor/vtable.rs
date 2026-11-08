@@ -10,6 +10,7 @@ use crate::ir::types::DerivedType;
 use crate::ir::value::{EncodedValue, Value};
 use ahash::AHashSet;
 use rmp::encode::{write_array_len, write_map_len, write_str, write_uint};
+use rustc_hash::FxHashMap;
 use smol_str::{format_smolstr, SmolStr};
 use sql_protocol::dql_encoder::MsgpackEncode;
 use std::collections::{hash_map::Entry, HashMap};
@@ -713,7 +714,7 @@ fn contains_map(value: &rmpv::Value) -> bool {
 pub use crate::ir::types::calculate_unified_types;
 
 /// Map of { motion_id -> corresponding virtual table }
-pub type VirtualTableMap = HashMap<NodeId, Rc<VirtualTable>>;
+pub type VirtualTableMap = FxHashMap<NodeId, Rc<VirtualTable>>;
 
 #[cfg(test)]
 mod tests;
