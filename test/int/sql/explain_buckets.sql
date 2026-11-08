@@ -83,6 +83,44 @@ explain (buckets) insert into g values (1, 1, 'lol');
 -- EXPECTED:
 buckets = any
 
+-- TEST: buckets-projection-with-subquery
+-- SQL:
+explain (buckets) select (select a from g limit 1) from tt where d = 1;
+-- EXPECTED:
+buckets = [1934]
+
+-- TEST: buckets-values-with-subquery-in-union-all
+-- SQL:
+explain (buckets) select d from tt where d = 1
+union all select * from (values ((select a from g limit 1)));
+-- EXPECTED:
+buckets = [1934]
+
+-- TEST: buckets-shared-cte
+-- SQL:
+explain (buckets) with c as (select d from tt where d = 1)
+select * from c union all select * from c;
+-- EXPECTED:
+buckets = [1934]
+
+-- TEST: buckets-global-false-filter
+-- SQL:
+explain (buckets) select * from g where false;
+-- EXPECTED:
+buckets = any
+
+-- TEST: buckets-global-delete-all
+-- SQL:
+explain (buckets) delete from g;
+-- EXPECTED:
+buckets = any
+
+-- TEST: buckets-sharded-delete-all
+-- SQL:
+explain (buckets) delete from tt;
+-- EXPECTED:
+buckets <= [1-3000]
+
 -- TEST: buckets-block-let-if-delete-with-return-query
 -- SQL:
 EXPLAIN (buckets)

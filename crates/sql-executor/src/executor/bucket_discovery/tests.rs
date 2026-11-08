@@ -1831,3 +1831,82 @@ mod pinned_select_without_scan {
         assert_eq!(bucket_of(&[7]), discover(sql, vec![Value::from(7)]));
     }
 }
+
+/// The buckets of the rows whose sharding key is `key`, as a filtered set.
+fn buckets_of_key(key: &[Value]) -> Buckets {
+    let coordinator = RouterRuntimeMock::new();
+    let key: Vec<&Value> = key.iter().collect();
+    let bucket = coordinator.determine_bucket_id(&key).unwrap();
+    Buckets::new_filtered([bucket].into_iter().collect())
+}
+
+/// A statement whose top has `Distribution::Single` runs on any node.
+#[test]
+fn single_top() {
+    use crate::ir::distribution::Distribution;
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query =
+        ExecutingQuery::from_text_and_params(&coordinator, r#"select count(*) from "t""#, vec![])
+            .unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    assert_eq!(&Distribution::Single, plan.rel_distr_ref(top).unwrap());
+    assert_eq!(Buckets::Any, query.bucket_discovery(top).unwrap());
+}
+
+/// A local segment motion without a virtual table takes the buckets of its
+/// child.
+#[test]
+fn insert_local_segment() {
+    let query = r#"insert into "t" ("a", "b", "c", "d")
+        select "a", "b", "c", "d" from "t" where ("a", "b") = (1, 1)"#;
+    assert_eq!(
+        Buckets::Filtered(BucketSet::Exact(collection!(6691))),
+        buckets_of(query)
+    );
+}
+
+/// A local segment motion with a virtual table takes the buckets of the
+/// virtual table, not of its child.
+#[test]
+fn insert_local_segment_with_vtable() {
+    use crate::executor::vtable::VirtualTable;
+    use crate::ir::node::relational::Relational;
+    use crate::ir::node::Motion;
+    use crate::ir::transformation::redistribution::MotionPolicy;
+    use crate::test_helpers::vcolumn_integer_user_non_null;
+
+    let query = r#"insert into "t" ("a", "b", "c", "d")
+        select "a", "b", "c", "d" from "t" where ("a", "b") = (1, 1)"#;
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_text_and_params(&coordinator, query, vec![]).unwrap();
+    let plan = query.get_exec_plan().get_ir_plan();
+    let top = plan.get_top().unwrap();
+    let motion_id = plan.dml_child_id(top).unwrap();
+    let Relational::Motion(Motion {
+        policy: MotionPolicy::LocalSegment(_),
+        ..
+    }) = plan.get_relation_node(motion_id).unwrap()
+    else {
+        panic!("expected a local segment motion under INSERT");
+    };
+
+    let key = [Value::from(2), Value::from(2)];
+    let mut vtable = VirtualTable::new();
+    for _ in 0..4 {
+        vtable.add_column(vcolumn_integer_user_non_null());
+    }
+    vtable.add_tuple(vec![
+        key[0].clone(),
+        key[1].clone(),
+        Value::from(3),
+        Value::from(4),
+    ]);
+    query
+        .get_mut_exec_plan()
+        .set_motion_vtable(&motion_id, vtable, &coordinator)
+        .unwrap();
+
+    assert_eq!(buckets_of_key(&key), query.bucket_discovery(top).unwrap());
+}
