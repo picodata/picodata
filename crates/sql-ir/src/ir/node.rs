@@ -492,6 +492,13 @@ pub struct Row {
     pub list: Vec<NodeId>,
 }
 
+impl Row {
+    #[inline]
+    pub fn list(&self) -> &[NodeId] {
+        &self.list
+    }
+}
+
 impl From<Row> for NodeAligned {
     fn from(value: Row) -> Self {
         Self::Node64(Node64::Row(value))

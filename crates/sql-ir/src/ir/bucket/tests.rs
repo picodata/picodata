@@ -48,6 +48,13 @@ fn tuple_constants_are_undecided() {
     assert!(!constant_pair_rejects_eq(&a, &b));
 }
 
+/// Whether constants make `left = right` provably not `TRUE`.
+fn rejects(plan: &Plan, left: NodeId, right: NodeId) -> bool {
+    let left = plan.get_expression_node(left).unwrap();
+    let right = plan.get_expression_node(right).unwrap();
+    plan.constants_reject_eq(&left, &right).unwrap()
+}
+
 /// Build `ROW(left) = ROW(right)` operands; `None` stands for a parameter.
 fn rows(plan: &mut Plan, pairs: &[(Option<i64>, Option<i64>)]) -> (NodeId, NodeId) {
     let mut operand = |value: Option<i64>| match value {
@@ -66,7 +73,7 @@ fn row_contradiction_after_equal_pair() {
         &mut plan,
         &[(Some(1), Some(1)), (Some(2), Some(1)), (None, None)],
     );
-    assert!(plan.constants_reject_eq(left, right).unwrap());
+    assert!(rejects(&plan, left, right));
 }
 
 #[test]
@@ -76,7 +83,7 @@ fn row_contradiction_at_last_position() {
         &mut plan,
         &[(None, Some(1)), (Some(1), Some(1)), (Some(3), Some(4))],
     );
-    assert!(plan.constants_reject_eq(left, right).unwrap());
+    assert!(rejects(&plan, left, right));
 }
 
 #[test]
@@ -86,7 +93,7 @@ fn row_without_contradiction() {
         &mut plan,
         &[(None, Some(1)), (Some(1), Some(1)), (Some(2), None)],
     );
-    assert!(!plan.constants_reject_eq(left, right).unwrap());
+    assert!(!rejects(&plan, left, right));
 }
 
 #[test]
@@ -94,8 +101,8 @@ fn scalar_constants() {
     let mut plan = Plan::default();
     let one = plan.nodes.add_const(Value::from(1));
     let two = plan.nodes.add_const(Value::from(2));
-    assert!(plan.constants_reject_eq(one, two).unwrap());
-    assert!(!plan.constants_reject_eq(one, one).unwrap());
+    assert!(rejects(&plan, one, two));
+    assert!(!rejects(&plan, one, one));
 }
 
 /// `NULL` rejects equality against anything, including a non-constant operand.
@@ -104,8 +111,8 @@ fn null_against_non_constant() {
     let mut plan = Plan::default();
     let null = plan.nodes.add_const(Value::Null);
     let param = plan.add_param(1, DerivedType::unknown());
-    assert!(plan.constants_reject_eq(null, param).unwrap());
-    assert!(plan.constants_reject_eq(param, null).unwrap());
+    assert!(rejects(&plan, null, param));
+    assert!(rejects(&plan, param, null));
 
     let one = plan.nodes.add_const(Value::from(1));
     let param2 = plan.add_param(2, DerivedType::unknown());
@@ -113,5 +120,5 @@ fn null_against_non_constant() {
     let left = plan.nodes.add_row(vec![param2, one]);
     let one2 = plan.nodes.add_const(Value::from(1));
     let right = plan.nodes.add_row(vec![null2, one2]);
-    assert!(plan.constants_reject_eq(left, right).unwrap());
+    assert!(rejects(&plan, left, right));
 }

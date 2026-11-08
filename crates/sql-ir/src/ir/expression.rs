@@ -2397,9 +2397,9 @@ impl Expression<'_> {
     ///
     /// # Errors
     /// - node isn't `Row`
-    pub fn get_row_list(&self) -> Result<&Vec<NodeId>, SbroadError> {
+    pub fn get_row_list(&self) -> Result<&[NodeId], SbroadError> {
         match self {
-            Expression::Row(Row { ref list, .. }) => Ok(list),
+            Expression::Row(row) => Ok(row.list()),
             _ => Err(SbroadError::Invalid(
                 Entity::Expression,
                 Some("node isn't Row type".into()),

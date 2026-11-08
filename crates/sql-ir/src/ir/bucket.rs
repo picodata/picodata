@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fmt::Display;
+use std::slice;
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::distribution::Distribution;
@@ -330,6 +331,29 @@ fn conjunct_into<B: BucketAlgebra>(acc: &mut Option<B>, other: B) {
 }
 
 impl Plan {
+    /// Whether the expression is a reference to a one-column sharding key of
+    /// the node it refers to: then its distribution is the key at position 0.
+    ///
+    /// `None` when the expression is not a reference to one node: then only
+    /// [`Plan::get_distribution`] can tell. That function builds the
+    /// distribution of the whole expression, which is too costly for the
+    /// common `key = value` filter.
+    fn ref_is_sharding_key(&self, expr: &Expression) -> Result<Option<bool>, SbroadError> {
+        let Expression::Reference(Reference {
+            target: ReferenceTarget::Single(rel_id),
+            position,
+            ..
+        }) = expr
+        else {
+            return Ok(None);
+        };
+        let is_key = match self.rel_distr_ref(*rel_id)? {
+            Distribution::Segment { keys } => keys.iter().any(|key| key.positions == [*position]),
+            _ => false,
+        };
+        Ok(Some(is_key))
+    }
+
     /// Positions of the `bucket_id` system column in the node's output, memoized
     /// in `cache` for the duration of one expression.
     fn shard_columns_positions(
@@ -369,39 +393,31 @@ impl Plan {
     }
 
     /// Collect buckets from an `Eq` whose operands pin the `bucket_id` system
-    /// column to a constant or a parameter.
+    /// column to a constant or a parameter. `left` and `right` are the ids of
+    /// the operands, or of the elements of row operands.
     fn collect_buckets_from_bucket_id_eq<R: BucketsResolver>(
         &self,
-        left_id: NodeId,
-        right_id: NodeId,
+        left: &[NodeId],
+        right: &[NodeId],
         resolver: &R,
         tier: Option<&SmolStr>,
         buckets: &mut Option<R::Buckets>,
     ) -> Result<(), SbroadError> {
-        let operands = |id: NodeId| -> Result<SmallVec<[NodeId; 4]>, SbroadError> {
-            match self.get_expression_node(id)? {
-                Expression::Row(_) => Ok(self.get_row_list(id)?.iter().copied().collect()),
-                _ => Ok(SmallVec::from_slice(&[id])),
-            }
-        };
-
+        if left.len() != right.len() {
+            return Ok(());
+        }
         let mut cache = ShardPositionsCache::new();
-        for (cols_id, vals_id) in [(left_id, right_id), (right_id, left_id)] {
-            let cols = operands(cols_id)?;
-            let vals = operands(vals_id)?;
-            if cols.len() != vals.len() {
-                continue;
-            }
-            for (col_id, val_id) in cols.iter().zip(vals.iter()) {
+        for (cols, vals) in [(left, right), (right, left)] {
+            for (&col_id, &val_id) in cols.iter().zip(vals) {
                 // `None` here stands for "the value is not known yet".
-                let value = match self.get_expression_node(*val_id)? {
+                let value = match self.get_expression_node(val_id)? {
                     Expression::Constant(Constant { value }) => Some(value),
                     Expression::Parameter(_) => None,
                     _ => continue,
                 };
                 let Expression::Reference(Reference {
                     target, position, ..
-                }) = self.get_expression_node(*col_id)?
+                }) = self.get_expression_node(col_id)?
                 else {
                     continue;
                 };
@@ -421,6 +437,15 @@ impl Plan {
         Ok(())
     }
 
+    /// The ids of the elements of a row, or the id of the expression itself
+    /// if it is not a row.
+    fn row_ids<'e>(expr: &'e Expression, id: &'e NodeId) -> &'e [NodeId] {
+        match expr {
+            Expression::Row(row) => row.list(),
+            _ => slice::from_ref(id),
+        }
+    }
+
     /// Whether constants make `left = right` provably not `TRUE`, either
     /// directly or at some position of two rows. Such pairs survive binding
     /// when a parameter was merged into a row (`(b, $1) = (1, 1)`), which
@@ -428,10 +453,12 @@ impl Plan {
     ///
     /// A `NULL` constant on either side is enough: `x = NULL` is never `TRUE`
     /// whatever `x` is.
-    fn constants_reject_eq(&self, left_id: NodeId, right_id: NodeId) -> Result<bool, SbroadError> {
-        let left = self.get_expression_node(left_id)?;
-        let right = self.get_expression_node(right_id)?;
-        match (&left, &right) {
+    fn constants_reject_eq(
+        &self,
+        left: &Expression,
+        right: &Expression,
+    ) -> Result<bool, SbroadError> {
+        match (left, right) {
             (Expression::Constant(Constant { value: Value::Null }), _)
             | (_, Expression::Constant(Constant { value: Value::Null })) => Ok(true),
             (
@@ -445,7 +472,9 @@ impl Plan {
                     return Ok(false);
                 }
                 for (&l, &r) in left_list.iter().zip(right_list) {
-                    if self.constants_reject_eq(l, r)? {
+                    let l = self.get_expression_node(l)?;
+                    let r = self.get_expression_node(r)?;
+                    if self.constants_reject_eq(&l, &r)? {
                         return Ok(true);
                     }
                 }
@@ -462,7 +491,7 @@ impl Plan {
     /// that we can execute the query only on some of the replicasets).
     fn get_buckets_from_expr<R: BucketsResolver>(
         &self,
-        expr_id: NodeId,
+        expr: Expression,
         resolver: &R,
     ) -> Result<Option<R::Buckets>, SbroadError> {
         // Conjunction of everything collected for this expression.
@@ -470,7 +499,6 @@ impl Plan {
         // See the logic of its handling below.
         let mut buckets = None;
         let tier = self.tier.as_ref();
-        let expr = self.get_expression_node(expr_id)?;
 
         // As a conjunct, `x IS TRUE` holds exactly when `x` does, and
         // `x IS FALSE` exactly when `x = false`.
@@ -479,181 +507,212 @@ impl Plan {
             child,
         }) = expr
         {
-            if !self.get_expression_node(*child)?.is_ref() {
+            let child_expr = self.get_expression_node(*child)?;
+            if !child_expr.is_ref() {
                 return match op {
-                    Unary::IsTrue => self.get_buckets_from_expr(*child, resolver),
+                    Unary::IsTrue => self.get_buckets_from_expr(child_expr, resolver),
                     _ => Ok(None),
                 };
             }
-            if let Distribution::Segment { keys } = self.get_distribution(*child)? {
-                if keys.iter().any(|key| key.positions.len() == 1) {
-                    let value = Value::Boolean(*op == Unary::IsTrue);
-                    let values_buckets = resolver.buckets_from_values(&[&value], tier)?;
-                    conjunct_into(&mut buckets, values_buckets);
-                }
+            let is_sharding_key = match self.ref_is_sharding_key(&child_expr)? {
+                Some(is_sharding_key) => is_sharding_key,
+                None => match self.get_distribution(*child)? {
+                    Distribution::Segment { keys } => {
+                        keys.iter().any(|key| key.positions.len() == 1)
+                    }
+                    _ => false,
+                },
+            };
+            if is_sharding_key {
+                let value = Value::Boolean(*op == Unary::IsTrue);
+                let values_buckets = resolver.buckets_from_values(&[&value], tier)?;
+                conjunct_into(&mut buckets, values_buckets);
             }
             return Ok(buckets);
         }
 
-        if let Expression::Bool(BoolExpr {
-            op: Bool::Eq,
-            left,
-            right,
-            ..
-        }) = expr
-        {
-            // The expression is a conjunct of a DNF chain, so a `FALSE` or `NULL`
-            // comparison of constants rejects every row of the chain.
-            if self.constants_reject_eq(*left, *right)? {
-                return Ok(Some(R::Buckets::new_empty()));
-            }
-            // Try to collect buckets from an explicit `bucket_id = value` predicate.
-            self.collect_buckets_from_bucket_id_eq(*left, *right, resolver, tier, &mut buckets)?;
-        }
-
-        // Try to collect buckets from expression of type `sharding_key = value`
-        if let Expression::Bool(BoolExpr {
+        let Expression::Bool(BoolExpr {
             op: op @ (Bool::Eq | Bool::In),
             left,
             right,
             ..
         }) = expr
-        {
-            let pairs = [(*left, *right), (*right, *left)];
-            for (left_id, right_id) in pairs {
-                let left_expr = self.get_expression_node(left_id)?;
-                if !left_expr.is_row() && !left_expr.is_ref() {
-                    continue;
-                }
+        else {
+            return Ok(buckets);
+        };
+        let (left_id, right_id) = (*left, *right);
+        let left = self.get_expression_node(left_id)?;
+        let right = self.get_expression_node(right_id)?;
 
-                let right_expr = self.get_expression_node(right_id)?;
-                let right_columns = match right_expr {
-                    Expression::Row(_) => right_expr.get_row_list()?.as_slice(),
-                    Expression::Constant(_)
-                    | Expression::Reference(_)
-                    | Expression::Parameter(_)
-                    | Expression::CurrentUser(_) => &[right_id],
-                    _ => continue,
+        if *op == Bool::Eq {
+            // The expression is a conjunct of a DNF chain, so a `FALSE` or `NULL`
+            // comparison of constants rejects every row of the chain.
+            if self.constants_reject_eq(&left, &right)? {
+                return Ok(Some(R::Buckets::new_empty()));
+            }
+            // Try to collect buckets from an explicit `bucket_id = value` predicate.
+            self.collect_buckets_from_bucket_id_eq(
+                Self::row_ids(&left, &left_id),
+                Self::row_ids(&right, &right_id),
+                resolver,
+                tier,
+                &mut buckets,
+            )?;
+        }
+
+        // Try to collect buckets from expression of type `sharding_key = value`
+        let pairs = [
+            (left_id, &left, right_id, &right),
+            (right_id, &right, left_id, &left),
+        ];
+        for (left_id, left_expr, right_id, right_expr) in pairs {
+            if !left_expr.is_row() && !left_expr.is_ref() {
+                continue;
+            }
+
+            let right_columns = match right_expr {
+                Expression::Row(row) => row.list(),
+                Expression::Constant(_)
+                | Expression::Reference(_)
+                | Expression::Parameter(_)
+                | Expression::CurrentUser(_) => slice::from_ref(&right_id),
+                _ => continue,
+            };
+
+            // The sharding keys of the left row, as positions in the row;
+            // `None` if the row is not segmented.
+            let left_dist;
+            let keys: Option<SmallVec<[&[usize]; 4]>> = match self.ref_is_sharding_key(left_expr)? {
+                Some(true) => Some(SmallVec::from_slice(&[&[0][..]])),
+                Some(false) => None,
+                None => {
+                    left_dist = self.get_distribution(left_id)?;
+                    match &left_dist {
+                        Distribution::Segment { keys } => {
+                            Some(keys.iter().map(|key| key.positions.as_slice()).collect())
+                        }
+                        _ => None,
+                    }
+                }
+            };
+
+            // Gather buckets from the right row.
+            if let Some(keys) = keys {
+                // If the right side is a row referencing the motion
+                // it means that the corresponding virtual table contains
+                // tuple with the same distribution as the left side (because this motion
+                // was specially added in order to fulfill `Eq` of `In` conditions).
+                let motion_id: Option<_> = match right_expr {
+                    Expression::Row(_) => self.get_motion_from_row(right_id)?,
+                    Expression::Reference(_) => self.get_motion_from_ref(right_id)?,
+                    _ => None,
                 };
 
-                // Get the distribution of the left row.
-                let left_dist = self.get_distribution(left_id)?;
+                if let Some(motion_id) = motion_id {
+                    if let Some(motion_buckets) = resolver.buckets_from_motion(motion_id)? {
+                        conjunct_into(&mut buckets, motion_buckets);
+                        return Ok(buckets);
+                    }
+                }
 
-                // Gather buckets from the right row.
-                if let Distribution::Segment { keys } = left_dist {
-                    // If the right side is a row referencing the motion
-                    // it means that the corresponding virtual table contains
-                    // tuple with the same distribution as the left side (because this motion
-                    // was specially added in order to fulfill `Eq` of `In` conditions).
-                    let motion_id: Option<_> = match right_expr {
-                        Expression::Row(_) => self.get_motion_from_row(right_id)?,
-                        Expression::Reference(_) => self.get_motion_from_ref(right_id)?,
-                        _ => None,
-                    };
+                let mut parts: SmallVec<[UnboundKeyPart; 4]> = SmallVec::new();
+                // The right side is a regular row or subquery which distribution
+                // didn't result in Motion creation (e.g. `"a" in (select "a" from t)`).
+                // So we have a case of `Eq` operator.
+                // If we have a case of constants on the positions of the left keys,
+                // we can return `Buckets::Filtered`.
+                // E.g. we have query
+                // `SELECT * FROM (SELECT A.a, B.b FROM A JOIN B ON A.a = B.b)
+                //  WHERE (a, b) = (0, 1)`.
+                // Here (a, b) row will have Distribution::Segment(keys = {[a], [b]}).
+                // After handling key "a" we will leave buckets which satisfy `a = 0`.
+                // After handling key "b" we will leave buckets which satisfy `b = 1`.
+                // In the end (when `conjunct` function is called) we will leave buckets
+                // which satisfy `(a, b) = (0, 1)`.
+                for positions in keys {
+                    // For cases with composite keys, we check that the condition fields
+                    // are at least the size of the composite key.
+                    // E.g. t1 sharded by (a, b), and we have query, with single value of
+                    // the condition:
+                    // `SELECT * FROM t1 JOIN t1 AS t ON 1 IN (t.a, t.b)`
+                    // Since in this case it is not possible to calculate the buckets,
+                    // therefore there is no need for further action.
+                    if positions.len() > right_columns.len() {
+                        continue;
+                    }
+                    parts.clear();
+                    let mut has_current_user = false;
+                    let mut is_fixed_key = true;
+                    for position in positions {
+                        // Since the sides in the "In" query can be of different lengths,
+                        // we need to find a suitable position, as if they were the
+                        // same length.
+                        let pos = if *op == Bool::In {
+                            *position % right_columns.len()
+                        } else {
+                            *position
+                        };
+                        let right_column_id = *right_columns.get(pos).ok_or_else(|| {
+                            SbroadError::NotFound(
+                                Entity::Column,
+                                format_smolstr!("at position {position} for right row"),
+                            )
+                        })?;
 
-                    if let Some(motion_id) = motion_id {
-                        if let Some(motion_buckets) = resolver.buckets_from_motion(motion_id)? {
-                            conjunct_into(&mut buckets, motion_buckets);
-                            return Ok(buckets);
+                        // A right side that is not a row is the column itself.
+                        let right_column_expr = if right_expr.is_row() {
+                            self.get_expression_node(right_column_id)?
+                        } else {
+                            right_expr.clone()
+                        };
+                        match right_column_expr {
+                            Expression::Constant(Constant { value }) => {
+                                parts.push(UnboundKeyPart::Value(value));
+                            }
+                            // Before `bind_params` we can't get actual value, but the
+                            // query is still single-node if all sharding-key columns are
+                            // fixed by constants or parameters. CURRENT_USER is replaced
+                            // with a constant on bind as well.
+                            Expression::Parameter(Parameter { index, .. }) => {
+                                parts.push(UnboundKeyPart::Param(*index));
+                            }
+                            Expression::CurrentUser(_) => {
+                                has_current_user = true;
+                            }
+                            _ => {
+                                // Row-dependent expressions on any sharding-key column make
+                                // the whole candidate key unresolved, even if other columns
+                                // are fixed by constants or parameters.
+                                is_fixed_key = false;
+                                break;
+                            }
                         }
                     }
-
-                    let mut parts: Vec<UnboundKeyPart> = Vec::new();
-                    // The right side is a regular row or subquery which distribution
-                    // didn't result in Motion creation (e.g. `"a" in (select "a" from t)`).
-                    // So we have a case of `Eq` operator.
-                    // If we have a case of constants on the positions of the left keys,
-                    // we can return `Buckets::Filtered`.
-                    // E.g. we have query
-                    // `SELECT * FROM (SELECT A.a, B.b FROM A JOIN B ON A.a = B.b)
-                    //  WHERE (a, b) = (0, 1)`.
-                    // Here (a, b) row will have Distribution::Segment(keys = {[a], [b]}).
-                    // After handling key "a" we will leave buckets which satisfy `a = 0`.
-                    // After handling key "b" we will leave buckets which satisfy `b = 1`.
-                    // In the end (when `conjunct` function is called) we will leave buckets
-                    // which satisfy `(a, b) = (0, 1)`.
-                    for key in keys.iter() {
-                        // For cases with composite keys, we check that the condition fields
-                        // are at least the size of the composite key.
-                        // E.g. t1 sharded by (a, b), and we have query, with single value of
-                        // the condition:
-                        // `SELECT * FROM t1 JOIN t1 AS t ON 1 IN (t.a, t.b)`
-                        // Since in this case it is not possible to calculate the buckets,
-                        // therefore there is no need for further action.
-                        if key.positions.len() > right_columns.len() {
-                            continue;
+                    if !is_fixed_key {
+                        continue;
+                    }
+                    if has_current_user {
+                        conjunct_into(&mut buckets, R::Buckets::new_estimated(1));
+                        continue;
+                    }
+                    // `None` if some part is a parameter.
+                    let values: Option<SmallVec<[&Value; 4]>> = parts
+                        .iter()
+                        .map(|part| match part {
+                            UnboundKeyPart::Value(value) => Some(*value),
+                            UnboundKeyPart::Param(_) => None,
+                        })
+                        .collect();
+                    match values {
+                        None => {
+                            let key_buckets = resolver.buckets_from_unbound_key(&parts, tier)?;
+                            conjunct_into(&mut buckets, key_buckets);
                         }
-                        parts.clear();
-                        let mut has_current_user = false;
-                        let mut is_fixed_key = true;
-                        for position in &key.positions {
-                            // Since the sides in the "In" query can be of different lengths,
-                            // we need to find a suitable position, as if they were the
-                            // same length.
-                            let pos = if *op == Bool::In {
-                                *position % right_columns.len()
-                            } else {
-                                *position
-                            };
-                            let right_column_id = *right_columns.get(pos).ok_or_else(|| {
-                                SbroadError::NotFound(
-                                    Entity::Column,
-                                    format_smolstr!("at position {position} for right row"),
-                                )
-                            })?;
-
-                            let right_column_expr = self.get_expression_node(right_column_id)?;
-                            match right_column_expr {
-                                Expression::Constant(_) => {
-                                    let value = self.as_const_value_ref(right_column_id)?;
-                                    parts.push(UnboundKeyPart::Value(value));
-                                }
-                                // Before `bind_params` we can't get actual value, but the
-                                // query is still single-node if all sharding-key columns are
-                                // fixed by constants or parameters. CURRENT_USER is replaced
-                                // with a constant on bind as well.
-                                Expression::Parameter(Parameter { index, .. }) => {
-                                    parts.push(UnboundKeyPart::Param(*index));
-                                }
-                                Expression::CurrentUser(_) => {
-                                    has_current_user = true;
-                                }
-                                _ => {
-                                    // Row-dependent expressions on any sharding-key column make
-                                    // the whole candidate key unresolved, even if other columns
-                                    // are fixed by constants or parameters.
-                                    is_fixed_key = false;
-                                    break;
-                                }
-                            }
+                        Some(values) if !values.is_empty() => {
+                            let values_buckets = resolver.buckets_from_values(&values, tier)?;
+                            conjunct_into(&mut buckets, values_buckets);
                         }
-                        if !is_fixed_key {
-                            continue;
-                        }
-                        if has_current_user {
-                            conjunct_into(&mut buckets, R::Buckets::new_estimated(1));
-                            continue;
-                        }
-                        // `None` if some part is a parameter.
-                        let values: Option<Vec<&Value>> = parts
-                            .iter()
-                            .map(|part| match part {
-                                UnboundKeyPart::Value(value) => Some(*value),
-                                UnboundKeyPart::Param(_) => None,
-                            })
-                            .collect();
-                        match values {
-                            None => {
-                                let key_buckets =
-                                    resolver.buckets_from_unbound_key(&parts, tier)?;
-                                conjunct_into(&mut buckets, key_buckets);
-                            }
-                            Some(values) if !values.is_empty() => {
-                                let values_buckets = resolver.buckets_from_values(&values, tier)?;
-                                conjunct_into(&mut buckets, values_buckets);
-                            }
-                            Some(_) => {}
-                        }
+                        Some(_) => {}
                     }
                 }
             }
@@ -676,10 +735,11 @@ impl Plan {
         subqueries: &[NodeId],
         resolver: &R,
     ) -> Result<R::Buckets, SbroadError> {
+        let expr = self.get_expression_node(expr_id)?;
         // Only the whole filter is handled here. A false conjunct follows the
         // expression-discovery rules below, just as it does during execution.
         if matches!(
-            self.get_expression_node(expr_id)?,
+            expr,
             Expression::Constant(Constant {
                 value: Value::Boolean(false) | Value::Null,
             })
@@ -715,32 +775,41 @@ impl Plan {
             }
             default_buckets
         };
+        let conjunct_buckets = |expr| -> Result<R::Buckets, SbroadError> {
+            Ok(self
+                .get_buckets_from_expr(expr, resolver)?
+                .unwrap_or_else(|| default_buckets.clone()))
+        };
+        // Without AND and OR the expression is the only conjunct of the only chain.
+        if !matches!(
+            expr,
+            Expression::Bool(BoolExpr {
+                op: Bool::And | Bool::Or,
+                ..
+            })
+        ) {
+            return Ok(default_buckets.conjunct(&conjunct_buckets(expr)?));
+        }
         let Some(chains) = self.get_dnf_chains(expr_id)? else {
             return Ok(default_buckets);
         };
-        let mut result = Vec::with_capacity(chains.len());
+        let mut result: Option<R::Buckets> = None;
         for mut chain in chains {
             let mut chain_buckets = default_buckets.clone();
             let nodes = chain.get_mut_nodes();
             // Nodes in the chain are in the top-down order (from left to right).
             // We need to pop back the chain to get nodes in the bottom-up order.
             while let Some(node_id) = nodes.pop_back() {
-                let node_buckets = self
-                    .get_buckets_from_expr(node_id, resolver)?
-                    .unwrap_or_else(|| default_buckets.clone());
+                let node_buckets = conjunct_buckets(self.get_expression_node(node_id)?)?;
                 chain_buckets = chain_buckets.conjunct(&node_buckets);
             }
-            result.push(chain_buckets);
+            result = Some(match result {
+                Some(result) => result.disjunct(&chain_buckets),
+                None => chain_buckets,
+            });
         }
 
-        if let Some((first, other)) = result.split_first_mut() {
-            for buckets in other {
-                *first = first.disjunct(buckets);
-            }
-            return Ok(first.clone());
-        }
-
-        Ok(R::Buckets::all())
+        Ok(result.unwrap_or_else(R::Buckets::all))
     }
 }
 

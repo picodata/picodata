@@ -72,7 +72,7 @@
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::Expression;
-use crate::ir::node::{BoolExpr, Node32, NodeId};
+use crate::ir::node::{BoolExpr, NodeId};
 use crate::ir::operator::Bool;
 use crate::ir::Plan;
 use std::collections::VecDeque;
@@ -111,18 +111,10 @@ fn and_or(expr_id: NodeId, plan: &Plan) -> Result<Option<NodeId>, SbroadError> {
 }
 
 impl Chain {
-    fn with_capacity(capacity: usize) -> Self {
+    fn new() -> Self {
         Chain {
-            nodes: VecDeque::with_capacity(capacity),
+            nodes: VecDeque::new(),
         }
-    }
-
-    fn reserve(&mut self, additional: usize) {
-        self.nodes.reserve(additional);
-    }
-
-    fn length(&self) -> usize {
-        self.nodes.len()
     }
 
     /// Append a new node to the chain. Keep AND and OR nodes in the back,
@@ -198,19 +190,10 @@ impl Plan {
     /// Get the DNF "AND" chains from the expression tree.
     /// Returns `None` when the DNF expansion would exceed [`MAX_DNF_CHAINS`].
     pub fn get_dnf_chains(&self, top_id: NodeId) -> Result<Option<VecDeque<Chain>>, SbroadError> {
-        let capacity: usize = self.nodes.arena32.iter().fold(0_usize, |acc, node| {
-            acc + match node {
-                Node32::Bool(BoolExpr {
-                    op: Bool::And | Bool::Or,
-                    ..
-                }) => 1,
-                _ => 0,
-            }
-        });
-        let mut result: VecDeque<Chain> = VecDeque::with_capacity(capacity);
-        let mut stack: Vec<Chain> = Vec::with_capacity(capacity);
+        let mut result: VecDeque<Chain> = VecDeque::new();
+        let mut stack: Vec<Chain> = Vec::new();
 
-        let mut top_chain = Chain::with_capacity(capacity);
+        let mut top_chain = Chain::new();
         top_chain.push(top_id, self)?;
         stack.push(top_chain);
 
@@ -236,7 +219,6 @@ impl Plan {
                     }
                     Bool::Or => {
                         let mut new_chain = chain.clone();
-                        new_chain.reserve(capacity - new_chain.length());
                         new_chain.push(*right, self)?;
                         stack.push(new_chain);
                         chain.push(*left, self)?;
