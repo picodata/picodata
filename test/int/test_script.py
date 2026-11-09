@@ -1,15 +1,14 @@
-from conftest import Cluster
-import pytest
+from conftest import Cluster, WAIT_ONLINE_TIMEOUT
 
 
-@pytest.mark.xfail
 def test_script_failure(cluster: Cluster):
     instance = cluster.add_instance(wait_online=False)
     script = f"{cluster.data_dir}/fail.lua"
     with open(script, "w") as f:
         f.write("assert(false)")
     instance.env["PICODATA_SCRIPT"] = script
-    instance.fail_to_start()
+    # Allow startup and the intentional panic's core dump to finish.
+    instance.fail_to_start(timeout=WAIT_ONLINE_TIMEOUT, expected_log="failed to execute postjoin script")
     instance.terminate()
 
 
