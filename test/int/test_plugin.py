@@ -1604,7 +1604,6 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
 # -------------------------- leader change test -----------------------------------
 
 
-@pytest.mark.xfail(reason="https://git.picodata.io/core/picodata/-/issues/2552")
 def test_on_leader_change(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
     i2 = cluster.add_instance(replicaset_name="r1", wait_online=True)
@@ -1643,38 +1642,45 @@ def test_on_leader_change(cluster: Cluster):
 
     leader = cluster.leader()
 
-    # Inject an error which will force `i2` to become offline as if it stopped responsding to RPCs
+    # Inject an error which will force `i2` to become offline as if it stopped responding to RPCs.
     error_injection = "FORCE_AUTO_OFFLINE"
-    leader.call("pico._inject_error", error_injection, i2.name)
+    # Arm i2's guard before forcing it Offline so a delay between injections
+    # cannot let it rejoin and trigger an extra on_leader_change callback.
     i2.call("pico._inject_error", error_injection, i2.name)
+    leader.call("pico._inject_error", error_injection, i2.name)
 
-    counter = cluster.wait_governor_status("idle")
     cluster.wait_has_states(i2, "Offline", "Offline")
 
-    # Governor calls on_leader_change callback on `i1`
-    plugin_ref.assert_cb_called("testservice_1", "on_leader_change", 2, i1)
-    # But `i2` is pressumed dead, so the callback is not called
-    plugin_ref.assert_cb_called("testservice_1", "on_leader_change", 1, i2)
+    def get_promoted_instance():
+        master_name = i1.replicaset_master_name()
+        assert master_name in (i1.name, i3.name)
+        return i1 if master_name == i1.name else i3
 
-    # Therefore both `i1` and `i2` think they're the master
-    plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i1, i2)
+    # Either remaining replica can be promoted. Wait for the switchover before
+    # checking callbacks; marking i2 Offline happens before promotion finishes.
+    new_master = Retriable().call(get_promoted_instance)
+    counter = cluster.wait_governor_status("idle")
+
+    expected_calls = {i1: 1, i2: 1, i3: 0}
+    expected_calls[new_master] += 1
+    for instance, calls in expected_calls.items():
+        plugin_ref.assert_cb_called("testservice_1", "on_leader_change", calls, instance)
+        # i2 is presumed dead, so its callback and master context stay unchanged.
+        plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": instance in (new_master, i2)}, instance)
 
     # Disable the injected error
     leader.call("pico._inject_error", error_injection, None)
     i2.call("pico._inject_error", error_injection, None)
 
     cluster.wait_governor_status("idle", old_progress=counter)
-    # `i2` has come to it's senses
+    # `i2` has come to its senses.
     i2.wait_online()
 
-    # on_leader_change callback on `i1` was not called again
-    plugin_ref.assert_cb_called("testservice_1", "on_leader_change", 2, i1)
-    # But `i2` has now received the RPC and finally called the callback
-    plugin_ref.assert_cb_called("testservice_1", "on_leader_change", 2, i2)
-
-    # Now `i1` and `i2` both know who's the master
-    plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i1)
-    plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": False}, i2)
+    # Only i2 receives another callback when it learns it is no longer master.
+    expected_calls[i2] += 1
+    for instance, calls in expected_calls.items():
+        plugin_ref.assert_cb_called("testservice_1", "on_leader_change", calls, instance)
+        plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": instance is new_master}, instance)
 
 
 def test_error_on_leader_change(cluster: Cluster):
