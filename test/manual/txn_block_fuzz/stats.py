@@ -8,15 +8,19 @@ from dataclasses import dataclass, field
 
 from framework.log import log
 
-# A block that cannot run right now is not a bug: the coordinator was killed,
-# the raft leader is being re-elected, a bucket is being moved by the
-# rebalancer. Anything that doesn't match is reported as an unexpected error.
+# Concurrent blocks on the same rows abort each other; that happens with or
+# without faults.
+CONTENTION_ERRORS = re.compile(r"\bconflict|\baborted\b", re.IGNORECASE)
+
+# A block that cannot run right now because of a fault is not a bug: the
+# coordinator was killed, the raft leader is being re-elected, a bucket is
+# being moved by the rebalancer. Only a run with a nemesis expects these.
 # The patterns are whole words or phrases taken from the messages of psycopg,
 # raft, tarantool and vshard: a bare fragment such as `cas` or `bucket` would
 # also swallow a planner error that happens to contain it.
-EXPECTED_ERRORS = re.compile(
+FAULT_ERRORS = re.compile(
     # the connection, as psycopg reports it
-    r"\bconnection\b|server closed|reset by peer|broken pipe|\beof\b|end of file|io error|"
+    r"\bconnection\b|server closed|reset by peer|peer closed|broken pipe|\beof\b|end of file|io error|"
     r"\brefused\b|\btimeout\b|timed out|\bdisconnect|query and params failed|"
     # raft
     r"not a leader|leader is unknown|leader id is unknown|term mismatch|"
@@ -26,10 +30,11 @@ EXPECTED_ERRORS = re.compile(
     # vshard: buckets in motion, replicasets without a master
     r"\bbucket \d+\b|buckets are not discovered|transaction on all buckets|rebalancing in progress|"
     r"is not a master|master is not configured|master switchover|no active replicas|is unreachable|"
-    r"replicaset is locked|is in backoff|out of sync|isn't active|replicaset sync|\bvshard\b|"
+    r"replicaset is locked|is in backoff|out of sync|isn't active|replicaset sync|"
     r"storage is disabled|router is disabled|configuration of the (?:storage|router)|"
-    # compare-and-swap on the raft log, and transactions it aborted
-    r"cas rejected|conflictfound|\bconflict|entrytermmismatch|\baborted\b|\bretries\b|"
+    r"is outdated after module reload|"
+    # compare-and-swap on the raft log
+    r"cas rejected|conflictfound|entrytermmismatch|\bretries\b|"
     r"single node|one node|data motion",
     re.IGNORECASE,
 )
@@ -55,6 +60,8 @@ class Anomaly:
 
 @dataclass
 class Stats:
+    # Without a nemesis only CONTENTION_ERRORS are expected.
+    expect_faults: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
     ok: Counter = field(default_factory=Counter)
     expected: Counter = field(default_factory=Counter)
@@ -76,7 +83,7 @@ class Stats:
     def record_error(self, op: str, error: Exception, node: str, sql: str, params: tuple = ()):
         text = str(error) or repr(error)
         with self.lock:
-            if EXPECTED_ERRORS.search(text):
+            if CONTENTION_ERRORS.search(text) or (self.expect_faults and FAULT_ERRORS.search(text)):
                 self.expected[op] += 1
                 return
             self.unexpected[op] += 1

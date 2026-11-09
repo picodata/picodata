@@ -1,10 +1,12 @@
 """Checking an append history for serializability, and checking the checker."""
 
+import copy
 import hashlib
 import io
 import json
 import shutil
 import subprocess
+import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -26,14 +28,12 @@ ELLE_CLI_SHA256 = "9d3c72eaf3ccc4d0c7dc1da710264dee01f03af58c9fa177fec3f78ff5af1
 ELLE_CLI_JAR = f"elle-cli-{ELLE_CLI_VERSION}-standalone.jar"
 
 
-def elle_cli_jar() -> Path | None:
+def elle_cli_jar() -> Path:
     """The jar to run: ELLE_CLI_JAR if set, otherwise the cached download.
 
-    None when there is no java to run it with. A failed download raises, which
-    is why this runs before the cluster is deployed and not after the workload."""
-    if shutil.which("java") is None:
-        log.warning("java not found, the Elle check is skipped")
-        return None
+    A missing java or a failed download raises, which is why this runs before
+    the cluster is deployed and not after the workload."""
+    assert shutil.which("java") is not None, "the append workload needs java to run elle-cli"
     if config.ELLE_CLI_JAR:
         return Path(config.ELLE_CLI_JAR)
     jar = config.ELLE_CLI_CACHE / ELLE_CLI_JAR
@@ -48,11 +48,11 @@ def elle_cli_jar() -> Path | None:
     with zipfile.ZipFile(io.BytesIO(archive)) as zf:
         member = next(name for name in zf.namelist() if name.endswith("/" + ELLE_CLI_JAR))
         jar.parent.mkdir(parents=True, exist_ok=True)
-        # Written beside the jar and renamed, so a concurrent run never sees a
-        # partial file.
-        part = jar.with_suffix(".part")
-        part.write_bytes(zf.read(member))
-        part.replace(jar)
+        # Written beside the jar under a name of its own and renamed, so a
+        # concurrent run never sees or renames a partial file.
+        with tempfile.NamedTemporaryFile(dir=jar.parent, suffix=".part", delete=False) as part:
+            part.write(zf.read(member))
+        Path(part.name).replace(jar)
     return jar
 
 
@@ -80,15 +80,23 @@ def run_elle(history_path: Path, out_dir: Path, jar: Path) -> dict:
         result = subprocess.run(command, capture_output=True, text=True, timeout=1800)
     except subprocess.TimeoutExpired:
         return {"valid?": "timed out"}
-    marker = result.stdout.find('"valid?"')
-    start = result.stdout.rfind("{", 0, marker) if marker != -1 else -1
-    if start == -1:
-        return {
-            "valid?": f"crashed with exit code {result.returncode}",
-            "stderr": result.stderr.strip().splitlines()[-3:],
-        }
-    verdict, _ = json.JSONDecoder().raw_decode(result.stdout[start:])
-    return verdict
+    # The JSON object can follow other output. Only a top-level object counts:
+    # a decoded object is skipped as a whole, so its nested objects are not tried.
+    decoder = json.JSONDecoder()
+    start = result.stdout.find("{")
+    while start != -1:
+        try:
+            value, end = decoder.raw_decode(result.stdout, start)
+        except json.JSONDecodeError:
+            end = start + 1
+        else:
+            if isinstance(value, dict) and "valid?" in value:
+                return value
+        start = result.stdout.find("{", end)
+    return {
+        "valid?": f"crashed with exit code {result.returncode}",
+        "stderr": result.stderr.strip().splitlines()[-3:],
+    }
 
 
 def corrupt_duplicate(history: list[dict]) -> bool:
@@ -142,10 +150,7 @@ NEGATIVE_CONTROLS: list[tuple[str, Callable[[list[dict]], bool]]] = [
 ]
 
 
-def check_history(history_path: Path, run_dir: Path, stats: Stats, jar: Path | None) -> list[str]:
-    if jar is None:
-        return ["elle: skipped, java not found"]
-
+def check_history(history_path: Path, run_dir: Path, stats: Stats, jar: Path) -> list[str]:
     lines = []
     verdict = run_elle(history_path, run_dir / "elle", jar)
     lines.append(f"elle list-append serializable: valid? {verdict.get('valid?')}")
@@ -156,9 +161,10 @@ def check_history(history_path: Path, run_dir: Path, stats: Stats, jar: Path | N
         )
         stats.record_anomaly(Anomaly("elle", "list-append", detail, "-", str(history_path)))
 
+    with history_path.open() as f:
+        original = json.load(f)
     for anomaly_type, corrupt in NEGATIVE_CONTROLS:
-        with history_path.open() as f:
-            history = json.load(f)
+        history = copy.deepcopy(original)
         if not corrupt(history):
             detail = "no transaction in the history to corrupt, so the check went unverified"
             stats.record_anomaly(Anomaly("negative-control", anomaly_type, detail, "-", str(history_path)))

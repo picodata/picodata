@@ -12,8 +12,11 @@ from .workload import APPEND_TABLE, KeyPool, check_bank, parse_list
 
 def read_accounts(instance: Instance, sql: str) -> list[tuple]:
     # Retried while the cluster still settles after the last fault; a dead
-    # instance is fatal at once instead of being retried until the deadline.
-    rows = Retriable().call(instance.sql, sql, sudo=True)
+    # instance is fatal at once. The cluster is already online here, so an
+    # error that lasts longer than this is reported, not waited out.
+    retriable = Retriable()
+    retriable.deadline = min(retriable.deadline, time.monotonic() + 120)
+    rows = retriable.call(instance.sql, sql, sudo=True)
     return [tuple(row) for row in rows]
 
 

@@ -50,7 +50,8 @@ Two workloads, selected with FUZZ_WORKLOAD:
 The history is checked by elle-cli (https://github.com/ligurio/elle-cli), a
 standalone jar that runs Elle. It is downloaded on first use into
 ~/.cache/elle-cli and needs Java 21; ELLE_CLI_JAR points at a jar of your own
-instead. Without java the check is skipped. Three corrupted copies of every
+instead. Without java the append workload fails before the cluster is
+deployed. Three corrupted copies of every
 history are checked as well, and the run fails unless each is flagged -- a
 check that silently stopped working would otherwise look exactly like a pass.
 
@@ -125,7 +126,7 @@ cluster:
     endpoints = setup(cluster, pool)
     assert_synchronous_replication(cluster)
     stop = threading.Event()
-    stats = Stats(stop=stop)
+    stats = Stats(expect_faults=bool(faults), stop=stop)
     history = History(tmp_path / "history.json") if pool is not None else None
     print(f"run directory: {tmp_path}", flush=True)
 
@@ -173,39 +174,31 @@ cluster:
     # Without a nemesis, a crash during the run is first seen here.
     history_lines: list[str] = []
     try:
-        check_alive(cluster, stats)
-        # An instance the nemesis restarted keeps a replication config that
-        # points at a peer the nemesis killed, and the governor auto-offlines it
-        # for the broken replication. Recovery is the instance reattaching its
-        # appliers one by one while its own sentinel sets the target state back
-        # to Online, which took about 90 seconds after a storm of 23 faults.
-        # `wait_online` retries that state and resets its deadline on every
-        # state change, so this budget only has to cover a recovery already
-        # under way: the stock 30 seconds gave up seconds before the last
-        # applier reattached. It does not cover a cluster where nothing moves at
-        # all -- the wait is bounded so that such a cluster is reported instead
-        # of hung on.
-        expected_faults = config.DURATION / config.NEMESIS_PERIOD if faults else 0
-        try:
-            cluster.wait_online(timeout=min(600, round(30 + 10 * expected_faults)))
-        except ProcessDead:
-            raise
-        except Exception as e:
-            if not faults:
+        if nemesis is not None and nemesis.is_alive():
+            # The stuck fault still controls its victim; healing it here would race.
+            stats.record_not_healed("a fault did not finish in 180 seconds")
+        else:
+            check_alive(cluster, stats)
+            # `wait_online` resets its deadline on every state change, so the
+            # budget only has to cover a recovery that is already under way.
+            expected_faults = config.DURATION / config.NEMESIS_PERIOD if faults else 0
+            try:
+                cluster.wait_online(timeout=min(600, round(30 + 10 * expected_faults)))
+            except ProcessDead:
                 raise
-            # The faults left an instance Offline and nothing brought it back:
-            # the governor reports nothing to do and the instance's own sentinel
-            # does not wake it. The checks below read from the cluster, so they
-            # would measure a crippled one; the run is skipped instead, after
-            # the asserts that need no healthy cluster. Without a nemesis the
-            # same state is a bug, so it is raised rather than skipped.
-            stats.record_not_healed(str(e).strip().splitlines()[0] if str(e).strip() else repr(e))
+            except Exception as e:
+                if not faults:
+                    raise
+                # The checks that read from the cluster are skipped; the history check does not need it.
+                stats.record_not_healed(str(e).strip().splitlines()[0] if str(e).strip() else repr(e))
         if stats.not_healed is None and "bank" in config.WORKLOADS:
             final_check(cluster, stats)
-        if stats.not_healed is None and pool is not None and history is not None:
-            final_append_read(cluster, pool, history, stats)
+        if pool is not None and history is not None:
+            if stats.not_healed is None:
+                final_append_read(cluster, pool, history, stats)
             history.close()
             history_lines = [f"history: {history.path} ({history.count} records)"]
+            assert elle_jar is not None
             history_lines += check_history(history.path, tmp_path, stats, elle_jar)
     finally:
         # Also when the final checks failed: a history without its closing

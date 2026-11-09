@@ -45,7 +45,7 @@ The check runs through [elle-cli], a standalone jar that needs Java 21. The
 jar is downloaded on first use into `~/.cache/elle-cli` (or
 `$XDG_CACHE_HOME/elle-cli`) and verified against a pinned checksum;
 `ELLE_CLI_JAR` points at a jar of your own instead. Without `java` the
-history is still written, and the report says `elle: skipped, java not found`.
+append workload fails before the cluster is deployed.
 
 ```
 FUZZ_WORKLOAD=append CI=1 uv run pytest test/manual/test_txn_block_fuzz.py -s
@@ -75,8 +75,9 @@ FUZZ_WORKLOAD=bank,append FUZZ_NEMESIS=all FUZZ_DURATION=900 \
 
 A fault run can end as `skipped`: the faults left an instance Offline and
 nothing brought it back, so there was no healthy cluster left to check. That is
-a known liveness gap rather than a finding of this harness. A consistency
-violation still fails the run, and without a nemesis the same state fails too.
+a known liveness gap rather than a finding of this harness. The recorded
+append history is still checked, a consistency violation still fails the run,
+and without a nemesis the same state fails too.
 
 ### Reading a failure
 

@@ -59,16 +59,19 @@ def assert_synchronous_replication(cluster: Cluster):
     (see the test module's docstring), and a cluster that silently came up
     asynchronous would look exactly like a clean pass."""
     sharded = "sacc" if "bank" in config.WORKLOADS else APPEND_TABLE
-    instance = cluster.instances[0]
-    sharded_is_sync = instance.eval(f"return box.space.{sharded}.is_sync") or False
-    quorum = instance.eval("return box.cfg.replication_synchro_quorum")
-    states = {i.name: i.eval("return box.info.election.state") for i in cluster.instances}
+    replicasets: dict[str, dict[str, str]] = {}
+    for instance in cluster.instances:
+        sharded_is_sync = instance.eval(f"return box.space.{sharded}.is_sync") or False
+        quorum = instance.eval("return box.cfg.replication_synchro_quorum")
+        replicaset = instance.eval("return pico.instance_info().replicaset_name")
+        state = instance.eval("return box.info.election.state")
+        replicasets.setdefault(replicaset, {})[instance.name or "?"] = state
+        print(
+            f"\n{instance.name}: {sharded}.is_sync={sharded_is_sync} synchro_quorum={quorum} election={state}",
+            flush=True,
+        )
+        assert sharded_is_sync, f"{sharded} is not synchronous on {instance.name} -- the tier is not in sync mode"
+        assert quorum == config.RF // 2 + 1, f"unexpected synchro quorum {quorum} on {instance.name} for rf {config.RF}"
 
-    print(
-        f"\n{sharded}.is_sync={sharded_is_sync} synchro_quorum={quorum} election={states}",
-        flush=True,
-    )
-
-    assert sharded_is_sync, "sharded table is not synchronous -- the tier did not come up in sync mode"
-    assert quorum == config.RF // 2 + 1, f"unexpected synchro quorum {quorum} for rf {config.RF}"
-    assert "leader" in states.values(), f"no election leader in the replicaset: {states}"
+    for replicaset, states in replicasets.items():
+        assert "leader" in states.values(), f"no election leader in replicaset {replicaset}: {states}"
