@@ -919,6 +919,10 @@ test-mac-m1:
   variables:
     GIT_STRATEGY: fetch
     GIT_SUBMODULE_STRATEGY: recursive
+    CARGO_TARGET_DIR: /Users/gitlab_runner/.cache/picodata-build-cache/${CI_PROJECT_ID}/${CI_RUNNER_ID}-${CI_CONCURRENT_PROJECT_ID}/target
+    RUSTC_WRAPPER: ""
+    CARGO_INCREMENTAL: "1"
+    CARGO_TERM_COLOR: never
   rules:
     # scheduled pipelines on release branches are for audit, not for tests or builds
     - if: ($CI_COMMIT_BRANCH =~ /^\d+\.\d+$/) && ($CI_PIPELINE_SOURCE == "schedule")
@@ -930,33 +934,36 @@ test-mac-m1:
     - mac-dev-m1
   timeout: 60m
   script:
-    - corepack enable
-
+    - unset COMPILER_LAUNCHER CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER
     # Gitlab doesnt know about $HOME. If specified in variables it becomes empty
     - export CARGO_HOME=$HOME/.cargo
+    - mkdir -p "$CARGO_TARGET_DIR"
+    - |
+      set -eo pipefail
+      target_size_kb=$(du -sk "$CARGO_TARGET_DIR" | cut -f1)
+      # du reports KiB; the cleanup threshold is 70 GB (decimal).
+      if (( target_size_kb * 1024 > 70 * 1000 * 1000 * 1000 )); then
+        printf '%s\n' 'Target cache exceeds 70 GB; clearing it before build'
+        find -P "$CARGO_TARGET_DIR" -xdev -mindepth 1 -delete
+      fi
+    - df -h "$CARGO_TARGET_DIR"
+    - corepack enable
     - ./tools/get_tags.py
     - cargo +$RUST_VERSION -V
-    - cargo +$RUST_VERSION build --locked --timings
-    - cp target/cargo-timings/cargo-timing.html cargo-timing-without-webui.html
-    - cargo +$RUST_VERSION build --features webui --locked --timings
-    - cp target/cargo-timings/cargo-timing.html cargo-timing-with-webui.html
-    # There are no Rust tests for `webui` feature.
-    # It will be checked during integration tests.
-    - cargo +$RUST_VERSION test --locked
-
-    - cargo +$RUST_VERSION fmt -- -v --check
-    - cargo +$RUST_VERSION clippy --version
-    - cargo +$RUST_VERSION clippy --features "load_test webui error_injection" -- --deny clippy::all --no-deps
+    - bash tools/test-macos.sh
     # - *uv-sync
     # - uv run pytest --numprocesses auto -v
     # - make lint
     # - |
+  after_script:
+    - df -h "$CARGO_TARGET_DIR"
+    - du -sh "$CARGO_TARGET_DIR"
   artifacts:
     when: always
     paths:
       - cargo-timing-without-webui.html
       - cargo-timing-with-webui.html
-      - target/debug/picodata
+      - picodata
 
 .helm:
   stage: test
