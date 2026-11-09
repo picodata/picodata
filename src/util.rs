@@ -999,8 +999,10 @@ enum MpExtAsJson {
     /// Written as a json number. Json numbers technically can carry arbitrary
     /// precision, so every digit is written directly, same as postgres does for a numeric:
     ///
-    ///     postgres=# SELECT to_json(0.001::numeric);
-    ///     0.001
+    /// ```text
+    /// postgres=# SELECT to_json(0.001::numeric);
+    /// 0.001
+    /// ```
     Number(String),
     /// Written as a json string, because json has no standard type to represent the value.
     Text(String),
@@ -1055,9 +1057,11 @@ fn mp_ext_to_json(tag: i8, data: &[u8]) -> Option<MpExtAsJson> {
 /// can't occur because tarantool restricts that. A zero is written the same way
 /// as in postgres, keeping its fractional digits and dropping its sign:
 ///
-///     postgres=# SELECT to_json('1e5'::numeric * 0);  -- 0
-///     postgres=# SELECT to_json('-0e3'::numeric);     -- 0
-///     postgres=# SELECT to_json('0.00'::numeric);     -- 0.00
+/// ```text
+/// postgres=# SELECT to_json('1e5'::numeric * 0);  -- 0
+/// postgres=# SELECT to_json('-0e3'::numeric);     -- 0
+/// postgres=# SELECT to_json('0.00'::numeric);     -- 0.00
+/// ```
 fn decimal_to_json(v: tarantool::decimal::Decimal) -> String {
     if v != tarantool::decimal::Decimal::zero() {
         return v.to_string();
@@ -1127,8 +1131,10 @@ impl serde::Serialize for MpValueAsJson<'_> {
 /// that an extension is always written as a string, since json keys are always
 /// strings. A decimal key is quoted the way postgres quotes a numeric one:
 ///
-///     postgres=# SELECT json_build_object(1.5::numeric, 'x');
-///     {"1.5" : "x"}
+/// ```text
+/// postgres=# SELECT json_build_object(1.5::numeric, 'x');
+/// {"1.5" : "x"}
+/// ```
 pub(crate) struct MpKeyAsJson<'a>(pub &'a rmpv::Value);
 
 impl serde::Serialize for MpKeyAsJson<'_> {
