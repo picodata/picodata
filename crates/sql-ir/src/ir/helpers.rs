@@ -594,7 +594,7 @@ impl Plan {
                 let subqueries = relation.subqueries();
                 if !subqueries.is_empty() {
                     writeln_with_tabulation(buf, tabulation_number + 1, "Subqueries:")?;
-                    for subquery in &subqueries {
+                    for subquery in subqueries {
                         writeln_with_tabulation(
                             buf,
                             tabulation_number + 2,

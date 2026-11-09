@@ -1182,7 +1182,7 @@ impl Plan {
         if self.get_expression_node(row_id)?.is_row() {
             if let Some(sq_id) = self.get_sub_query_from_row_node(row_id)? {
                 let subqueries = self.get_relation_subqueries(rel_id)?;
-                if subqueries.iter().any(|&c| c == sq_id) {
+                if subqueries.contains(&sq_id) {
                     return Ok(Some(sq_id));
                 }
             }
@@ -2055,7 +2055,7 @@ impl Plan {
             return Ok(map);
         }
 
-        let child_id = children.get(0).expect("cannot be reached");
+        let child_id = children.first().expect("cannot be reached");
         let child_node = self.get_relation_node(*child_id)?;
         if !matches!(child_node, Relational::Motion(_)) {
             map.upsert_child(*child_id, MotionPolicy::Full, Program::default());

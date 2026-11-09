@@ -543,7 +543,7 @@ impl Plan {
             if top.is_dml() {
                 // Ensure motion is local.
                 let top_children = plan.get_relation_children(top_id)?;
-                let Some(motion_id) = top_children.get(0) else {
+                let Some(motion_id) = top_children.first() else {
                     return Ok(());
                 };
                 let motion = plan.get_relation_node(*motion_id)?;

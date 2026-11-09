@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     errors::{Entity, SbroadError},
-    ir::api::children::{Children, MutChildren},
+    ir::api::children::{self, Children, MutChildren},
     ir::distribution::Distribution,
 };
 
@@ -165,9 +165,9 @@ impl RelOwned {
         }
     }
 
-    // Gets an immutable reference to the children nodes.
+    // Returns a copy of the children ids.
     #[must_use]
-    pub fn children(&self) -> Children<'_> {
+    pub fn children(&self) -> Children {
         match self {
             RelOwned::Limit(Limit { child, .. })
             | RelOwned::Delete(Delete {
@@ -183,18 +183,18 @@ impl RelOwned {
             | RelOwned::Having(Having { child, .. })
             | RelOwned::Selection(Selection { child, .. })
             | RelOwned::GroupBy(GroupBy { child, .. })
-            | RelOwned::OrderBy(OrderBy { child, .. }) => Children::Single(child),
+            | RelOwned::OrderBy(OrderBy { child, .. }) => children::one(*child),
             RelOwned::Except(Except { left, right, .. })
             | RelOwned::Intersect(Intersect { left, right, .. })
             | RelOwned::UnionAll(UnionAll { left, right, .. })
             | RelOwned::Union(Union { left, right, .. })
-            | RelOwned::Join(Join { left, right, .. }) => Children::Couple(left, right),
+            | RelOwned::Join(Join { left, right, .. }) => Children::from([*left, *right]),
             RelOwned::Delete(Delete { child: None, .. })
             | RelOwned::Motion(Motion { child: None, .. })
             | RelOwned::ScanRelation(_)
             | RelOwned::ScanFunction(_)
             | RelOwned::SelectWithoutScan(_)
-            | RelOwned::Values(_) => Children::None,
+            | RelOwned::Values(_) => Children::new(),
 
             RelOwned::Projection(Projection {
                 child,
@@ -203,9 +203,9 @@ impl RelOwned {
                 ..
             }) => {
                 if having.is_some() || group_by.is_some() {
-                    Children::None
+                    Children::new()
                 } else if child.is_some() {
-                    Children::Single(child.as_ref().unwrap())
+                    children::one(child.unwrap())
                 } else {
                     unreachable!("nothing was set")
                 }
@@ -232,7 +232,7 @@ impl RelOwned {
             | RelOwned::Having(Having { ref mut child, .. })
             | RelOwned::Selection(Selection { ref mut child, .. })
             | RelOwned::GroupBy(GroupBy { ref mut child, .. })
-            | RelOwned::OrderBy(OrderBy { ref mut child, .. }) => MutChildren::Single(child),
+            | RelOwned::OrderBy(OrderBy { ref mut child, .. }) => children::one(child),
             RelOwned::Except(Except {
                 ref mut left,
                 ref mut right,
@@ -257,13 +257,13 @@ impl RelOwned {
                 ref mut left,
                 ref mut right,
                 ..
-            }) => MutChildren::Couple(left, right),
+            }) => MutChildren::from([left, right]),
             RelOwned::Delete(Delete { child: None, .. })
             | RelOwned::Motion(Motion { child: None, .. })
             | RelOwned::ScanRelation(_)
             | RelOwned::ScanFunction(_)
             | RelOwned::SelectWithoutScan(_)
-            | RelOwned::Values(_) => MutChildren::None,
+            | RelOwned::Values(_) => MutChildren::new(),
             RelOwned::Projection(Projection {
                 ref mut child,
                 group_by,
@@ -271,9 +271,9 @@ impl RelOwned {
                 ..
             }) => {
                 if group_by.is_some() || having.is_some() {
-                    MutChildren::None
+                    MutChildren::new()
                 } else if child.is_some() {
-                    MutChildren::Single(child.as_mut().unwrap())
+                    children::one(child.as_mut().unwrap())
                 } else {
                     unreachable!("nothing was set")
                 }
@@ -282,7 +282,7 @@ impl RelOwned {
     }
 
     #[must_use]
-    pub fn mut_subqueries(&mut self) -> MutChildren<'_> {
+    pub fn mut_subqueries(&mut self) -> &mut [NodeId] {
         match self {
             RelOwned::Join(Join {
                 ref mut subqueries, ..
@@ -310,8 +310,8 @@ impl RelOwned {
             })
             | RelOwned::Projection(Projection {
                 ref mut subqueries, ..
-            }) => MutChildren::Many(subqueries),
-            _ => MutChildren::None,
+            }) => subqueries,
+            _ => &mut [],
         }
     }
 
@@ -455,7 +455,6 @@ impl MutRelational<'_> {
     // Gets a mutable reference to the children nodes.
     #[must_use]
     pub fn mut_children(&mut self) -> MutChildren<'_> {
-        // return MutChildren { node: self };
         match self {
             MutRelational::Limit(Limit { child, .. })
             | MutRelational::ScanCte(ScanCte { child, .. })
@@ -471,18 +470,18 @@ impl MutRelational<'_> {
             | MutRelational::Selection(Selection { child, .. })
             | MutRelational::Having(Having { child, .. })
             | MutRelational::GroupBy(GroupBy { child, .. })
-            | MutRelational::OrderBy(OrderBy { child, .. }) => MutChildren::Single(child),
+            | MutRelational::OrderBy(OrderBy { child, .. }) => children::one(child),
             MutRelational::Except(Except { left, right, .. })
             | MutRelational::Intersect(Intersect { left, right, .. })
             | MutRelational::UnionAll(UnionAll { left, right, .. })
             | MutRelational::Union(Union { left, right, .. })
-            | MutRelational::Join(Join { left, right, .. }) => MutChildren::Couple(left, right),
+            | MutRelational::Join(Join { left, right, .. }) => MutChildren::from([left, right]),
             MutRelational::Delete(Delete { child: None, .. })
             | MutRelational::Motion(Motion { child: None, .. })
             | MutRelational::ScanRelation(_)
             | MutRelational::ScanFunction(_)
             | MutRelational::SelectWithoutScan(_)
-            | MutRelational::Values(_) => MutChildren::None,
+            | MutRelational::Values(_) => MutChildren::new(),
             MutRelational::Projection(Projection {
                 child,
                 group_by,
@@ -490,9 +489,9 @@ impl MutRelational<'_> {
                 ..
             }) => {
                 if group_by.is_some() || having.is_some() {
-                    MutChildren::None
+                    MutChildren::new()
                 } else if child.is_some() {
-                    MutChildren::Single(child.as_mut().unwrap())
+                    children::one(child.as_mut().unwrap())
                 } else {
                     unreachable!("nothing was set")
                 }
@@ -678,7 +677,7 @@ impl<'a> Relational<'a> {
     }
 }
 
-impl Relational<'_> {
+impl<'a> Relational<'a> {
     /// Whether the node stores its output tuple explicitly (see
     /// [`Relational::explicit_output`]).
     pub fn has_explicit_output(&self) -> bool {
@@ -701,9 +700,9 @@ impl Relational<'_> {
         }
     }
 
-    // Gets an immutable reference to the children nodes.
+    // Returns a copy of the children ids.
     #[must_use]
-    pub fn children(&self) -> Children<'_> {
+    pub fn children(&self) -> Children {
         match self {
             Relational::Limit(Limit { child, .. })
             | Relational::ScanSubQuery(ScanSubQuery { child, .. })
@@ -719,18 +718,18 @@ impl Relational<'_> {
             | Relational::Having(Having { child, .. })
             | Relational::Selection(Selection { child, .. })
             | Relational::GroupBy(GroupBy { child, .. })
-            | Relational::OrderBy(OrderBy { child, .. }) => Children::Single(child),
+            | Relational::OrderBy(OrderBy { child, .. }) => children::one(*child),
             Relational::Except(Except { left, right, .. })
             | Relational::Intersect(Intersect { left, right, .. })
             | Relational::UnionAll(UnionAll { left, right, .. })
             | Relational::Union(Union { left, right, .. })
-            | Relational::Join(Join { left, right, .. }) => Children::Couple(left, right),
+            | Relational::Join(Join { left, right, .. }) => Children::from([*left, *right]),
             Relational::Delete(Delete { child: None, .. })
             | Relational::Motion(Motion { child: None, .. })
             | Relational::ScanRelation(_)
             | Relational::ScanFunction(_)
             | Relational::SelectWithoutScan(SelectWithoutScan { .. })
-            | Relational::Values(Values { .. }) => Children::None,
+            | Relational::Values(Values { .. }) => Children::new(),
             Relational::Projection(Projection {
                 child,
                 having,
@@ -738,9 +737,9 @@ impl Relational<'_> {
                 ..
             }) => {
                 if having.is_some() || group_by.is_some() {
-                    Children::None
+                    Children::new()
                 } else if child.is_some() {
-                    Children::Single(child.as_ref().unwrap())
+                    children::one(child.unwrap())
                 } else {
                     unreachable!("nothing was set")
                 }
@@ -748,7 +747,7 @@ impl Relational<'_> {
         }
     }
 
-    pub fn subqueries(&self) -> Children<'_> {
+    pub fn subqueries(&self) -> &'a [NodeId] {
         match self {
             Relational::Join(Join { subqueries, .. })
             | Relational::Having(Having { subqueries, .. })
@@ -758,8 +757,8 @@ impl Relational<'_> {
             | Relational::ScanFunction(ScanFunction { subqueries, .. })
             | Relational::GroupBy(GroupBy { subqueries, .. })
             | Relational::OrderBy(OrderBy { subqueries, .. })
-            | Relational::Projection(Projection { subqueries, .. }) => Children::Many(subqueries),
-            _ => Children::None,
+            | Relational::Projection(Projection { subqueries, .. }) => subqueries,
+            _ => &[],
         }
     }
 

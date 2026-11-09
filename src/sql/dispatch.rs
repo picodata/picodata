@@ -39,7 +39,6 @@ use sql::executor::protocol::SchemaInfo;
 use sql::executor::result::{metadata_type_name, MetadataColumn};
 use sql::executor::vtable::VirtualTable;
 use sql::executor::Port;
-use sql::ir::api::children::Children;
 use sql::ir::bucket::{BucketSet, Buckets};
 use sql::ir::helpers::RepeatableState;
 use sql::ir::node::relational::Relational;
@@ -1449,7 +1448,7 @@ fn build_dml_request(ex_plan: Rc<ExecutionPlan>, top_id: NodeId) -> SqlResult<Dm
 
     // If DML child is a motion with local policy, data will be processed in storage.
     // Plan should be stored for cache miss handling.
-    let with_dql = if let Children::Single(child) = relation_node.children() {
+    let with_dql = if let [child] = relation_node.children().as_slice() {
         matches!(
             plan.get_relation_node(*child)?,
             Relational::Motion(Motion {

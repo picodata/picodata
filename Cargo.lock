@@ -4016,6 +4016,7 @@ name = "sql-ir"
 version = "0.1.0"
 dependencies = [
  "ahash 0.8.12",
+ "arrayvec",
  "bitflags 2.11.1",
  "chrono",
  "insta",

@@ -85,7 +85,7 @@ impl SubtreeCloner {
 
         // Children lists (and explicit outputs, where present) must be copied.
         // We don't need to copy subqueries because we reuse them
-        let children = old_relational.children().to_vec();
+        let children = old_relational.children();
         let new_children = self.copy_list(&children)?;
         copied.set_children(new_children);
         if let Some(old_output) = old_relational.explicit_output() {

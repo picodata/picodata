@@ -147,6 +147,7 @@ file_shred = { git = "https://git.picodata.io/core/file_shred", branch = "rand-0
 
 [workspace.dependencies]
 ahash = "0.8"
+arrayvec = "0.7"
 bitflags = "2.9.1"
 build-rs-helpers = { path = "crates/build-rs-helpers" }
 chrono = "0.4"

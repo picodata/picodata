@@ -9,7 +9,6 @@ use crate::{
         preemption::Scheduler,
     },
     ir::{
-        api::children::Children,
         node::{
             block::BlockOwned,
             expression::{Expression, MutExpression},
@@ -665,9 +664,9 @@ fn dml_get_motion_child(
         ir_plan.get_relation_node(dml_node_id)?,
         Relational::Delete(_) | Relational::Update(_) | Relational::Insert(_)
     ));
-    match ir_plan.children(dml_node_id) {
-        Children::None => Ok(None),
-        Children::Single(child_id) => {
+    match ir_plan.children(dml_node_id).as_slice() {
+        [] => Ok(None),
+        [child_id] => {
             let child = ir_plan.get_relation_node(*child_id)?;
             if let Relational::Motion(_) = child {
                 Ok(ex_plan.effective_motion_subtree_root(*child_id)?)
