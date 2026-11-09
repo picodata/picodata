@@ -722,16 +722,6 @@ def test_read_from_system_tables(cluster: Cluster):
     assert len(data["rows"]) == instance_count
 
 
-# FIXME: Flaky test.
-#        As one of the possible reasons flakiness is caused by
-#        inconsistent bucket reads (read just after update returns
-#        extra row).
-#        Should be fixed after we move on new vshard methods as a part
-#        of the following issue:
-#        https://git.picodata.io/picodata/picodata/sbroad/-/issues/531.
-#        Picodata issue to resolve:
-#        https://git.picodata.io/picodata/picodata/picodata/-/issues/1013#note_106684
-@pytest.mark.xfail
 def test_dml_on_global_tbls(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
@@ -855,20 +845,20 @@ def test_dml_on_global_tbls(cluster: Cluster):
     # test explain
     lines = i1.sql("explain insert into global_t select * from t")
     assert "\n".join(lines) == snapshot("""\
-# Logical plan
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       \n\
+──────────────────────────────────────────────────────────────────────
 
-insert "global_t" on conflict: fail
-    motion [policy: full, program: ReshardIfNeeded]
-        projection ("t"."x"::int -> "x", "t"."y"::int -> "y")
-            scan "t"
+insert into global_t on conflict: fail
+  motion [policy: full, program: ReshardIfNeeded]
+    projection (t.x::int -> x, t.y::int -> y)
+      scan t
 
-execution options:
-    sql_vdbe_opcode_max = 45000
-    sql_motion_row_max = 5000
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            \n\
+──────────────────────────────────────────────────────────────────────
 
-# Buckets
-
-buckets = [1-3000]\
+buckets <= [1-3000]\
 """)
 
     # empty delete
