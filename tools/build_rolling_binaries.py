@@ -24,7 +24,7 @@ path_hack()
 
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
-from framework.registry import Registry
+from framework.registry import get_or_make_registry
 from framework.util.path import project_root_path
 from framework.util.version import VersionAlias
 from framework.util import ask_yes_no
@@ -122,7 +122,7 @@ def main():
     auto_confirm = program_arguments.yes
     output_path = program_arguments.output
 
-    registry = Registry()
+    registry = get_or_make_registry()
     executable_paths = {}
     unbuilt_versions = []
     versions_to_build = [VersionAlias.PREVIOUS_MINOR, VersionAlias.BEFORELAST_MINOR]
