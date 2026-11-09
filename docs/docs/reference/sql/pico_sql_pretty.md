@@ -38,19 +38,22 @@ SELECT pico_sql_pretty('select   a,b from t   where a=$1');
 ```
 
 ??? note "Результат"
-    ```shell
+    ```
     +-----------------------------------+
     | col_1                             |
     +===================================+
     | "select a, b from t where a = $1" |
     +-----------------------------------+
-    (1 rows)
     ```
 
 Длинный запрос выводится на нескольких строках:
 
 ```sql
-SELECT pico_sql_pretty('select t.a, t.b, count(*) from some_long_table_name t join other_table o on t.a = o.a where t.b > 10 group by t.a, t.b order by 3 desc');
+SELECT pico_sql_pretty(
+  'select t.a, t.b, count(*) from some_long_table_name t' ||
+  ' join other_table o on t.a = o.a where t.b > 10' ||
+  ' group by t.a, t.b order by 3 desc');
+
 ```
 
 ??? note "Результат"
