@@ -1,5 +1,6 @@
 use crate::backoff::SimpleBackoffManager;
 use crate::cas;
+use crate::cas::CasResult;
 use crate::column_name;
 use crate::compatibility::{compare_picodata_versions, ensure_no_more_than_two_minor_versions};
 use crate::error_code::ErrorCode;
@@ -17,6 +18,7 @@ use crate::storage::{Catalog, SystemTable};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::{Dml, Op};
+use crate::traft::RaftIndex;
 use crate::traft::{error::Error, node, ConnectionType, SystemConnectionType};
 use crate::traft::{Address, RaftId, Result};
 use crate::util::Uppercase;
@@ -53,8 +55,9 @@ pub fn proc_update_instance_impl(req: Request) -> Result<Response> {
     }
 
     tlog!(Debug, "got update instance request: {req:?}");
-    handle_update_instance_request_and_wait(req, TIMEOUT)?;
-    Ok(Response {})
+    let index = handle_update_instance_request_and_wait(req, TIMEOUT)?;
+    // See `Response::index` doc-comments for explanation why always `Some`.
+    Ok(Response { index: Some(index) })
 }
 
 crate::define_rpc_request! {
@@ -82,7 +85,21 @@ crate::define_rpc_request! {
         pub target_state_reason: Option<SmolStr>,
     }
 
-    pub struct Response {}
+    pub struct Response {
+        /// Raft index of the raft entry which contains the update, or current
+        /// applied index in case update is not needed.
+        ///
+        /// Note that it is optional for backwards compatibility. So it will
+        /// always be `Some` when response comes from newer picodata versions
+        /// but will only be `None` when newer version calls
+        /// `proc_update_instance` to the older picodata version.
+        ///
+        /// Note also that this trick works, because `#[tarantool::proc]`
+        /// encodes responses as msgpack maps (via to_vec_named) and when
+        /// decoding maps rmp_serde ignores unexpected fields.
+        #[serde(default, skip_serializing_if="Option::is_none")]
+        pub index: Option<RaftIndex>,
+    }
 }
 
 impl std::ops::Deref for Request {
@@ -186,11 +203,15 @@ impl Request {
 /// Processes the [`crate::rpc::update_instance::Request`] and appends
 /// the corresponding [`Op::Dml`] entry to the raft log (if successful).
 ///
-/// Returns `Ok(())` when the entry is committed.
+/// Returns raft index of the entry when the entry is committed, or current
+/// applied index if no change was needed.
 ///
 /// **This function yields**
 #[inline(always)]
-pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) -> Result<()> {
+pub fn handle_update_instance_request_and_wait(
+    req: Request,
+    timeout: Duration,
+) -> Result<RaftIndex> {
     let node = node::global()?;
     let cluster_uuid = node.catalog_cache.cluster_uuid;
     let storage = &node.storage;
@@ -264,24 +285,32 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             &system_catalog_version,
         )?
         else {
-            return Ok(());
+            // No change needed, return current index
+            return Ok(node.get_index());
         };
 
         let predicate = cas::Predicate::with_applied_index(ranges.into_vec());
         let op = Op::single_dml_or_batch(ops.into_vec());
         let cas = crate::cas::Request::new(op, predicate, ADMIN_ID)?;
         let res = cas::compare_and_swap_local(&cas, deadline)?;
-        if req.dont_retry {
-            res.no_retries()?;
-        } else if let Some(e) = res.into_retriable_error() {
-            crate::tlog!(Debug, "local CaS rejected: {e}");
-            fiber::sleep(Duration::from_millis(250));
-            continue;
+        let index;
+        match res {
+            CasResult::Ok(v) => (index, ..) = v,
+            CasResult::RetriableError(e) => {
+                if req.dont_retry {
+                    return Err(e);
+                }
+
+                crate::tlog!(Debug, "local CaS rejected: {e}");
+                fiber::sleep(Duration::from_millis(250));
+                continue;
+            }
         }
 
         node.main_loop.wakeup();
         drop(guard);
-        return Ok(());
+
+        return Ok(index);
     }
 }
 
@@ -707,7 +736,7 @@ pub fn update_our_target_state_to_online(
 
         let error_message;
         match res {
-            Ok(Response {}) => {
+            Ok(Response { .. }) => {
                 // Leader has received our request to change target_state = Online
                 break;
             }
@@ -754,4 +783,36 @@ pub fn update_our_target_state_to_online(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tarantool::tuple::Decode;
+
+    /// This is what `Response` looked like before 26.3.0.
+    #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    struct OldResponse {}
+
+    #[test]
+    fn older_client_parses_response_from_newer_server() {
+        let response = Response { index: Some(42) };
+
+        // Note that `#[tarantool::proc]` encodes RPC responses as maps
+        // which allows this trick to work.
+        let buf = rmp_serde::to_vec_named(&response).unwrap();
+        let parsed = OldResponse::decode(&buf).unwrap();
+        assert_eq!(parsed, OldResponse {});
+    }
+
+    #[test]
+    fn newer_client_parses_response_from_older_server() {
+        let old_response = OldResponse {};
+
+        // Note that `#[tarantool::proc]` encodes RPC responses as maps
+        // which allows this trick to work.
+        let buf = rmp_serde::to_vec_named(&old_response).unwrap();
+        let parsed = Response::decode(&buf).unwrap();
+        assert_eq!(parsed.index, None);
+    }
 }

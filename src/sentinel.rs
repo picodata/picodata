@@ -4,6 +4,7 @@ use crate::proc_name;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::rpc::update_instance::proc_update_instance_v2;
+use crate::rpc::update_instance::Response;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
@@ -78,8 +79,6 @@ impl Loop {
                 return ControlFlow::Break(());
             }
 
-            // Catalog cache state corresponds to this applied index.
-            let index = node.get_index();
             let instance_name = node.catalog_cache.my_instance_name().into();
             let req = rpc::update_instance::Request::new(instance_name, cluster_name, cluster_uuid)
                 .with_target_state(Offline)
@@ -101,8 +100,8 @@ impl Loop {
                     let Some(leader_id) = raft_status.get().leader_id else {
                         return Err(Error::LeaderUnknown);
                     };
-                    call_proc_update_instance(pool, leader_id, &req, timeout).await?;
-                    Ok(())
+                    let index = call_proc_update_instance(pool, leader_id, &req, timeout).await?;
+                    Ok(index)
                 }
                 .await;
                 match res {
@@ -112,7 +111,7 @@ impl Loop {
                         // it confirms that the instance's target_state has been
                         // changed to Offline. But we still register the result
                         // for consistency
-                        register_successful_connection(&mut stats.borrow_mut(), index);
+                        register_successful_connection(&mut stats.borrow_mut(), None);
                         return ControlFlow::Break(());
                     }
                     Err(e) => {
@@ -165,8 +164,6 @@ impl Loop {
                 return ControlFlow::Continue(());
             };
 
-            // Catalog cache state corresponds to this applied index.
-            let index = node.get_index();
             set_action_kind(
                 &mut stats.borrow_mut(),
                 ActionKind::AutoOfflineByLeader,
@@ -204,7 +201,7 @@ impl Loop {
                 // the future this may change...
                 register_failed_attempt(&mut stats.borrow_mut(), e.into_box_error());
             } else {
-                register_successful_connection(&mut stats.borrow_mut(), index);
+                register_successful_connection(&mut stats.borrow_mut(), None);
             }
 
             _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
@@ -239,7 +236,8 @@ impl Loop {
                     ))
             {
                 // Catalog cache state corresponds to this applied index.
-                let index = node.get_index();
+                let applied_index = node.get_index();
+                let next_index = applied_index + 1;
                 let instance_name = node.catalog_cache.my_instance_name().into();
 
                 tlog!(Info, "setting own target state Online");
@@ -257,20 +255,24 @@ impl Loop {
                     };
                     crate::error_injection!("SENTINEL_CONNECTION_POOL_CALL_FAILURE" =>
                         return Err(BoxError::new(crate::error_code::ErrorCode::Other, "injected error").into()));
-                    call_proc_update_instance(
+                    let index = call_proc_update_instance(
                         pool,
                         leader_id,
                         &req,
                         Self::UPDATE_INSTANCE_TIMEOUT,
                     )
                     .await?;
-                    Ok(())
+                    Ok(index)
                 }
                 .await;
 
                 match res {
-                    Ok(()) => {
-                        register_successful_connection(&mut stats.borrow_mut(), index);
+                    Ok(index) => {
+                        let next_auto_online_after = index.unwrap_or(next_index);
+                        register_successful_connection(
+                            &mut stats.borrow_mut(),
+                            Some(next_auto_online_after),
+                        );
                     }
                     Err(e) => {
                         tlog!(Warning, "failed setting own target state Online: {e}");
@@ -284,7 +286,10 @@ impl Loop {
                             // request, so it should be reconstructed after
                             // synchronizing with the raft log. For this reason
                             // we say the connection was successful
-                            register_successful_connection(&mut stats.borrow_mut(), index);
+                            register_successful_connection(
+                                &mut stats.borrow_mut(),
+                                Some(next_index),
+                            );
                         } else {
                             register_failed_attempt(&mut stats.borrow_mut(), e);
                         }
@@ -370,16 +375,17 @@ pub async fn call_proc_update_instance(
     leader_id: RaftId,
     request: &rpc::update_instance::Request,
     timeout: Duration,
-) -> Result<()> {
-    pool.call(
-        &leader_id,
-        proc_name!(proc_update_instance_v2),
-        request,
-        timeout,
-    )
-    .await?;
+) -> Result<Option<RaftIndex>> {
+    let response: Response = pool
+        .call(
+            &leader_id,
+            proc_name!(proc_update_instance_v2),
+            request,
+            timeout,
+        )
+        .await?;
 
-    Ok(())
+    Ok(response.index)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -420,11 +426,14 @@ pub struct ContinuityTracker {
     /// Reason for the `last_action_kind` if it makes sense.
     pub last_action_reason: Option<SmolStr>,
 
-    /// Applied index and timestamp at the moment when the last successful
-    /// attempt was made. This is used for the raft log barrier before
+    /// Timestamp at the moment when the last successful attempt was made.
+    pub last_successful_attempt: Option<Instant>,
+
+    /// Index of the raft entry corresponding to the last self auto-online
+    /// update we requested. This is used for the raft log barrier before
     /// successive requests to prevent a storm of requests in case of asymmetric
     /// connectivity failure.
-    pub last_successful_attempt: Option<(RaftIndex, Instant)>,
+    pub next_auto_online_after: Option<RaftIndex>,
 
     pub fail_streak: Option<FailStreakInfo>,
 }
@@ -433,9 +442,9 @@ impl ContinuityTracker {
     fn last_attempt(&self) -> Option<Instant> {
         match (self.last_successful_attempt, &self.fail_streak) {
             (None, None) => None,
-            (Some((_, success)), None) => Some(success),
+            (Some(success), None) => Some(success),
             (None, Some(fail)) => Some(fail.last_try),
-            (Some((_, success)), Some(fail)) => Some(success.max(fail.last_try)),
+            (Some(success), Some(fail)) => Some(success.max(fail.last_try)),
         }
     }
 }
@@ -464,10 +473,13 @@ fn set_action_kind(stats: &mut ContinuityTracker, kind: ActionKind, reason: Opti
     // Last action was of the same kind, nothing to change
 }
 
-fn register_successful_connection(stats: &mut ContinuityTracker, index: RaftIndex) {
+fn register_successful_connection(stats: &mut ContinuityTracker, index: Option<RaftIndex>) {
     stats.fail_streak = None;
 
-    stats.last_successful_attempt = Some((index, fiber::clock()));
+    stats.last_successful_attempt = Some(fiber::clock());
+    if let Some(index) = index {
+        stats.next_auto_online_after = Some(index);
+    }
 }
 
 fn register_failed_attempt(stats: &mut ContinuityTracker, error: BoxError) {
@@ -496,17 +508,23 @@ fn register_failed_attempt(stats: &mut ContinuityTracker, error: BoxError) {
 /// Returns `true` if we consider the raft log barrier to be passed, meaning
 /// that it's ok to send another request
 fn raft_log_barrier_is_passed(stats: &ContinuityTracker, node: &node::Node) -> bool {
-    let Some((index, time)) = stats.last_successful_attempt else {
+    let Some(index) = stats.next_auto_online_after else {
         // No successful requests have happened yet, so barrier is not needed
         return true;
     };
 
-    if index < node.get_index() {
-        // A new raft entry was applied since our last successful request, so it's
-        // ok to issue another one. This is important for the CAS to work properly
+    if node.get_index() >= index {
+        // Either we have applied the update instance DML corresponding to our
+        // last request, or (if that one wasn't known) we have applied another
+        // raft entry since our last successful request. Either way we assume
+        // that it's ok to issue another request. This is important for the CAS
+        // to work properly
         return true;
     }
 
+    let time = stats
+        .last_successful_attempt
+        .expect("always set if next_auto_online_after is set");
     if fiber::clock().duration_since(time) > Loop::RAFT_LOG_BARRIER_TIMEOUT {
         // Our local raft log is not progressing, but it's been a while since last attempt.
         // This is a failsafe in case we have a bug somewhere so that we don't block indefinitely

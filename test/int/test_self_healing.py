@@ -236,7 +236,8 @@ def test_instance_automatic_offline_after_leader_change(cluster: Cluster):
     runtime_info = leader.call(".proc_runtime_info_v2")
     internal = runtime_info["internal"]
     assert internal["sentinel_last_action"] == "auto offline by leader"
-    assert internal["sentinel_index_of_last_success"] < leader.raft_get_index()
+    # Only set for auto-online attempts
+    assert "sentinel_index_of_last_success" not in internal
     assert internal["sentinel_time_since_last_success"] > 0
 
 
@@ -278,22 +279,27 @@ def test_sentinel_backoff(cluster: Cluster):
     cluster.tune_timeouts = False
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
+    leader = cluster.leader()
+    # The instance being auto-onlined must not be the leader. Election is
+    # not deterministic, so pick any non-leader instance as the victim.
+    victim = next(i for i in (i1, i2, i3) if i is not leader)
+
     # Make it so the instance stops receiving raft log updates right after it
     # finds out that cluster thinks it's Offline
     raft_failure = "BLOCK_AFTER_APPLIED_ENTRY_IF_OWN_TARGET_STATE_OFFLINE"
-    i3.call("pico._inject_error", raft_failure, True)
+    victim.call("pico._inject_error", raft_failure, True)
 
     # Also break the sentinel's ability to communicate to check how often it retries
     connection_failure = "SENTINEL_CONNECTION_POOL_CALL_FAILURE"
-    i3.call("pico._inject_error", connection_failure, True)
+    victim.call("pico._inject_error", connection_failure, True)
 
-    # Make it so everybody thinks `i3` if Offline
-    i1.call(
+    # Make it so everybody thinks `victim` if Offline
+    leader.call(
         ".proc_update_instance_v2",
         [
-            i3.name,
-            i3.cluster_name,
-            i3.cluster_uuid,
+            victim.name,
+            victim.cluster_name,
+            victim.cluster_uuid,
             None,
             "Offline",
             None,
@@ -304,7 +310,7 @@ def test_sentinel_backoff(cluster: Cluster):
     )
 
     def check_sentinel_failed_with_injection():
-        info = i3.call(".proc_runtime_info_v2")
+        info = victim.call(".proc_runtime_info_v2")
         internal = info["internal"]
         # Sentinel is trying to change the instance's state to Online
         assert internal["sentinel_last_action"] == "auto online by self"
@@ -315,27 +321,28 @@ def test_sentinel_backoff(cluster: Cluster):
     Retriable().call(check_sentinel_failed_with_injection)
 
     old_progress = cluster.wait_governor_status("idle")
-    # Everybody thinks `i3` is Offline
-    i1.wait_has_states("Offline", "Offline", target=i3)
-    assert i3._get_target_state_reason() == "injected offline"
+    # Everybody thinks `victim` is Offline
+    leader.wait_has_states("Offline", "Offline", target=victim)
+    assert victim._get_target_state_reason() == "injected offline"
 
     # Restore the sentinel's ability to send requests, but it will still not see
     # the result of it's requests because it's raft log update is broken, so it
     # will now block while waiting for the raft log to advance
-    i3.call("pico._inject_error", connection_failure, False)
+    victim.call("pico._inject_error", connection_failure, False)
 
     def check_sentinel_succeeded_and_is_waiting():
-        info = i3.call(".proc_runtime_info_v2")
+        info = victim.call(".proc_runtime_info_v2")
         internal = info["internal"]
         # Sentinel is trying to change the instance's state to Online
         assert internal["sentinel_last_action"] == "auto online by self"
         # No failures are registered, because technically the request was handled
         assert "sentinel_fail_streak" not in internal
-        # This is important, this means that since last sentinel request was sent
-        # no raft log entries have been applied. This is the criteria for the
-        # sentinel backoff
+        # This is important, the leader returned the index of the raft entry
+        # with our update, and we haven't applied it yet (the raft loop is
+        # blocked). This is the criteria for the sentinel backoff
         index_of_attempt = internal["sentinel_index_of_last_success"]
-        assert index_of_attempt == info["raft"]["applied"]
+        assert index_of_attempt > info["raft"]["applied"]
+        assert index_of_attempt <= leader.raft_get_index()
         return index_of_attempt
 
     old_index_of_attempt = Retriable().call(check_sentinel_succeeded_and_is_waiting)
@@ -343,32 +350,32 @@ def test_sentinel_backoff(cluster: Cluster):
     progress = cluster.wait_governor_status("update current sharding configuration")
     # Governor has performed 4 steps:
     # - change target_state=Online (also bump config versions)
-    # - configure replication within replicaset (with `i3` isolated from others)
-    # - synchornize replication on `i3`
-    # - configure replication within replicaset (now with `i3` same as on others)
+    # - configure replication within replicaset (with `victim` isolated from others)
+    # - synchornize replication on `victim`
+    # - configure replication within replicaset (now with `victim` same as on others)
     #
     # This is important, because it shows that there weren't a bunch of
     # redundant state updates (regression test for the original bug report)
     assert progress.step_counter - old_progress.step_counter == 4
     old_progress = progress
 
-    # Now `i3` is trying to go back Online, but cannot yet, because it's raft loop is broken
-    i1.wait_has_states("Offline", "Online", target=i3)
-    assert i3._get_target_state_reason() == "auto-online"
+    # Now `victim` is trying to go back Online, but cannot yet, because it's raft loop is broken
+    leader.wait_has_states("Offline", "Online", target=victim)
+    assert victim._get_target_state_reason() == "auto-online"
 
-    # Fix `i3`'s raft loop
-    i3.call("pico._inject_error", raft_failure, False)
+    # Fix `victim`'s raft loop
+    victim.call("pico._inject_error", raft_failure, False)
 
     # It's finally online
-    i1.wait_has_states("Online", "Online", target=i3)
-    assert i3._get_target_state_reason() == "auto-online"
+    leader.wait_has_states("Online", "Online", target=victim)
+    assert victim._get_target_state_reason() == "auto-online"
 
     progress = cluster.wait_governor_status("idle")
     # Also just 2 steps, no spam
     assert progress.step_counter - old_progress.step_counter == 2
     old_progress = progress
 
-    info = i3.call(".proc_runtime_info_v2")
+    info = victim.call(".proc_runtime_info_v2")
     internal = info["internal"]
     # Last action by sentinel is recorded for debugging purposes
     assert internal["sentinel_last_action"] == "auto online by self"
@@ -382,6 +389,82 @@ def test_sentinel_backoff(cluster: Cluster):
     # And this is important, because it means that there was only this one
     # request to update target state (no spam)
     assert old_index_of_attempt == index_of_attempt
+
+
+def test_sentinel_backoff_on_retriable_error_after_successful_attempt(cluster: Cluster):
+    """Regression test: after a successful auto-online attempt, a later attempt
+    failing with an error retriable for CaS must still close the raft log
+    barrier, otherwise the sentinel spams the leader with requests (retriable
+    errors don't count as failures, so exponential backoff doesn't apply).
+    """
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    leader = cluster.leader()
+    # The instance being auto-onlined must not be the leader. Election is
+    # not deterministic, so pick any non-leader instance as the victim.
+    victim = next(i for i in (i1, i2, i3) if i is not leader)
+
+    def set_victim_offline(reason: str):
+        leader.call(
+            ".proc_update_instance_v2",
+            [victim.name, victim.cluster_name, victim.cluster_uuid, None, "Offline", None, False, None],
+            reason,
+        )
+
+    # One successful auto-online cycle first, so the sentinel has a successful
+    # attempt on record.
+    set_victim_offline("first offline")
+    leader.wait_has_states("Online", "Online", target=victim)
+    assert victim._get_target_state_reason() == "auto-online"
+    cluster.wait_governor_status("idle")
+
+    # Keep the sentinel from sending requests while we set things up, so that
+    # it can't sneak in a successful attempt.
+    connection_failure = "SENTINEL_CONNECTION_POOL_CALL_FAILURE"
+    victim.call("pico._inject_error", connection_failure, True)
+
+    set_victim_offline("second offline")
+    victim.wait_has_states("Offline", "Offline")
+    # Make sure the governor is done reacting, so that no raft entries are
+    # in flight when we start dropping proposals
+    cluster.wait_governor_status("idle")
+    victim.raft_wait_index(leader.raft_get_index())
+
+    # From now on the leader drops all raft proposals, so no new raft entries
+    # are applied anywhere, and every auto-online attempt fails with the
+    # retriable RaftProposalDropped error.
+    leader.call("pico._inject_error", "RAFT_PROPOSAL_DROPPED", True)
+    proposal_dropped = log_crawler(
+        victim, "failed setting own target state Online: server responded with error: RaftProposalDropped"
+    )
+    victim.call("pico._inject_error", connection_failure, False)
+    proposal_dropped.wait_matched()
+
+    internal = victim.call(".proc_runtime_info_v2")["internal"]
+    assert internal["sentinel_last_action"] == "auto online by self"
+    # Retriable errors are not counted as failures
+    assert "sentinel_fail_streak" not in internal
+
+    log_file = victim.log_file()
+    assert log_file
+    attempts_before = log_file.read_text().count("setting own target state Online")
+
+    # No raft entries are applied, so the sentinel must not retry at all.
+    time.sleep(5)
+    attempts_after = log_file.read_text().count("setting own target state Online")
+    assert attempts_after == attempts_before, (
+        f"sentinel made {attempts_after - attempts_before} auto-online attempts while the raft log wasn't progressing"
+    )
+
+    # The barrier requires a new raft entry to be applied before retrying
+    info = victim.call(".proc_runtime_info_v2")
+    assert info["internal"]["sentinel_index_of_last_success"] == info["raft"]["applied"] + 1
+
+    # Once raft is healthy again and a new entry is applied, the barrier opens
+    # and the instance comes back Online.
+    leader.call("pico._inject_error", "RAFT_PROPOSAL_DROPPED", False)
+    leader.raft_propose_nop()
+    leader.wait_has_states("Online", "Online", target=victim)
 
 
 def test_automatic_offline_due_to_global_dml_conflict(cluster: Cluster):

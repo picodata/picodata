@@ -711,7 +711,13 @@ pub struct InternalInfo<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sentinel_last_action_reason: Option<SmolStr>,
 
-    /// Applied index at the moment of last successful action by sentinel.
+    /// Raft index at the moment when the last successful auto-online attempt by
+    /// sentinel was made.
+    ///
+    /// The raft index is one of:
+    /// - index of the raft entry corresponding to the last instance update we
+    ///   requested
+    /// - our applied index + 1 at the moment of our last request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sentinel_index_of_last_success: Option<RaftIndex>,
 
@@ -754,10 +760,13 @@ impl InternalInfo<'static> {
         info.sentinel_last_action = sentinel.last_action_kind;
         info.sentinel_last_action_reason = sentinel.last_action_reason.clone();
 
-        if let Some((index, time)) = sentinel.last_successful_attempt {
-            info.sentinel_index_of_last_success = Some(index);
+        if let Some(time) = sentinel.last_successful_attempt {
             let elapsed = fiber::clock().duration_since(time).as_secs_f64();
             info.sentinel_time_since_last_success = Some(elapsed);
+        }
+
+        if let Some(index) = sentinel.next_auto_online_after {
+            info.sentinel_index_of_last_success = Some(index);
         }
 
         if let Some(fail_streak) = &sentinel.fail_streak {
