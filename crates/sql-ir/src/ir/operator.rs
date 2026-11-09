@@ -2176,7 +2176,7 @@ impl Plan {
     }
 
     /// Sets children for relational node
-    pub fn set_relational_children(&mut self, rel_id: NodeId, children: Vec<NodeId>) {
+    pub fn set_relational_children(&mut self, rel_id: NodeId, children: Children) {
         if let MutNode::Relational(ref mut rel) =
             self.get_mut_node(rel_id).expect("Rel node must be valid.")
         {

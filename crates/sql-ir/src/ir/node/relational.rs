@@ -105,24 +105,24 @@ impl RelOwned {
     ///
     /// # Panics
     /// - wrong number of children for the given node
-    pub fn set_children(&mut self, children: Vec<NodeId>) {
+    pub fn set_children(&mut self, children: Children) {
         match self {
             RelOwned::Except(Except { left, right, .. })
             | RelOwned::UnionAll(UnionAll { left, right, .. })
             | RelOwned::Intersect(Intersect { left, right, .. })
             | RelOwned::Union(Union { left, right, .. })
             | RelOwned::Join(Join { left, right, .. }) => {
-                if children.len() != 2 {
-                    unreachable!("Node has only two children!");
-                }
+                assert_eq!(children.len(), 2, "Node has only two children!");
                 *left = children[0];
                 *right = children[1];
             }
             RelOwned::Delete(Delete { ref mut child, .. })
             | RelOwned::Motion(Motion { ref mut child, .. }) => {
-                if children.len() != 1 {
-                    unreachable!("{self:?} may have only a single relational child");
-                }
+                assert_eq!(
+                    children.len(),
+                    1,
+                    "{self:?} may have only a single relational child"
+                );
                 // It is safe to unwrap here, because the length is already checked above.
                 *child = Some(children[0]);
             }
@@ -135,9 +135,11 @@ impl RelOwned {
             | RelOwned::Having(Having { ref mut child, .. })
             | RelOwned::GroupBy(GroupBy { ref mut child, .. })
             | RelOwned::OrderBy(OrderBy { ref mut child, .. }) => {
-                if children.len() != 1 {
-                    unreachable!("{self:?} may have only a single relational child");
-                }
+                assert_eq!(
+                    children.len(),
+                    1,
+                    "{self:?} may have only a single relational child"
+                );
                 // It is safe to unwrap here, because the length is already checked above.
                 *child = children[0];
             }
@@ -503,16 +505,14 @@ impl MutRelational<'_> {
     ///
     /// # Panics
     /// - wrong number of children for the given node
-    pub fn set_children(&mut self, children: Vec<NodeId>) {
+    pub fn set_children(&mut self, children: Children) {
         match self {
             MutRelational::Except(Except { left, right, .. })
             | MutRelational::UnionAll(UnionAll { left, right, .. })
             | MutRelational::Intersect(Intersect { left, right, .. })
             | MutRelational::Union(Union { left, right, .. })
             | MutRelational::Join(Join { left, right, .. }) => {
-                if children.len() != 2 {
-                    unreachable!("Node has only two children!");
-                }
+                assert_eq!(children.len(), 2, "Node has only two children!");
                 *left = children[0];
                 *right = children[1];
             }

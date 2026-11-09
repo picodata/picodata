@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 use crate::errors::{Action, Entity, SbroadError};
+use crate::ir::api::children;
 use crate::ir::bucket::{BucketAlgebra, BucketProof, StaticResolver};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
@@ -1122,7 +1123,7 @@ impl Plan {
         // Add motions.
 
         // Children nodes covered with Motions (if needed from `strategy`).
-        let mut children_with_motions = children.to_vec();
+        let mut children_with_motions = children;
         for child in children_with_motions.iter_mut() {
             let Some((policy, ref mut program)) = strategy.children_policy.get_mut(child) else {
                 continue;
@@ -1421,7 +1422,7 @@ impl Plan {
                         self.add_proj_with_col_reduction(parent_id, child_id, false, true)?;
 
                     let old_parent_children = self.get_relation_children(parent_id)?;
-                    let children: Vec<NodeId> = old_parent_children
+                    let children = old_parent_children
                         .iter()
                         .map(|child| if *child == child_id { proj_id } else { *child })
                         .collect();
@@ -3235,7 +3236,7 @@ impl Plan {
         // Possible, current CTE subtree has already been resolved and we
         // can just copy the corresponding motion node.
         if let Some(motion_id) = cte_motions.get(&child) {
-            self.set_relational_children(id, vec![*motion_id]);
+            self.set_relational_children(id, children::one(*motion_id));
         } else {
             // Check the current child, not `child`: the UNION body
             // of a reused CTE got its motion through `old_new`
