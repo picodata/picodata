@@ -1473,7 +1473,7 @@ fn build_dml_request(ex_plan: Rc<ExecutionPlan>, top_id: NodeId) -> SqlResult<Dm
             let (table_id, table_version) = get_table_info(plan, relation)?;
 
             let core = DeleteCoreData {
-                request_id: ex_plan.get_request_id().to_smolstr(),
+                request_id: SmolStr::new(ex_plan.get_request_id()),
                 space_id: table_id,
                 space_version: table_version,
             };
@@ -1514,7 +1514,7 @@ fn build_dml_request(ex_plan: Rc<ExecutionPlan>, top_id: NodeId) -> SqlResult<Dm
         }) => {
             let (table_id, table_version) = get_table_info(plan, relation)?;
             let core = InsertCoreData {
-                request_id: ex_plan.get_request_id().to_smolstr(),
+                request_id: SmolStr::new(ex_plan.get_request_id()),
                 space_id: table_id,
                 space_version: table_version,
                 conflict_policy: conflict_strategy.try_into()?,
@@ -1551,7 +1551,7 @@ fn build_dml_request(ex_plan: Rc<ExecutionPlan>, top_id: NodeId) -> SqlResult<Dm
             let (table_id, table_version) = get_table_info(plan, relation)?;
 
             let core = UpdateCoreData {
-                request_id: ex_plan.get_request_id().to_smolstr(),
+                request_id: SmolStr::new(ex_plan.get_request_id()),
                 space_id: table_id,
                 space_version: table_version,
                 update_type: strategy.into(),
