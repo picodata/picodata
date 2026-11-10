@@ -19,7 +19,7 @@ use std::{
 use tarantool::ffi::sql::PortC;
 use tarantool::{
     error::{TarantoolError, TarantoolErrorCode},
-    session::with_su,
+    session::{self, with_su},
 };
 use thiserror::Error;
 
@@ -370,10 +370,7 @@ impl SqlStmt {
     }
 
     fn run(&self, params: &[u8], opcode_max: u64, port: &mut PortC) -> SqlResult<()> {
-        with_su(ADMIN_ID, || {
-            self.raw().execute_raw(params, opcode_max, port)
-        })
-        .expect("must be able to su into admin")
+        self.raw().execute_raw(params, opcode_max, port)
     }
 
     /// Get the query string used for compiling this statement.
@@ -435,15 +432,21 @@ impl SharedStmt {
             .collect();
         let param_data =
             Cow::from(rmp_serde::to_vec(&encoded).map_err(SqlError::FailedToEncodeStmtParams)?);
-        self.execute_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
+        with_su(ADMIN_ID, || {
+            self.execute_with_raw_params(param_data.iter().as_slice(), opcode_max, port)
+        })
+        .expect("must be able to su into admin")
     }
 
+    /// Like [`Self::execute`], but the caller already runs as admin: it keeps
+    /// one switch for the statement and the work around it.
     pub fn execute_with_raw_params(
         &self,
         params: &[u8],
         opcode_max: u64,
         port: &mut PortC,
     ) -> SqlResult<ExecutionInsight> {
+        debug_assert!(matches!(session::euid(), Ok(ADMIN_ID)));
         let mut stmt = Rc::clone(&self.stmt.borrow());
         let insight = match stmt.refresh()? {
             Refresh::Fresh => ExecutionInsight::Nothing,

@@ -81,6 +81,7 @@ pub trait Port<'p>: io::Write {
     where
         Self: Sized;
 
+    /// The caller runs as admin, see [`SharedStmt::execute_with_raw_params`].
     fn process_stmt_with_raw_params(
         &mut self,
         stmt: &SharedStmt,
