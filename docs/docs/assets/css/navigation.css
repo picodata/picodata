@@ -26,6 +26,11 @@
   --pico-surface:      #f6f7f9;
 
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 17px;
+  font-feature-settings: "cv11", "ss01", "calt";
+  /* Match the fixed optical size of the marketing site's Inter font. */
+  font-optical-sizing: none;
+  line-height: 1.5;
   background: var(--pico-bg);
   border-bottom: 1px solid var(--pico-border);
   position: relative;
@@ -36,7 +41,7 @@
 
 /* === Topbar layout === */
 .picodata-header .container {
-  max-width: 1120px;
+  max-width: 1276px;
   margin: 0 auto;
   padding: 0 24px;
 }
