@@ -15,6 +15,7 @@ use crate::{
     tlog,
     traft::node,
 };
+use ahash::AHashMap;
 use pgwire::api::results::FieldInfo;
 use postgres_types::{Oid, Type as PgType};
 use prometheus::IntCounter;
@@ -23,7 +24,7 @@ use sql::ir::types::{DerivedType, NestedType, UnrestrictedType as SbroadType};
 use sql_protocol::iterators::ExplainIter;
 use std::{
     cell::{Cell, RefCell},
-    collections::{btree_map::Entry, BTreeMap},
+    collections::hash_map::Entry,
     io::Cursor,
     rc::Rc,
     sync::{Arc, LazyLock},
@@ -85,7 +86,9 @@ pub type Key = Rc<str>;
 /// Storage for Statements or Portals of one client.
 /// Essentially a map with custom logic for updates and unnamed elements.
 struct PgStorage<S> {
-    map: BTreeMap<Key, S>,
+    // A hash map, as a client can prepare hundreds of statements and each
+    // message looks one up. The seed is random, as the client chooses the names.
+    map: AHashMap<Key, S>,
 
     // Context specific to the portal or statement storage.
     context: StorageContext,
@@ -94,13 +97,13 @@ struct PgStorage<S> {
 impl<S> PgStorage<S> {
     fn with_context(context: StorageContext) -> Self {
         Self {
-            map: BTreeMap::new(),
+            map: AHashMap::new(),
             context,
         }
     }
 
     /// Change the map and add the change of its size to the shared count.
-    fn update<R>(&mut self, f: impl FnOnce(&mut BTreeMap<Key, S>) -> R) -> R {
+    fn update<R>(&mut self, f: impl FnOnce(&mut AHashMap<Key, S>) -> R) -> R {
         let before = self.map.len();
         let result = f(&mut self.map);
         let after = self.map.len();
