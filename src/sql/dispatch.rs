@@ -17,7 +17,7 @@ use crate::sql::lua::{
 use crate::sql::router::catalog_cache;
 use crate::traft::node;
 use crate::util::MpValueAsJson;
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashMap;
 use rmp::decode::{read_array_len, read_bool, read_int};
 use rmp::encode::write_uint;
 use smallvec::SmallVec;
@@ -1361,32 +1361,17 @@ pub fn replicasets_from_buckets(
         }
     };
     let lua = sql_lua_state();
-    let mut replicasets: Vec<Rc<String>> = Vec::new();
-    // Make sure that only replicasets owns reference to its Rc elements.
-    {
-        let mut seen: AHashSet<Rc<String>> = AHashSet::new();
-
-        for id in iter {
-            let rs: String = bucket_into_rs(&lua, *id, tier, deadline).map_err(|e| {
-                SbroadError::DispatchError(format_smolstr!(
-                    "Failed to get replicaset from bucket {id}: {e}"
-                ))
-            })?;
-
-            if seen.contains(&rs) {
-                continue;
-            }
-            let rc: Rc<String> = Rc::<String>::from(rs);
-            seen.insert(rc.clone());
-            replicasets.push(rc);
-        }
+    let mut replicasets: Vec<String> = Vec::new();
+    for id in iter {
+        let rs = bucket_into_rs(&lua, *id, tier, deadline).map_err(|e| {
+            SbroadError::DispatchError(format_smolstr!(
+                "Failed to get replicaset from bucket {id}: {e}"
+            ))
+        })?;
+        replicasets.push(rs);
     }
-
-    let replicasets: Vec<String> = replicasets
-        .into_iter()
-        .map(|rc| Rc::try_unwrap(rc).expect("Extra Rc is alive"))
-        .collect();
-
+    replicasets.sort_unstable();
+    replicasets.dedup();
     Ok(replicasets)
 }
 
