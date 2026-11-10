@@ -7,7 +7,7 @@
 //! * Table, representing unnamed tuples storage (`Table`)
 //! * Relation, representing named tables (`Relations` as a map of { name -> table })
 
-use ahash::AHashMap;
+use ahash::{AHashMap, RandomState};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::fmt::Formatter;
@@ -641,7 +641,8 @@ impl Table {
 pub struct Relations {
     /// Shared between the clones of a plan: bound statements copy the cached
     /// plan on every execution, and the tables do not change after planning.
-    pub tables: Rc<HashMap<SmolStr, Table>>,
+    /// `ahash`, not SipHash: each execution looks tables up by name several times.
+    pub tables: Rc<HashMap<SmolStr, Table, RandomState>>,
 }
 
 impl Default for Relations {
@@ -654,7 +655,7 @@ impl Relations {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            tables: Rc::new(HashMap::new()),
+            tables: Rc::default(),
         }
     }
 
