@@ -91,6 +91,10 @@ impl Display for ArenaType {
 #[derive(Clone, PartialEq, Eq, Hash, Copy)]
 pub struct NodeId(NonZeroU64);
 
+const _: () = assert!(std::mem::size_of::<NodeId>() == 8);
+const _: () = assert!(std::mem::size_of::<Option<NodeId>>() == 8);
+const _: () = assert!(std::mem::size_of::<Result<NodeId, SbroadError>>() == 16);
+
 impl NodeId {
     #[inline]
     #[must_use]

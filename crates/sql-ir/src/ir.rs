@@ -83,6 +83,24 @@ pub const DEFAULT_MAX_NUMBER_OF_CASTS: usize = 10;
 /// Map of table id -> version.
 pub type VersionMap = HashMap<u32, u64, RepeatableState>;
 
+/// A result of 16 bytes. The x86-64 and AArch64 calling conventions return
+/// it in two registers, not through memory that the caller gives.
+///
+/// Use it only for the node types that the asserts below check: for other
+/// types the size is not checked.
+pub type RegResult<N> = Result<N, SbroadError>;
+
+const _: () = assert!(std::mem::size_of::<RegResult<Relational>>() == 16);
+const _: () = assert!(std::mem::size_of::<RegResult<MutRelational>>() == 16);
+const _: () = assert!(std::mem::size_of::<RegResult<Expression>>() == 16);
+const _: () = assert!(std::mem::size_of::<RegResult<MutExpression>>() == 16);
+// `Node` and `MutNode` are 24 bytes, so their results are 24 bytes too, and
+// `get_node` and `get_mut_node` return them through a stack slot of the caller.
+const _: () = assert!(std::mem::size_of::<Node>() == 24);
+const _: () = assert!(std::mem::size_of::<MutNode>() == 24);
+const _: () = assert!(std::mem::size_of::<Result<Node, SbroadError>>() == 24);
+const _: () = assert!(std::mem::size_of::<Result<MutNode, SbroadError>>() == 24);
+
 /// Memoized results of [`Plan::columns_len`].
 ///
 /// A node's column count is derived from its children, so on a join spine
@@ -1708,7 +1726,7 @@ impl Plan {
     /// - node doesn't exist in the plan
     /// - node is not a relational type
     #[inline]
-    pub fn get_relation_node(&self, node_id: NodeId) -> Result<Relational<'_>, SbroadError> {
+    pub fn get_relation_node(&self, node_id: NodeId) -> RegResult<Relational<'_>> {
         self.nodes
             .get_relation(node_id)
             .ok_or_else(|| relation_node_error(&self.nodes, node_id))
@@ -1720,10 +1738,7 @@ impl Plan {
     /// - node doesn't exist in the plan
     /// - node is not a relational type
     #[inline]
-    pub fn get_mut_relation_node(
-        &mut self,
-        node_id: NodeId,
-    ) -> Result<MutRelational<'_>, SbroadError> {
+    pub fn get_mut_relation_node(&mut self, node_id: NodeId) -> RegResult<MutRelational<'_>> {
         match self.get_mut_node(node_id)? {
             MutNode::Relational(rel) => Ok(rel),
             MutNode::Expression(_)
@@ -1744,7 +1759,7 @@ impl Plan {
     /// - node doesn't exist in the plan
     /// - node is not expression type
     #[inline]
-    pub fn get_expression_node(&self, node_id: NodeId) -> Result<Expression<'_>, SbroadError> {
+    pub fn get_expression_node(&self, node_id: NodeId) -> RegResult<Expression<'_>> {
         self.nodes
             .get_expression(node_id)
             .ok_or_else(|| expression_node_error(&self.nodes, node_id))
@@ -1789,10 +1804,7 @@ impl Plan {
     /// - node doesn't exist in the plan
     /// - node is not expression type
     #[inline]
-    pub fn get_mut_expression_node(
-        &mut self,
-        node_id: NodeId,
-    ) -> Result<MutExpression<'_>, SbroadError> {
+    pub fn get_mut_expression_node(&mut self, node_id: NodeId) -> RegResult<MutExpression<'_>> {
         let node = self.get_mut_node(node_id)?;
         match node {
             MutNode::Expression(exp) => Ok(exp),
