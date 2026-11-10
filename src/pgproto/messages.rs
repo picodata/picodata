@@ -1,6 +1,7 @@
 use super::backend::describe::CommandTag;
 use super::stream::BeMessage;
 use bytes::Bytes;
+use core::fmt::NumBuffer;
 use pgwire::error::ErrorInfo;
 use pgwire::messages::data::{self, DataRow, ParameterDescription, RowDescription};
 use pgwire::messages::extendedquery::{
@@ -77,7 +78,9 @@ pub fn empty_query_response() -> BeMessage {
 }
 
 pub fn command_complete_with_row_count(tag: &CommandTag, row_count: usize) -> BeMessage {
-    let tag = format!("{} {}", tag.as_str(), row_count);
+    // Not `format!`: this runs for each executed statement.
+    let mut count = NumBuffer::new();
+    let tag = [tag.as_str(), " ", row_count.format_into(&mut count)].concat();
     BeMessage::CommandComplete(response::CommandComplete::new(tag))
 }
 
