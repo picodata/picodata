@@ -602,7 +602,7 @@ class KeyDef:
 def find_routed_pk(instance, *, is_local: bool, start: int = 1, stop: int = 512) -> int:
     key_def = KeyDef([KeyPart(1, "integer", True)])
     for pk in range(start, stop):
-        bucket_id = instance.hash((pk,), key_def) % 3000 + 1
+        bucket_id = instance.bucket_id((pk,), key_def)
         info = instance.eval(
             f"""
                 local router = pico.router["default"]
@@ -1200,6 +1200,10 @@ class Instance:
             return require("key_def").new({kd}):hash(box.tuple.new({t}))
         """.format(t=tup_str, kd=str(key_def))
         return self.eval(lua)
+
+    def bucket_id(self, tup: tuple, key_def: KeyDef, *, bucket_count: int = 3000) -> int:
+        """Return the one-based bucket ID for the tuple's sharding key."""
+        return self.hash(tup, key_def) % bucket_count + 1
 
     def replicaset_master_name(self) -> str:
         """

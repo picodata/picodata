@@ -1,5 +1,5 @@
 import pytest
-from conftest import Cluster, Instance, Retriable, TarantoolError
+from conftest import TIMEOUT_SCALE, Cluster, Instance, KeyDef, KeyPart, Retriable, TarantoolError
 
 
 def test_single_tier_query(cluster: Cluster):
@@ -466,7 +466,6 @@ cluster:
             assert table_size(instance, table_name) == 2
 
 
-@pytest.mark.xfail(reason=("very flaky, will be fixed ASAP"))
 def test_tier_with_several_replicasets(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
@@ -489,8 +488,17 @@ cluster:
     replicaset_2_i2 = cluster.add_instance(tier="storage")
 
     cluster.wait_until_buckets_balanced()
+    cluster.wait_governor_status("idle")
 
-    # create table sharded in `uninitialized` tier is ok
+    replicasets: list[tuple[Instance, Instance]] = []
+    for first, second in [(replicaset_1_i1, replicaset_1_i2), (replicaset_2_i1, replicaset_2_i2)]:
+        assert first.replicaset_uuid() == second.replicaset_uuid()
+        master_name = first.replicaset_master_name()
+        assert master_name in (first.name, second.name)
+        master, replica = (first, second) if master_name == first.name else (second, first)
+        replicasets.append((master, replica))
+
+    # Create a sharded table in the storage tier through the router.
     ddl = router_instance.sql(
         """
         CREATE TABLE "sharded_table" ( "id" INTEGER NOT NULL, PRIMARY KEY ("id") )
@@ -501,76 +509,73 @@ cluster:
 
     assert ddl["row_count"] == 1
 
-    # ensure that `sharded_table` is created
-    assert table_size(replicaset_1_i1, "sharded_table") == 0
-    assert table_size(replicaset_2_i1, "sharded_table") == 0
+    for master, _ in replicasets:
+        assert table_size(master, "sharded_table") == 0
     assert table_size(router_instance, "sharded_table") == 0
 
-    data = router_instance.sql("""INSERT INTO "sharded_table" VALUES(1) """)
-    assert data["row_count"] == 1
+    # Pick two keys for each replicaset from the actual bucket map.
+    rows_by_replicaset: dict[str, list[list[int]]] = {master.replicaset_uuid(): [] for master, _ in replicasets}
+    assert len(rows_by_replicaset) == 2
+    [[bucket_count]] = router_instance.sql("SELECT bucket_count FROM _pico_tier WHERE name = 'storage'")
+    key_def = KeyDef([KeyPart(1, "integer")])
+    for key in range(1, 512):
+        bucket_id = router_instance.bucket_id((key,), key_def, bucket_count=bucket_count)
+        replicaset_uuid = router_instance.eval("return pico.router.storage:route(...).uuid", bucket_id)
+        rows = rows_by_replicaset[replicaset_uuid]
+        if len(rows) < 2:
+            rows.append([key, bucket_id])
+        if all(len(rows) == 2 for rows in rows_by_replicaset.values()):
+            break
+    else:
+        raise AssertionError("Could not find two sharding keys for each storage replicaset")
 
-    data = router_instance.sql("""INSERT INTO "sharded_table" VALUES(5) """)
-    assert data["row_count"] == 1
-
-    # contains record with sharding key '1'
-    assert table_size(replicaset_1_i1, "sharded_table") == 1
-    content = replicaset_1_i1.eval("return box.space.sharded_table:select()")
-    # id and bucket id
-    assert content == [[1, 1934]]
-
-    # contains record with sharding key '2'
-    assert table_size(replicaset_2_i1, "sharded_table") == 1
-    content = replicaset_2_i1.eval("return box.space.sharded_table:select()")
-    # id and bucket id
-    assert content == [[5, 219]]
+    # Write to both masters and ensure their replicas have the data before failover.
+    for master, replica in replicasets:
+        row = rows_by_replicaset[master.replicaset_uuid()][0]
+        data = router_instance.sql('INSERT INTO "sharded_table" VALUES (?)', row[0])
+        assert data["row_count"] == 1
+        assert table_size(master, "sharded_table") == 1
+        assert master.eval("return box.space.sharded_table:select()") == [row]
+        replica.wait_vclock(master.get_vclock())
+        assert replica.eval("return box.space.sharded_table:select()") == [row]
 
     # router contains no record for `sharded_table`
     assert table_size(router_instance, "sharded_table") == 0
 
     # but via SQL api
     data = router_instance.sql("""SELECT * from "sharded_table" """)
-    assert sorted(data) == sorted([[1], [5]])
+    assert sorted(data) == sorted([[rows[0][0]] for rows in rows_by_replicaset.values()])
 
-    r2_uuid = router_instance.eval("return box.space._pico_replicaset:get('r2').uuid")
-    r3_uuid = router_instance.eval("return box.space._pico_replicaset:get('r3').uuid")
+    # Use a short failure-detection timeout for the deliberate crashes.
+    router_instance.sql(f"ALTER SYSTEM SET governor_auto_offline_timeout = {TIMEOUT_SCALE}")
+    cluster.raft_wait_index(router_instance.raft_get_index())
 
-    # after fail of one replica from replicaset, `sharded_table` still operable
-    replicaset_1_i1.kill()
-    replicaset_2_i1.kill()
+    # Kill both storage masters to trigger failover.
+    for master, _ in replicasets:
+        master.kill()
 
     def wait_until_governor_deliver_vshard_configuration(instance: Instance, r_uuid):
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(router_instance, "storage")
         assert replicaset_masters[r_uuid] == instance.name
 
-    Retriable().call(wait_until_governor_deliver_vshard_configuration, replicaset_1_i2, r2_uuid)
-    Retriable().call(wait_until_governor_deliver_vshard_configuration, replicaset_2_i2, r3_uuid)
+    for master, replica in replicasets:
+        Retriable().call(wait_until_governor_deliver_vshard_configuration, replica, master.replicaset_uuid())
+    cluster.wait_governor_status("idle")
 
-    # to second replicaset
-    data = router_instance.sql("""INSERT INTO "sharded_table" VALUES(2) """)
-    assert data["row_count"] == 1
-
-    # to first replicaset
-    data = router_instance.sql("""INSERT INTO "sharded_table" VALUES(10) """)
-    assert data["row_count"] == 1
-
-    # contains record with sharding key '1', '2'
-    assert table_size(replicaset_1_i2, "sharded_table") == 2
-    content = replicaset_1_i2.eval("return box.space.sharded_table:select()")
-    # id and bucket id
-    assert content == [[1, 1934], [2, 1410]]
-
-    # contains record with sharding key '5', '10'
-    assert table_size(replicaset_2_i2, "sharded_table") == 2
-    content = replicaset_2_i2.eval("return box.space.sharded_table:select()")
-    # id and bucket id
-    assert content == [[5, 219], [10, 626]]
+    # Both promoted replicas must accept new writes and retain the original rows.
+    for master, replica in replicasets:
+        rows = rows_by_replicaset[master.replicaset_uuid()]
+        data = router_instance.sql('INSERT INTO "sharded_table" VALUES (?)', rows[1][0])
+        assert data["row_count"] == 1
+        assert table_size(replica, "sharded_table") == 2
+        assert replica.eval("return box.space.sharded_table:select()") == rows
 
     # router contains no record for `sharded_table`
     assert table_size(router_instance, "sharded_table") == 0
 
     # but via SQL api
     data = router_instance.sql("""SELECT * from "sharded_table" """)
-    assert sorted(data) == sorted([[1], [2], [5], [10]])
+    assert sorted(data) == sorted([[row[0]] for rows in rows_by_replicaset.values() for row in rows])
 
 
 def test_tier_with_custom_buckets_and_local_motion(cluster: Cluster):
