@@ -2,6 +2,7 @@ use super::error::DynError;
 use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use crate::util::MpValueAsJson;
 use bytes::{BufMut, BytesMut};
+use core::fmt::NumBuffer;
 use pgwire::types::{format::FormatOptions, FromSqlText, ToSqlText};
 use postgres_types::{to_sql_checked, FromSql, IsNull, Kind, Oid, ToSql, Type};
 use rmpv::ValueRef;
@@ -402,7 +403,11 @@ impl ToSqlText for PgValue<'_> {
     ) -> Result<IsNull, Box<DynError>> {
         match self {
             PgValue::Null => Ok(IsNull::Yes),
-            PgValue::Integer(v) => v.to_sql_text(ty, out, opts),
+            // The same text as pgwire writes for `i64`, without `core::fmt`.
+            PgValue::Integer(v) => {
+                out.extend_from_slice(v.format_into(&mut NumBuffer::new()).as_bytes());
+                Ok(IsNull::No)
+            }
             PgValue::Float(v) => v.to_sql_text(ty, out, opts),
             PgValue::Boolean(v) => v.to_sql_text(ty, out, opts),
             PgValue::Numeric(v) => v.to_sql_text(ty, out, opts),
