@@ -22,6 +22,18 @@ const CORRECT: &[(&str, &str)] = &[
     ("a", "trim({})"),
     ("'x'", "trim({} from a)"),
     ("a", "trim({}, 'a')"),
+    ("a", "substring({} similar 'x' escape '#')"),
+    ("a", "substring({} from 1)"),
+    ("a", "substring({} from 1 for 2)"),
+    ("a", "substring({} for 2)"),
+    ("a", "substring({}, 1)"),
+    ("a", "substring({}, 1, 2)"),
+    ("'x'", "substring('a' similar {} escape '#')"),
+    ("1", "substring('a' from {})"),
+    ("1", "substring('a' from {} for 2)"),
+    ("1", "substring('a' for {})"),
+    ("1", "substring('a', {})"),
+    ("1", "substring('a', {}, 2)"),
     ("1", "((select {}) union select 2)"),
     ("1", "1 in ((select {}) union select 2)"),
 ];
@@ -66,6 +78,12 @@ fn error_text_kept() {
         CurrentTimestamp, LocalTime, LocalTimestamp, Trim, Case, ArrayLiteral, CastOp, \
         Type, or NotFlag";
     assert!(err.to_string().contains(expected), "{err}");
+
+    // The tails of substring are tried at their first word only.
+    let Err(err) = parse("select substring('x';)") else {
+        panic!("parsed");
+    };
+    assert!(!err.to_string().contains("Tail"), "{err}");
 }
 
 #[test]

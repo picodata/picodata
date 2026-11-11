@@ -821,16 +821,18 @@ fn parse_trim<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<'q>
 fn parse_substring<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExpr<'q>> {
     debug_assert_eq!(pair.as_rule(), Rule::Substring);
 
-    let variant_pair = pair
-        .into_inner()
+    // The string, then an optional tail with one or two more expressions.
+    let mut inner = pair.into_inner();
+    let string = inner
         .next()
-        .ok_or_else(|| parser_err(format_smolstr!("`Substring` must contain a variant")))?;
-    let variant_rule = variant_pair.as_rule();
-
-    let exprs = variant_pair
-        .into_inner()
+        .ok_or_else(|| parser_err(format_smolstr!("`Substring` must contain `Expr`")))?;
+    let tail = inner.next();
+    let tail_rule = tail.as_ref().map(Pair::as_rule);
+    let exprs = std::iter::once(string)
+        .chain(tail.into_iter().flat_map(Pair::into_inner))
         .map(|expr| parse_expr(expr, ctx))
         .collect::<Result<Vec<_>, _>>()?;
+    let len = exprs.len();
     let mut exprs = exprs.into_iter();
     let mut take_expr = || -> AstResult<Box<RawExpr<'q>>> {
         Ok(Box::new(exprs.next().ok_or_else(|| {
@@ -840,15 +842,21 @@ fn parse_substring<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<RawExp
         })?))
     };
 
-    let substring = match variant_rule {
-        Rule::SubstringFromFor => Substring::FromFor(take_expr()?, take_expr()?, take_expr()?),
-        Rule::SubstringRegular => Substring::Regular(take_expr()?, take_expr()?, take_expr()?),
-        Rule::SubstringFor => Substring::For(take_expr()?, take_expr()?),
-        Rule::SubstringFrom => Substring::From(take_expr()?, take_expr()?),
-        Rule::SubstringSimilar => Substring::Similar(take_expr()?),
+    let substring = match (tail_rule, len) {
+        (Some(Rule::SubstringFromTail), 3) => {
+            Substring::FromFor(take_expr()?, take_expr()?, take_expr()?)
+        }
+        (Some(Rule::SubstringCommaTail), 3) => {
+            Substring::Regular(take_expr()?, take_expr()?, take_expr()?)
+        }
+        (Some(Rule::SubstringForTail), 2) => Substring::For(take_expr()?, take_expr()?),
+        (Some(Rule::SubstringFromTail | Rule::SubstringCommaTail), 2) => {
+            Substring::From(take_expr()?, take_expr()?)
+        }
+        (None, 1) => Substring::Similar(take_expr()?),
         _ => {
             return Err(parser_err(format_smolstr!(
-                "expected `Substring` variant, got {variant_rule:?}"
+                "expected `Substring` variant, got {tail_rule:?} with {len} expressions"
             )))
         }
     };

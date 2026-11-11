@@ -499,105 +499,42 @@ fn parse_substring<M: Metadata>(
 ) -> Result<ParseExpression, SbroadError> {
     assert_eq!(pair.as_rule(), Rule::Substring);
 
+    // The string, then an optional tail with one or two more expressions.
     let mut inner = pair.into_inner();
-    let variant = inner.next().ok_or_else(|| {
-        SbroadError::ParsingError(Entity::Expression, "no substring variant".into())
-    })?;
+    let string = inner.next().expect("Expected expression");
+    let tail = inner.next();
+    let tail_rule = tail.as_ref().map(Pair::as_rule);
+    let mut args = std::iter::once(string)
+        .chain(tail.into_iter().flat_map(Pair::into_inner))
+        .map(|expr| {
+            parse_expr_pratt(
+                expr.into_inner(),
+                param_types,
+                referred_relation_ids,
+                worker,
+                plan,
+                true,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
-    match variant.as_rule() {
-        Rule::SubstringFromFor => {
-            // Handle: substring(expr FROM expr FOR expr)
-            let mut pieces = variant.into_inner();
-            let string_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-            let from_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-            let for_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-
-            Ok(ParseExpression::Function {
-                name: "substring".into(),
-                args: vec![string_expr, from_expr, for_expr],
-                feature: Some(FunctionFeature::Substring(Substring::FromFor)),
-            })
-        }
-        Rule::SubstringRegular => {
-            // Handle: substring(expr, expr, expr)
-            let mut pieces = variant.into_inner();
-            let string_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-            let from_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-            let for_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-
-            Ok(ParseExpression::Function {
-                name: "substring".into(),
-                args: vec![string_expr, from_expr, for_expr],
-                feature: Some(FunctionFeature::Substring(Substring::Regular)),
-            })
-        }
-        Rule::SubstringFor => {
-            // Handle: substring(expr FOR expr)
-            let mut pieces = variant.into_inner();
-            let string_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-            let for_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-
+    let substring = match (tail_rule, args.len()) {
+        // substring(expr FROM expr FOR expr)
+        (Some(Rule::SubstringFromTail), 3) => Substring::FromFor,
+        // substring(expr, expr, expr)
+        (Some(Rule::SubstringCommaTail), 3) => Substring::Regular,
+        // substring(expr FROM expr), substring(expr, expr):
+        // both numeric and regexp variants
+        (Some(Rule::SubstringFromTail | Rule::SubstringCommaTail), 2) => Substring::From,
+        // substring(expr FOR expr)
+        (Some(Rule::SubstringForTail), 2) => {
+            let for_expr = args.pop().expect("Expected expression");
+            let string_expr = args.pop().expect("Expected expression");
             let string_id = string_expr.populate_plan(plan, worker)?;
             let one_literal = plan.add_const(Value::Integer(1));
             let for_id = for_expr.populate_plan(plan, worker)?;
 
-            Ok(ParseExpression::Function {
+            return Ok(ParseExpression::Function {
                 name: "substr".into(),
                 args: vec![
                     ParseExpression::PlanId { plan_id: string_id },
@@ -607,91 +544,44 @@ fn parse_substring<M: Metadata>(
                     ParseExpression::PlanId { plan_id: for_id },
                 ],
                 feature: Some(FunctionFeature::Substring(Substring::For)),
-            })
+            });
         }
-        Rule::SubstringFrom => {
-            // Handle: substring(expr FROM expr) - both numeric and regexp variants
-            let mut pieces = variant.into_inner();
-            let string_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-            let from_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-
-            Ok(ParseExpression::Function {
-                name: "substring".into(),
-                args: vec![string_expr, from_expr],
-                feature: Some(FunctionFeature::Substring(Substring::From)),
-            })
-        }
-        Rule::SubstringSimilar => {
-            // Handle: substring(expr SIMILAR expr ESCAPE expr)
-            let mut pieces = variant.into_inner();
-            let similar_expr = parse_expr_pratt(
-                pieces.next().expect("Expected expression").into_inner(),
-                param_types,
-                referred_relation_ids,
-                worker,
-                plan,
-                true,
-            )?;
-
-            let mut args = vec![];
-
-            if let ParseExpression::Similar {
+        // substring(expr SIMILAR expr ESCAPE expr)
+        (None, 1) => {
+            let Some(ParseExpression::Similar {
                 left,
                 right,
                 escape,
-            } = similar_expr
-            {
-                // Provide a better error message when the escape symbol is missing.
-                let escape_box = match escape {
-                    Some(esc) => esc,
-                    None => {
-                        return Err(SbroadError::Invalid(
-                            Entity::Expression,
-                            Some("missing escape symbol for SIMILAR substring operator".into()),
-                        ))
-                    }
-                };
-
-                // Bind the expressions from the Similar variant.
-                let string_expr = *left;
-                let pattern_expr = *right;
-                let escape_expr = *escape_box;
-
-                args.push(string_expr);
-                args.push(pattern_expr);
-                args.push(escape_expr);
-            } else {
+            }) = args.pop()
+            else {
                 return Err(SbroadError::Invalid(
                     Entity::Expression,
                     Some("incorrect SUBSTRING parameters. There is no such overload that takes only 1 argument".into()),
                 ));
-            }
-
-            Ok(ParseExpression::Function {
-                name: "substring".into(),
-                args,
-                feature: Some(FunctionFeature::Substring(Substring::Similar)),
-            })
+            };
+            // Provide a better error message when the escape symbol is missing.
+            let Some(escape) = escape else {
+                return Err(SbroadError::Invalid(
+                    Entity::Expression,
+                    Some("missing escape symbol for SIMILAR substring operator".into()),
+                ));
+            };
+            args = vec![*left, *right, *escape];
+            Substring::Similar
         }
-        _ => Err(SbroadError::ParsingError(
-            Entity::Expression,
-            "Unrecognized SubstringVariant".into(),
-        )),
-    }
+        (tail_rule, len) => {
+            return Err(SbroadError::ParsingError(
+                Entity::Expression,
+                format_smolstr!("unexpected substring tail {tail_rule:?} with {len} expressions"),
+            ))
+        }
+    };
+
+    Ok(ParseExpression::Function {
+        name: "substring".into(),
+        args,
+        feature: Some(FunctionFeature::Substring(substring)),
+    })
 }
 
 fn parse_identifier_with_continuation<M: Metadata>(
