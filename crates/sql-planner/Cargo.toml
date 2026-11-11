@@ -68,6 +68,11 @@ harness = false
 test = false
 
 [[bench]]
+name = "bucket_discovery"
+harness = false
+test = false
+
+[[bench]]
 name = "push_down"
 harness = false
 test = false

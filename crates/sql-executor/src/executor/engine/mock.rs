@@ -1217,8 +1217,10 @@ impl VshardMock {
 pub struct RouterRuntimeMock {
     // It's based on the RefCells instead of tarantool mutexes,
     // so it could be used in unit tests - they won't compile otherwise due to missing tarantool symbols.
-    metadata: RefCell<RouterConfigurationMock>,
-    virtual_tables: RefCell<HashMap<NodeId, VirtualTable>>,
+    // Shared between clones: `get_vshard_object_by_tier` clones the runtime
+    // on each call, as the real router hands out its tier.
+    metadata: Rc<RefCell<RouterConfigurationMock>>,
+    virtual_tables: Rc<RefCell<HashMap<NodeId, VirtualTable>>>,
     ir_cache: Rc<RefCell<LRUCache<SmolStr, Rc<Plan>>>>,
     pub vshard_mock: VshardMock,
 }
@@ -1466,8 +1468,8 @@ impl RouterRuntimeMock {
         let bucket_cnt = meta.bucket_count;
 
         RouterRuntimeMock {
-            metadata: RefCell::new(meta),
-            virtual_tables: RefCell::new(HashMap::new()),
+            metadata: Rc::new(RefCell::new(meta)),
+            virtual_tables: Rc::new(RefCell::new(HashMap::new())),
             ir_cache: Rc::new(RefCell::new(cache)),
             vshard_mock: VshardMock::new(2, bucket_cnt),
         }
@@ -1495,7 +1497,7 @@ impl Router for RouterRuntimeMock {
     type VshardImplementor = Self;
 
     fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider> {
-        &self.metadata
+        &*self.metadata
     }
 
     /// Unit tests run without tarantool, so a fixed user name is used.
