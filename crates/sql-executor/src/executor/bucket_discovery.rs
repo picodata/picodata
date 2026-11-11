@@ -426,7 +426,7 @@ where
                         subqueries,
                         &resolver,
                     )?;
-                    child_buckets.conjunct(&filter_buckets)
+                    child_buckets.conjunct_owned(filter_buckets)
                 }
                 Relational::Join(Join {
                     left,
@@ -448,7 +448,7 @@ where
                             )?;
                             inner_buckets
                                 .disjunct(&outer_buckets)
-                                .conjunct(&filter_buckets)
+                                .conjunct_owned(filter_buckets)
                         }
                         // Preserve the left input's buckets, including rows that do
                         // not match ON: neither the right input nor ON may prune them.

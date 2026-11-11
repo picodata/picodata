@@ -56,17 +56,24 @@ pub enum BucketSet {
 }
 
 impl BucketSet {
-    /// Intersection of the `bucket_id`s the sets stand for.
-    fn conjunct(&self, other: &BucketSet) -> BucketSet {
+    /// Intersection of the `bucket_id`s the sets stand for. Of two exact
+    /// sets, the smaller one is kept instead of collecting a new one.
+    fn conjunct_owned(self, other: BucketSet) -> BucketSet {
         match (self, other) {
             (BucketSet::Exact(a_set), BucketSet::Exact(b_set)) => {
-                BucketSet::Exact(a_set.intersection(b_set).copied().collect())
+                let (mut small, large) = if a_set.len() <= b_set.len() {
+                    (a_set, b_set)
+                } else {
+                    (b_set, a_set)
+                };
+                small.retain(|bucket| large.contains(bucket));
+                BucketSet::Exact(small)
             }
             (BucketSet::Exact(set), BucketSet::EstimatedCount { upper, .. })
             | (BucketSet::EstimatedCount { upper, .. }, BucketSet::Exact(set)) => {
                 BucketSet::EstimatedCount {
                     lower: 0,
-                    upper: set.len().min(*upper),
+                    upper: set.len().min(upper),
                 }
             }
             (
@@ -74,7 +81,7 @@ impl BucketSet {
                 BucketSet::EstimatedCount { upper: b_upper, .. },
             ) => {
                 let lower = 0;
-                let upper = *a_upper.min(b_upper);
+                let upper = a_upper.min(b_upper);
                 BucketSet::EstimatedCount { lower, upper }
             }
         }
@@ -174,14 +181,20 @@ impl Buckets {
         }
     }
 
-    /// Conjunction of two sets of buckets.
+    /// Conjunction of two sets of buckets. No hot path borrows the operands,
+    /// so the clones keep one set of rules in [`Self::conjunct_owned`].
     pub fn conjunct(&self, buckets: &Buckets) -> Buckets {
+        self.clone().conjunct_owned(buckets.clone())
+    }
+
+    /// [`Self::conjunct`] that moves a filtered set into the result instead
+    /// of cloning it.
+    #[must_use]
+    pub fn conjunct_owned(self, buckets: Buckets) -> Buckets {
         match (self, buckets) {
-            (Buckets::Filtered(a), Buckets::Filtered(b)) => Buckets::Filtered(a.conjunct(b)),
-            (Buckets::All, Buckets::Filtered(b))
-            | (Buckets::Filtered(b), Buckets::All)
-            | (Buckets::Any, Buckets::Filtered(b))
-            | (Buckets::Filtered(b), Buckets::Any) => Buckets::Filtered(b.clone()),
+            (Buckets::Filtered(a), Buckets::Filtered(b)) => Buckets::Filtered(a.conjunct_owned(b)),
+            (Buckets::All | Buckets::Any, filtered @ Buckets::Filtered(_))
+            | (filtered @ Buckets::Filtered(_), Buckets::All | Buckets::Any) => filtered,
             (Buckets::All, Buckets::All) => Buckets::All,
             (Buckets::Any, _) | (_, Buckets::Any) => Buckets::Any,
         }
@@ -241,6 +254,10 @@ pub trait BucketAlgebra: Clone {
     fn new_at_most_one() -> Self;
     fn conjunct(&self, other: &Self) -> Self;
     fn disjunct(&self, other: &Self) -> Self;
+    /// [`Self::conjunct`] that may reuse the operands instead of cloning them.
+    fn conjunct_owned(self, other: Self) -> Self {
+        self.conjunct(&other)
+    }
 }
 
 impl BucketAlgebra for Buckets {
@@ -264,6 +281,9 @@ impl BucketAlgebra for Buckets {
     }
     fn disjunct(&self, other: &Self) -> Self {
         self.disjunct(other)
+    }
+    fn conjunct_owned(self, other: Self) -> Self {
+        self.conjunct_owned(other)
     }
 }
 
@@ -325,7 +345,7 @@ fn constant_pair_rejects_eq(l: &Value, r: &Value) -> bool {
 /// Accumulate `other` into a conjunction with `acc`.
 fn conjunct_into<B: BucketAlgebra>(acc: &mut Option<B>, other: B) {
     *acc = Some(match acc.take() {
-        Some(acc) => acc.conjunct(&other),
+        Some(acc) => acc.conjunct_owned(other),
         None => other,
     });
 }
@@ -788,7 +808,9 @@ impl Plan {
                 ..
             })
         ) {
-            return Ok(default_buckets.conjunct(&conjunct_buckets(expr)?));
+            return Ok(default_buckets
+                .clone()
+                .conjunct_owned(conjunct_buckets(expr)?));
         }
         let Some(chains) = self.get_dnf_chains(expr_id)? else {
             return Ok(default_buckets);
@@ -801,7 +823,7 @@ impl Plan {
             // We need to pop back the chain to get nodes in the bottom-up order.
             while let Some(node_id) = nodes.pop_back() {
                 let node_buckets = conjunct_buckets(self.get_expression_node(node_id)?)?;
-                chain_buckets = chain_buckets.conjunct(&node_buckets);
+                chain_buckets = chain_buckets.conjunct_owned(node_buckets);
             }
             result = Some(match result {
                 Some(result) => result.disjunct(&chain_buckets),
