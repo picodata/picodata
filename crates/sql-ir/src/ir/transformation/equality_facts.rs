@@ -1216,6 +1216,9 @@ impl EqualityFactsBuilder {
         dead_rels.sort_unstable_by_key(|rel| (rel.arena_type(), rel.offset()));
         dead_rels.dedup();
         let groups = self.members.groups_number();
+        // The groups, then one singleton class per output slot no fact
+        // mentions: at most one per origin.
+        let classes = groups + self.origins.values().map(Vec::len).sum::<usize>();
         // Resolve each source's group before `into_groups` consumes the
         // union-find; its root is the one `into_groups` reports.
         let sources: Vec<(NodeId, NodeId, UnionFindGroup)> = std::mem::take(&mut self.sources)
@@ -1234,16 +1237,16 @@ impl EqualityFactsBuilder {
         // Parallel arrays indexed by ClassId.0 — grown lazily as new groups
         // are encountered.  Final EquivalenceClass objects are built once
         // the walk is complete.
-        let mut class_const: Vec<Option<Value>> = Vec::with_capacity(groups);
-        let mut const_conflict: Vec<bool> = Vec::with_capacity(groups);
-        let mut class_params: Vec<Vec<u16>> = Vec::with_capacity(groups);
-        let mut class_members: Vec<Vec<Slot>> = Vec::with_capacity(groups);
+        let mut class_const: Vec<Option<Value>> = Vec::with_capacity(classes);
+        let mut const_conflict: Vec<bool> = Vec::with_capacity(classes);
+        let mut class_params: Vec<Vec<u16>> = Vec::with_capacity(classes);
+        let mut class_members: Vec<Vec<Slot>> = Vec::with_capacity(classes);
         // The domain every atom of the class agreed on. One per class by
         // construction: constants and params are domain-tagged, slots inherit
         // their rel's domain, and nothing ever unions across the boundary -- a
         // subquery body is opaque, set-operation arms are opaque, and
         // `union_join_output` skips the nullable side. `note_domain` asserts it.
-        let mut class_domain: Vec<Option<DomainId>> = Vec::with_capacity(groups);
+        let mut class_domain: Vec<Option<DomainId>> = Vec::with_capacity(classes);
         let mut canonical_slot_classes: AHashMap<NodeId, Vec<Option<ClassId>>> =
             AHashMap::with_capacity_and_hasher(self.domains.len(), equality_facts_hash_state());
 
