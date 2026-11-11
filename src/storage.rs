@@ -418,6 +418,8 @@ impl Catalog {
             return storage.clone();
         }
 
+        setup_catalog_triggers().unwrap();
+
         // Add system tables. There is no catalog cache yet, the caches made
         // later load these rows.
         for (table, index_defs) in crate::schema::system_table_definitions() {
@@ -1501,8 +1503,6 @@ impl Properties {
     pub fn create(&self) -> tarantool::Result<()> {
         let (space, indexes) =
             Self::create_space(Self::TABLE_NAME, Some(Self::TABLE_ID), SpaceType::DataLocal)?;
-
-        on_replace(space.id(), Self::on_replace)?;
 
         debug_assert_eq!(self.space.id(), space.id());
         debug_assert_eq!(self.index.id(), indexes[0].id());
@@ -3460,8 +3460,29 @@ pub fn set_local_schema_version(v: u64, reason: &str) -> tarantool::Result<()> {
 pub const SPACE_ID_INTERNAL_MAX: u32 = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
-// misc
+// triggers
 ////////////////////////////////////////////////////////////////////////////////
+
+/// Sets up the triggers on system tables.
+///
+/// Triggers are not persisted, so this must be called on every instance each
+/// time it starts, whether it bootstraps its storage or recovers it, see
+/// [`crate::bootstrap_storage_on_master`] and [`crate::get_initialized_storage`].
+/// Must be called only once per process, otherwise each trigger would run
+/// more than once.
+pub fn setup_catalog_triggers() -> tarantool::Result<()> {
+    static mut TRIGGERS_ARE_SET_UP: bool = false;
+
+    // SAFETY: this is safe as long as we only use it in tx thread.
+    unsafe {
+        debug_assert!(!TRIGGERS_ARE_SET_UP, "catalog triggers are already set up");
+        TRIGGERS_ARE_SET_UP = true;
+    }
+
+    on_replace(Properties::TABLE_ID, Properties::on_replace)?;
+
+    Ok(())
+}
 
 /// Add a on_replace trigger for space with `space_id` so that `cb` is called
 /// each time the space is updated.
@@ -3471,7 +3492,7 @@ where
     F: FnMut(Option<Tuple>, Option<Tuple>) -> Result<()> + 'static,
 {
     // FIXME: rewrite using ffi-api when it's available
-    // See: https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/130
+    // See: https://git.picodata.io/core/picodata/-/work_items/3330
     let lua = ::tarantool::lua_state();
     let on_replace = tlua::Function::new(
         move |old: Option<Tuple>, new: Option<Tuple>, lua: tlua::LuaState| {

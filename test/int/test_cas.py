@@ -182,6 +182,43 @@ def test_cas_errors(instance: Instance):
     )
 
 
+def assert_undeletable_property_is_protected(instance: Instance):
+    with pytest.raises(TarantoolError) as error:
+        instance.cas(
+            "delete",
+            "_pico_property",
+            key=["next_schema_version"],
+        )
+    assert error.value.args[:2] == (
+        "ER_PROC_LUA",
+        "property next_schema_version cannot be deleted",
+    )
+
+
+def test_pico_property_trigger_after_restart(instance: Instance):
+    # The trigger validating _pico_property used to be set up only when an
+    # instance bootstrapped its storage, so a restarted raft leader let any
+    # write through.
+    instance.restart()
+    instance.wait_online()
+
+    assert_undeletable_property_is_protected(instance)
+
+
+def test_pico_property_trigger_on_replica_turned_leader(cluster: Cluster):
+    # A read-only replica receives its storage through replication, so it
+    # used to never have the trigger validating _pico_property, and let any
+    # write through once it became the raft leader.
+    i1 = cluster.add_instance(replicaset_name="r1", init_replication_factor=2)
+    i2 = cluster.add_instance(replicaset_name="r1")
+    assert i2.eval("return box.info.ro")
+
+    i1.raft_transfer_leadership(i2.raft_id)
+    assert i2.raft_leader_id() == i2.raft_id
+
+    assert_undeletable_property_is_protected(i2)
+
+
 def test_cas_predicate(instance: Instance):
     instance.raft_compact_log()
     read_index = instance.raft_read_index(_3_SEC)

@@ -1334,6 +1334,7 @@ fn bootstrap_storage_on_master() -> Result<(Catalog, RaftSpaceAccess)> {
 
     // Create system tables & indexes.
     storage.initialize_storage_on_master()?;
+    storage::setup_catalog_triggers()?;
 
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
@@ -1389,6 +1390,8 @@ fn get_initialized_storage() -> Result<Option<(Catalog, RaftSpaceAccess)>> {
     let storage = Catalog::try_get(true).expect("storage initialization should never fail");
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
+
+    storage::setup_catalog_triggers()?;
 
     // Make sure `pico_service` user record is in `_user` tarantool space.
     assert!(schema::user_pico_service_is_initialized());
