@@ -218,10 +218,15 @@ where
         Ok(Some(Buckets::new_filtered(bucket_set)))
     }
 
-    /// Whether the subtree reads or writes data placed by buckets: a sharded
-    /// table or a motion other than a full (replicated) one.
-    fn references_buckets(&self, top_id: NodeId) -> Result<bool, SbroadError> {
+    /// Whether the subtree of `top` reads or writes data placed by buckets: a
+    /// sharded table or a motion other than a full (replicated) one.
+    fn references_buckets(&self, top_id: NodeId, top: &Relational) -> Result<bool, SbroadError> {
         let ir_plan = self.exec_plan.get_ir_plan();
+        // A DML top is checked before the walk is built: a sharded target
+        // table is enough, whatever its child reads.
+        if top.is_dml() && !ir_plan.dml_node_table(top_id)?.is_global() {
+            return Ok(true);
+        }
         let tree = PostOrder::new_by_node(
             &ir_plan.nodes,
             |id, node| match node {
@@ -264,18 +269,18 @@ where
         }
 
         let ir_plan = self.exec_plan.get_ir_plan();
-        // Global tables have no buckets, so a statement that touches only
-        // them runs on any node whatever its filter (e.g. `WHERE false`).
-        if !self.references_buckets(top_id)? {
+        let top = ir_plan.get_relation_node(top_id)?;
+        // A top with `Distribution::Single` runs on one node. It is checked
+        // before `references_buckets`, as it needs no walk and both give
+        // `Any`. `Insert` and `DELETE` without `WHERE` have no distribution:
+        // `distribution()` is checked, as `rel_distr_ref` would build an
+        // error for them.
+        if matches!(top.distribution(), Some(Distribution::Single)) {
             return Ok(Buckets::Any);
         }
-        // A top with `Distribution::Single` runs on one node. `Insert` and
-        // `DELETE` without `WHERE` have no distribution: `distribution()` is
-        // checked, as `rel_distr_ref` would build an error for them.
-        if matches!(
-            ir_plan.get_relation_node(top_id)?.distribution(),
-            Some(Distribution::Single)
-        ) {
+        // Global tables have no buckets, so a statement that touches only
+        // them runs on any node whatever its filter (e.g. `WHERE false`).
+        if !self.references_buckets(top_id, &top)? {
             return Ok(Buckets::Any);
         }
 
