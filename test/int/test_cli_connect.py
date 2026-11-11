@@ -121,6 +121,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     cli.expect_exact("- admin\r\n")
     cli.expect_exact("...\r\n")
     cli.expect_exact("\r\n")
+    cli.expect_exact("(admin) lua> ")
 
     eprint("^D")
     cli.sendcontrol("d")
