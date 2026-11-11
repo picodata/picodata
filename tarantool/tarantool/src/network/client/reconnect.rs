@@ -14,8 +14,9 @@ type ClientOrConnectionClosedError = Result<super::Client, Arc<Error>>;
 
 /// A reconnecting version of [`super::Client`].
 ///
-/// Does not reconnect automatically but provides a method [`Client::reconnect`] for explicit reconnection,
-/// when the user finds it necessary.
+/// Reconnects automatically only if the connection has been closed with an
+/// error. Otherwise provides a method [`Client::reconnect`] for explicit
+/// reconnection, when the user finds it necessary.
 /// Can be cloned to utilize the same connection from multiple fibers.
 ///
 /// See [`AsClient`] for the full API.
@@ -37,12 +38,16 @@ pub struct Client {
 impl Client {
     /// Provides an access to the underlying client behind mutex.
     /// If it is `None` - reconnects implicitly and returns a new client.
+    ///
+    /// Also reconnects if the connection has been closed with an error, e.g.
+    /// by the peer restarting: a request on it would fail without being sent.
     async fn client(&self) -> Result<super::Client, ClientError> {
         let mut client = self.client.lock().await;
         match &*client {
-            Some(Ok(client)) => {
+            Some(Ok(client)) if client.check_state().is_ok() => {
                 return Ok(client.clone());
             }
+            Some(Ok(_)) => {}
             Some(Err(e)) => {
                 return Err(ClientError::ConnectionClosed(e.clone()));
             }

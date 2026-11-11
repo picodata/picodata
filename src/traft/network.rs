@@ -855,6 +855,97 @@ mod tests {
         assert_eq!(result, 3u32);
     }
 
+    /// A peer that closed the connection, e.g. by restarting, gets the next
+    /// request over a new connection instead of failing it.
+    #[::tarantool::test]
+    fn call_after_peer_closed_connection() {
+        let l = tarantool::lua_state();
+        let listen = test_util::listen_address();
+        let (host, port) = listen.rsplit_once(':').unwrap();
+        // A TCP proxy to this instance which can drop its connections.
+        let proxy_port: u16 = l
+            .eval_with(
+                r#"
+                local host, port = ...
+                local socket = require('socket')
+                local fiber = require('fiber')
+                local conns = {}
+                local function pump(from, to)
+                    while from:readable() do
+                        local data = from:sysread(65536)
+                        if data == nil or data == '' or to:write(data) == nil then
+                            break
+                        end
+                    end
+                    from:shutdown(2)
+                    to:shutdown(2)
+                end
+                local server = socket.tcp_server('127.0.0.1', 0, function(client)
+                    local upstream = socket.tcp_connect(host, port)
+                    table.insert(conns, client)
+                    table.insert(conns, upstream)
+                    local back = fiber.new(pump, upstream, client)
+                    back:set_joinable(true)
+                    pump(client, upstream)
+                    -- The server closes `client` once the handler returns.
+                    back:join()
+                end)
+                rawset(_G, 'test_proxy_drop_connections', function()
+                    for _, s in ipairs(conns) do
+                        s:shutdown(2)
+                    end
+                    conns = {}
+                end)
+                function test_stored_proc(a, b)
+                    return a + b
+                end
+                box.schema.func.create('test_stored_proc')
+                return server:name().port
+                "#,
+                (host, port),
+            )
+            .unwrap();
+
+        let node = traft::node::Node::for_tests();
+        let pool = ConnectionPool::new(node.storage.clone(), Default::default());
+        let instance = traft::Instance {
+            raft_id: 1337,
+            name: "default_1_1".into(),
+            ..traft::Instance::default()
+        };
+        node.storage.instances.put(&instance).unwrap();
+        node.storage
+            .peer_addresses
+            .put(
+                instance.raft_id,
+                &smol_str::format_smolstr!("127.0.0.1:{proxy_port}"),
+                &traft::ConnectionType::System(traft::SystemConnectionType::Iproto),
+            )
+            .unwrap();
+
+        crate::luamod::setup();
+        crate::preload_vshard();
+        crate::init_sbroad();
+        crate::init_stored_procedures();
+
+        let call = || {
+            let f = pool.call_raw::<_, u32>(
+                &instance.raft_id,
+                "test_stored_proc",
+                &(1u32, 2u32),
+                Duration::from_secs(5),
+            );
+            fiber::block_on(f)
+        };
+        assert_eq!(call().unwrap(), 3);
+
+        l.exec("test_proxy_drop_connections()").unwrap();
+        // Let the client notice the closed connection.
+        fiber::sleep(Duration::from_millis(100));
+
+        assert_eq!(call().unwrap(), 3);
+    }
+
     #[::tarantool::test(skip_if(
         cfg(asan),
         reason = "Relies on call_timeout which is too small for ASAN-instrumented runs"

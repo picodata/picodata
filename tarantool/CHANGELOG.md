@@ -80,6 +80,9 @@
   methods' return values now have a less strict lifetime requirement.
 - `msgpack::skip_value` no longer overflows the number of elements of a map
   with 32768 or more pairs.
+- `network::ReconnClient` now reconnects when its connection has been closed
+  with an error, e.g. by the peer restarting. Before, every request failed
+  without being sent until `ReconnClient::reconnect` was called.
 
 ### Fixed (picodata)
 
