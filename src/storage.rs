@@ -3453,6 +3453,24 @@ pub fn set_local_schema_version(v: u64, reason: &str) -> tarantool::Result<()> {
     Ok(())
 }
 
+/// Gets the 'local_bucket_state_version' field from '_schema' system space.
+pub fn local_bucket_state_version() -> tarantool::Result<u64> {
+    let tuple = SPACE_SCHEMA.get(&["local_bucket_state_version"])?;
+    let mut res = INITIAL_SCHEMA_VERSION;
+    if let Some(tuple) = tuple {
+        if let Some(v) = tuple.field(1)? {
+            res = v;
+        }
+    }
+    Ok(res)
+}
+
+/// Sets the 'local_bucket_state_version' field in '_schema' system space to `v`.
+pub fn set_local_bucket_state_version(v: u64) -> tarantool::Result<()> {
+    SPACE_SCHEMA.replace(&("local_bucket_state_version", v))?;
+    Ok(())
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // max space id
 ////////////////////////////////////////////////////////////////////////////////
@@ -3480,7 +3498,76 @@ pub fn setup_catalog_triggers() -> tarantool::Result<()> {
     }
 
     on_replace(Properties::TABLE_ID, Properties::on_replace)?;
+    on_commit_local_bucket_state_version()?;
 
+    Ok(())
+}
+
+/// Add a trigger on `_schema`, which reports each committed change of
+/// `local_bucket_state_version` to the raft node, see
+/// [`Node::wait_local_bucket_state_version`](crate::traft::node::Node::wait_local_bucket_state_version).
+///
+/// Before the node is initialized the changes are ignored, the node reads the
+/// initial value from `_schema` itself.
+fn on_commit_local_bucket_state_version() -> tarantool::Result<()> {
+    let on_replace = tlua::Function::new(
+        |_old: tlua::Ignore, new: Option<Tuple>, lua: tlua::StaticLua| {
+            let Some(new) = new else {
+                return;
+            };
+            if !matches!(new.field::<&str>(0), Ok(Some("local_bucket_state_version"))) {
+                return;
+            }
+            let version = match new.field::<u64>(1) {
+                Ok(Some(version)) => version,
+                res => {
+                    tlog!(
+                        Error,
+                        "unexpected local_bucket_state_version in _schema: {res:?}"
+                    );
+                    return;
+                }
+            };
+
+            let notify = tlua::Function::new(move || {
+                let Ok(node) = crate::traft::node::global() else {
+                    return;
+                };
+                node.notify_local_bucket_state_version_committed(version);
+            });
+
+            // Not raising an error here on purpose: it would abort the
+            // transaction, and on a replica stop the replication applier,
+            // because of a missed notification.
+            let Some(box_) = lua.get::<tlua::LuaTable<_>, _>("box") else {
+                tlog!(Error, "box is not available in the trigger on _schema");
+                return;
+            };
+            let Some(on_commit) = box_.get::<tlua::LuaFunction<_>, _>("on_commit") else {
+                tlog!(
+                    Error,
+                    "box.on_commit is not available in the trigger on _schema"
+                );
+                return;
+            };
+            if let Err(e) = on_commit.call_with_args::<(), _>(notify) {
+                tlog!(
+                    Error,
+                    "failed to set on_commit trigger for local_bucket_state_version: {e}"
+                );
+            }
+        },
+    );
+
+    // FIXME: rewrite using ffi-api when it's available
+    // See: https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/130
+    let lua = ::tarantool::lua_state();
+    lua.exec_with(
+        "local space_id, callback = ...
+        box.space[space_id]:on_replace(callback)",
+        (SPACE_SCHEMA.id(), on_replace),
+    )
+    .map_err(tlua::LuaError::from)?;
     Ok(())
 }
 

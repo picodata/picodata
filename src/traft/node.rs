@@ -201,6 +201,12 @@ pub struct Node {
     pub(crate) status: watch::Receiver<Status>,
     applied: watch::Receiver<RaftIndex>,
     startup_complete: watch::Receiver<bool>,
+    /// The last committed value of `_schema.local_bucket_state_version`.
+    ///
+    /// Updated by the trigger on `_schema`, see
+    /// [`storage::setup_catalog_triggers`], both when this instance writes it
+    /// and when it arrives through tarantool replication.
+    local_bucket_state_version: watch::Sender<u64>,
 
     pub(crate) main_loop_info: Rc<NoYieldsRefCell<MainLoopInfo>>,
 
@@ -324,6 +330,12 @@ impl Node {
             cas_test_override = Some(crate::cas::OverrideChannel::new());
         }
 
+        // The trigger on `_schema` does nothing until the node is
+        // initialized, so the initial value must be read with no yields
+        // between here and the moment the node becomes globally available.
+        let (local_bucket_state_version, _) =
+            watch::channel(crate::storage::local_bucket_state_version()?);
+
         let node = Node {
             raft_id,
             main_loop,
@@ -339,6 +351,7 @@ impl Node {
             main_loop_info,
             applied,
             startup_complete,
+            local_bucket_state_version,
             instances_update: Mutex::new(()),
             plugin_manager,
             instance_reachability,
@@ -496,6 +509,55 @@ impl Node {
                     tlog!(
                         Debug,
                         "failed waiting for applied index {target}: timeout, current: {current}"
+                    );
+                    return Err(Error::timeout());
+                }
+            }
+        })
+    }
+
+    /// Returns the last committed value of `_schema.local_bucket_state_version`.
+    #[inline(always)]
+    pub fn local_bucket_state_version(&self) -> u64 {
+        self.local_bucket_state_version.get()
+    }
+
+    /// Is called by the trigger on `_schema` once a change of
+    /// `local_bucket_state_version` is committed.
+    pub(crate) fn notify_local_bucket_state_version_committed(&self, version: u64) {
+        // Fails only while someone holds a reference to the value, which
+        // nobody does, the value is only ever copied out with `get`.
+        _ = self.local_bucket_state_version.send(version);
+    }
+
+    /// Block the current fiber until `_schema.local_bucket_state_version`
+    /// reaches `target`, either written by this instance or received through
+    /// tarantool replication.
+    ///
+    /// Returns the current value. It can be equal to or greater than the
+    /// target one. If timeout expires beforehand, the function returns
+    /// `Err(Timeout)`.
+    ///
+    /// **This function yields**
+    pub fn wait_local_bucket_state_version(
+        &self,
+        target: u64,
+        timeout: Duration,
+    ) -> traft::Result<u64> {
+        let mut version = self.local_bucket_state_version.subscribe();
+        let deadline = fiber::clock().saturating_add(timeout);
+        fiber::block_on(async {
+            loop {
+                let current = version.get();
+                if current >= target {
+                    return Ok(current);
+                }
+
+                let res = version.changed().deadline(deadline).await;
+                if let Err(TimeoutError::Expired) = res {
+                    tlog!(
+                        Debug,
+                        "failed waiting for local_bucket_state_version {target}: timeout, current: {current}"
                     );
                     return Err(Error::timeout());
                 }
