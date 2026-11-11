@@ -1,7 +1,6 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::ops::Not;
 
 use crate::errors::{Action, Entity, SbroadError};
@@ -10,7 +9,6 @@ use crate::executor::ir::ExecutionPlan;
 use crate::executor::ExecutingQuery;
 use crate::ir::bucket::{value_to_bucket_id, Buckets, BucketsResolver};
 use crate::ir::distribution::Distribution;
-use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
@@ -128,7 +126,7 @@ where
         motion_key: &MotionKey,
     ) -> Result<Option<Buckets>, SbroadError> {
         let plan = self.exec_plan.get_ir_plan();
-        let mut bucket_set = HashSet::with_hasher(RepeatableState);
+        let mut bucket_set = FxHashSet::default();
         for row_id in rows {
             let row_list = plan.get_row_list(*row_id)?;
             let Some(bucket_id) = self.try_calculate_values_row_bucket_id(row_list, motion_key)?
@@ -205,7 +203,7 @@ where
         }
 
         let plan = self.exec_plan.get_mut_ir_plan();
-        let mut bucket_set = HashSet::with_hasher(RepeatableState);
+        let mut bucket_set = FxHashSet::default();
         for (cell_id, bucket_id) in bucket_cells {
             let MutExpression::Constant(Constant { value }) =
                 plan.get_mut_expression_node(cell_id)?
@@ -514,7 +512,7 @@ where
 fn motion_vtable_buckets(
     exec_plan: &ExecutionPlan,
     motion_id: NodeId,
-) -> Result<HashSet<u64, RepeatableState>, SbroadError> {
+) -> Result<FxHashSet<u64>, SbroadError> {
     let virtual_table = exec_plan.get_motion_vtable(motion_id)?;
     Ok(virtual_table.get_bucket_index().keys().copied().collect())
 }

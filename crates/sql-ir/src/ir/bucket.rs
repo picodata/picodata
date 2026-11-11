@@ -1,10 +1,9 @@
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 use std::fmt::Display;
 use std::slice;
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::distribution::Distribution;
-use crate::ir::helpers::RepeatableState;
 use crate::ir::node::{
     expression::Expression, BoolExpr, Constant, NodeId, Parameter, Reference, ReferenceTarget,
     UnaryExpr,
@@ -38,7 +37,7 @@ pub enum BucketSet {
     /// The `bucket_id`s are known here, so for a pair of `Exact` sets both
     /// operations are exact as well: conjunction (`AND`) intersects the sets,
     /// disjunction (`OR`) unites them, dropping the duplicates.
-    Exact(HashSet<u64, RepeatableState>),
+    Exact(FxHashSet<u64>),
     /// Lower and upper bound, inclusive for the number of distinct `bucket_id`s.
     /// This field is used only for static analysis during planning.
     ///
@@ -146,12 +145,12 @@ impl Buckets {
     /// Get no buckets in the cluster (coordinator).
     #[must_use]
     pub fn new_empty() -> Self {
-        Buckets::Filtered(BucketSet::Exact(HashSet::with_hasher(RepeatableState)))
+        Buckets::Filtered(BucketSet::Exact(FxHashSet::default()))
     }
 
     /// Get a filtered set of buckets.
     #[must_use]
-    pub fn new_filtered(buckets: HashSet<u64, RepeatableState>) -> Self {
+    pub fn new_filtered(buckets: FxHashSet<u64>) -> Self {
         Buckets::Filtered(BucketSet::Exact(buckets))
     }
 
