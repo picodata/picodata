@@ -1,8 +1,32 @@
 use crate::ir::node::{Node32, Parameter};
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::Value;
 use smol_str::format_smolstr;
-use sql_executor::test_helpers::sql_to_optimized_ir;
+use sql_executor::test_helpers::{sql_to_ir_without_bind, sql_to_optimized_ir};
 use sql_explain::explain::explain_logical;
+
+#[test]
+fn front_params_numbered_in_text_order() {
+    // The parser meets `?` right to left and sorts them by position, so a
+    // wrong order would show up here as `$3`, `$2`, `$1`.
+    let pattern = r#"explain (logical) SELECT ?,
+        (SELECT ? FROM "test_space"),
+        ? FROM "test_space""#;
+    let types = [
+        DerivedType::new(UnrestrictedType::Integer),
+        DerivedType::new(UnrestrictedType::String),
+        DerivedType::new(UnrestrictedType::Boolean),
+    ];
+    let plan = sql_to_ir_without_bind(pattern, &types);
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection ($1::int -> col_1, ROW($0) -> col_2, $3::bool -> col_3)
+      scan test_space
+    subquery $0:
+      scan
+        projection ($2::text -> col_1)
+          scan test_space
+    ");
+}
 
 #[test]
 fn front_numeric_param_in_cast() {

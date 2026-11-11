@@ -225,7 +225,7 @@ impl AstCore {
                     has_pg_params = true;
                 }
                 Rule::Projection | Rule::OrderBy => {
-                    pos_to_ast_id.insert(stack_node.pair.line_col(), arena_node_id);
+                    pos_to_ast_id.insert(stack_node.pair.as_span().start(), arena_node_id);
                 }
                 Rule::SubQuery => {
                     pair_to_ast_id.insert(stack_node.pair.clone(), arena_node_id);
@@ -244,7 +244,7 @@ impl AstCore {
 
         // Sort tnt parameters pairs in their appearance order.
         // This allows to enumerate tnt parameters: `select ?, ?` -> `select $1, $2`
-        tnt_parameters.sort_by_key(|p| p.line_col());
+        tnt_parameters.sort_by_key(|p| p.as_span().start());
         *tnt_parameters_ordered = tnt_parameters;
 
         self.set_top(0)?;

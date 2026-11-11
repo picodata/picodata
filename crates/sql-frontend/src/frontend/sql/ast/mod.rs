@@ -2622,8 +2622,9 @@ impl<'q> ParsingPairsMap<'q> {
 
 // Mapping between pest's Pair and corresponding id
 // of the ast node. This map stores only ids for
-// possible select child (Projection, OrderBy)
-pub(super) type SelectChildPairTranslation = HashMap<(usize, usize), usize>;
+// possible select child (Projection, OrderBy),
+// keyed by the byte offset where the pair starts.
+pub(super) type SelectChildPairTranslation = HashMap<usize, usize>;
 
 /// Hash map of { pair -> ast_id }, where
 /// * pair (key) -- inner pest structure for AST node

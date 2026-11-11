@@ -82,7 +82,9 @@ fn parse_select_set_pratt(
                             break;
                         }
                     }
-                    let ast_id = pos_to_plan_id.get(&select_child_pair.line_col()).unwrap();
+                    let ast_id = pos_to_plan_id
+                        .get(&select_child_pair.as_span().start())
+                        .unwrap();
                     let id = ast_to_plan.get(*ast_id)?;
                     SelectSet::PlanId { plan_id: id }
                 }
