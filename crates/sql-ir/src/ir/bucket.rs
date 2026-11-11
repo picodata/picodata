@@ -465,6 +465,45 @@ impl Plan {
         }
     }
 
+    /// The buckets of `key = constant` with a one-column sharding key, the
+    /// most common filter; `None` for other comparisons. The general path
+    /// gives the same buckets with more lookups: a sharding key column is
+    /// never `bucket_id`, so its check is not needed.
+    fn key_eq_constant_buckets<R: BucketsResolver>(
+        &self,
+        left: &Expression,
+        right: &Expression,
+        resolver: &R,
+    ) -> Result<Option<R::Buckets>, SbroadError> {
+        let (key, value) = match (left, right) {
+            (key @ Expression::Reference(_), Expression::Constant(Constant { value }))
+            | (Expression::Constant(Constant { value }), key @ Expression::Reference(_)) => {
+                (key, value)
+            }
+            _ => return Ok(None),
+        };
+        if self.ref_is_sharding_key(key)? != Some(true) {
+            return Ok(None);
+        }
+        #[cfg(debug_assertions)]
+        if let Expression::Reference(Reference {
+            target, position, ..
+        }) = key
+        {
+            debug_assert!(
+                !self.is_shard_column_ref(target, *position, &mut ShardPositionsCache::new())?,
+                "a sharding key column is bucket_id"
+            );
+        }
+        // `key = NULL` is never `TRUE`.
+        if matches!(value, Value::Null) {
+            return Ok(Some(R::Buckets::new_empty()));
+        }
+        Ok(Some(
+            resolver.buckets_from_values(&[value], self.tier.as_ref())?,
+        ))
+    }
+
     /// Whether constants make `left = right` provably not `TRUE`, either
     /// directly or at some position of two rows. Such pairs survive binding
     /// when a parameter was merged into a row (`(b, $1) = (1, 1)`), which
@@ -513,9 +552,6 @@ impl Plan {
         expr: Expression,
         resolver: &R,
     ) -> Result<Option<R::Buckets>, SbroadError> {
-        // Conjunction of everything collected for this expression.
-        // The only case several `Buckets` are conjuncted here is `Eq`.
-        // See the logic of its handling below.
         let mut buckets = None;
         let tier = self.tier.as_ref();
 
@@ -564,15 +600,39 @@ impl Plan {
         let right = self.get_expression_node(right_id)?;
 
         if *op == Bool::Eq {
+            if let Some(key_buckets) = self.key_eq_constant_buckets(&left, &right, resolver)? {
+                return Ok(Some(key_buckets));
+            }
+        }
+        self.get_buckets_from_cmp(*op, left_id, &left, right_id, &right, resolver)
+    }
+
+    /// [`Self::get_buckets_from_expr`] of `left op right`, where `op` is `=`
+    /// or `IN` and `key = constant` is already checked.
+    fn get_buckets_from_cmp<R: BucketsResolver>(
+        &self,
+        op: Bool,
+        left_id: NodeId,
+        left: &Expression,
+        right_id: NodeId,
+        right: &Expression,
+        resolver: &R,
+    ) -> Result<Option<R::Buckets>, SbroadError> {
+        // Conjunction of everything collected for this expression.
+        // The only case several `Buckets` are conjuncted here is `Eq`.
+        let mut buckets = None;
+        let tier = self.tier.as_ref();
+
+        if op == Bool::Eq {
             // The expression is a conjunct of a DNF chain, so a `FALSE` or `NULL`
             // comparison of constants rejects every row of the chain.
-            if self.constants_reject_eq(&left, &right)? {
+            if self.constants_reject_eq(left, right)? {
                 return Ok(Some(R::Buckets::new_empty()));
             }
             // Try to collect buckets from an explicit `bucket_id = value` predicate.
             self.collect_buckets_from_bucket_id_eq(
-                Self::row_ids(&left, &left_id),
-                Self::row_ids(&right, &right_id),
+                Self::row_ids(left, &left_id),
+                Self::row_ids(right, &right_id),
                 resolver,
                 tier,
                 &mut buckets,
@@ -581,8 +641,8 @@ impl Plan {
 
         // Try to collect buckets from expression of type `sharding_key = value`
         let pairs = [
-            (left_id, &left, right_id, &right),
-            (right_id, &right, left_id, &left),
+            (left_id, left, right_id, right),
+            (right_id, right, left_id, left),
         ];
         for (left_id, left_expr, right_id, right_expr) in pairs {
             if !left_expr.is_row() && !left_expr.is_ref() {
@@ -666,7 +726,7 @@ impl Plan {
                         // Since the sides in the "In" query can be of different lengths,
                         // we need to find a suitable position, as if they were the
                         // same length.
-                        let pos = if *op == Bool::In {
+                        let pos = if op == Bool::In {
                             *position % right_columns.len()
                         } else {
                             *position
@@ -765,6 +825,26 @@ impl Plan {
         ) {
             return Ok(R::Buckets::new_empty());
         }
+        // `key = constant` gives filtered buckets, and their conjunction with
+        // the default buckets below, `All` or `Any`, is the same buckets, so
+        // the default is not needed.
+        let eq = match &expr {
+            Expression::Bool(BoolExpr {
+                op: Bool::Eq,
+                left,
+                right,
+            }) => {
+                let left_expr = self.get_expression_node(*left)?;
+                let right_expr = self.get_expression_node(*right)?;
+                if let Some(buckets) =
+                    self.key_eq_constant_buckets(&left_expr, &right_expr, resolver)?
+                {
+                    return Ok(buckets);
+                }
+                Some((*left, left_expr, *right, right_expr))
+            }
+            _ => None,
+        };
         // When we can't extract buckets from expression,
         // we use default buckets for that expression with
         // idea that expression does not influence the result
@@ -807,9 +887,15 @@ impl Plan {
                 ..
             })
         ) {
-            return Ok(default_buckets
-                .clone()
-                .conjunct_owned(conjunct_buckets(expr)?));
+            // A top `=` is not `key = constant`, so it is not checked again.
+            let expr_buckets = match eq {
+                Some((left_id, left, right_id, right)) => {
+                    self.get_buckets_from_cmp(Bool::Eq, left_id, &left, right_id, &right, resolver)?
+                }
+                None => self.get_buckets_from_expr(expr, resolver)?,
+            };
+            let expr_buckets = expr_buckets.unwrap_or_else(|| default_buckets.clone());
+            return Ok(default_buckets.conjunct_owned(expr_buckets));
         }
         let Some(chains) = self.get_dnf_chains(expr_id)? else {
             return Ok(default_buckets);
