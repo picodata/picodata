@@ -298,11 +298,38 @@ fn in_list(value_count: usize) -> String {
         .map(|idx| idx.to_string())
         .collect::<Vec<_>>()
         .join(", ");
+    in_list_of(&values)
+}
 
+fn in_list_params(param_count: usize) -> String {
+    in_list_of(&vec!["?"; param_count].join(", "))
+}
+
+fn in_list_of(values: &str) -> String {
     format!(
         "SELECT v.{reestrid} FROM {table} AS v WHERE v.{reestrid} IN ({values})",
         reestrid = quoted("reestrid"),
         table = quoted(VEHICLE_TABLE),
+    )
+}
+
+/// A batch insert with a parameter per row, all on one line.
+fn insert_values_params(row_count: usize) -> String {
+    format!(
+        "INSERT INTO {table}({id}) VALUES {rows}",
+        table = quoted("test_space"),
+        id = quoted("id"),
+        rows = vec!["(?)"; row_count].join(", "),
+    )
+}
+
+/// A long literal under `depth` casts: nesting that no parser reads ahead.
+fn nested_cast(depth: usize, literal_len: usize) -> String {
+    format!(
+        "SELECT {}'{}'{}",
+        "CAST(".repeat(depth),
+        "x".repeat(literal_len),
+        " AS TEXT)".repeat(depth),
     )
 }
 
@@ -385,7 +412,7 @@ fn cte_chain(cte_count: usize) -> String {
 
 /// Generated, pathologically large ASTs that stress AST-fill throughput.
 pub fn synthetic() -> Vec<BenchmarkCase> {
-    vec![
+    let mut cases = vec![
         BenchmarkCase::new(
             "long_arithmetic_expr_chain_100_operands",
             long_arithmetic_expr(100),
@@ -407,9 +434,22 @@ pub fn synthetic() -> Vec<BenchmarkCase> {
         ),
         BenchmarkCase::new("case_expr_20000_branches", case_expr(20000)),
         BenchmarkCase::new("in_list_10000_values", in_list(10000)),
+        BenchmarkCase::new("in_list_10000_params", in_list_params(10000)),
+        BenchmarkCase::new(
+            "nested_cast_200_levels_1mb_literal",
+            nested_cast(200, 1 << 20),
+        ),
         BenchmarkCase::new("aggregate_having_13500_terms", aggregate_having(9000, 4500)),
         BenchmarkCase::new("cte_chain_8000_steps", cte_chain(8000)),
-    ]
+    ];
+    // The new parser accepts DQL only.
+    if !cfg!(feature = "__bench_ast_new") {
+        cases.push(BenchmarkCase::new(
+            "insert_values_10000_params",
+            insert_values_params(10000),
+        ));
+    }
+    cases
 }
 
 pub fn corpus() -> Vec<BenchmarkCase> {
