@@ -500,7 +500,7 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
         IsPostfix = ${ ^"is" ~ W ~ (NotFlag ~ W)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" }
         AtomicExpr = _{ Literal | Parameter | Over | CastOp | TypedLiteral | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | CurrentUser | LocalTimestamp | LocalTime
-                    | IdentifierWithOptionalContinuation | ExpressionInParentheses | UnaryOperator | Case | SubQuery | ArrayLiteral | Row }
+                    | IdentifierWithOptionalContinuation | (!ParenComma ~ ExpressionInParentheses) | UnaryOperator | Case | SubQuery | ArrayLiteral | Row }
             Literal = { True | False | Null | Double | Decimal | Unsigned | Integer | SingleQuotedString }
                 True     = { ^"true" }
                 False    = { ^"false" }
@@ -520,13 +520,19 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                     FunctionArgs = ${ (Distinct ~ W)? ~ FunctionArgsExprs? }
                         FunctionArgsExprs = _{ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
                     CountAsterisk = { "*" }
-            Over = ${ Identifier ~ WO ~ WindowFunctionArgs ~ WO ~ WindowFunctionFilter ~ WO? ~ ^"over" ~ WO ~ Window }
+            // Without the lookahead every plain call `f(...)` would be read
+            // twice, as a window function and as a call (see `SkipParens`).
+            Over = ${
+                Identifier ~ WO ~ &(SkipParens ~ WO ~ (^"filter" | ^"over"))
+                ~ WindowFunctionArgs ~ WO ~ WindowFunctionFilter ~ WO ~ ^"over" ~ WO ~ Window
+            }
                 WindowFunctionArgs = { "(" ~ WO ~ (CountAsterisk | WindowFunctionArgsInner)? ~ WO ~ ")" }
                     WindowFunctionArgsInner = !{  (Expr ~ ("," ~ Expr)*) }
                 WindowFunctionFilter = ${ (^"filter" ~ WO ~ "(" ~ WO ~ ^"where" ~ W ~ Expr ~ WO ~ ")")? }
                 Window = _{ Identifier | WindowBody }
                     WindowBody = ${ "(" ~ WO ~ WindowBodyInner ~ WO ~ ")" }
-                        WindowBodyInner = _{ (WindowBodyInfo ~ (W ~ WindowBodyInfo){, 2}) | WindowBodyInfo? }
+                        // Up to three parts. Nested, so that a failed part is not tried again.
+                        WindowBodyInner = _{ (WindowBodyInfo ~ (W ~ WindowBodyInfo ~ (W ~ WindowBodyInfo)?)?)? }
                         WindowBodyInfo = _{ WindowPartition | WindowOrderBy | WindowFrame }
                             WindowPartition = ${ ^"partition" ~ W ~ ^"by" ~ W ~ Expr ~ (WO ~ "," ~ WO ~ Expr)* }
                             WindowOrderBy = ${ ^"order" ~ W ~ ^"by" ~ W ~ OrderByElement ~ (WO ~ "," ~ WO ~ OrderByElement)* }
@@ -559,9 +565,17 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
             CurrentUser = { ^"current_user" ~ &IdentifierInapplicableSymbol }
             LocalTime = { ^"localtime" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
             LocalTimestamp = { ^"localtimestamp" ~ (WO ~ "(" ~ WO ~ Unsigned ~ WO ~ ")")? }
+            // `trim(x, 'a')` is a plain call. The parts with expressions are
+            // tried only when they can match (see `SkipParens`).
             Trim = ${
-                ^"trim" ~ WO ~ "(" ~ WO ~ (TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ WO ~ ")"
+                ^"trim" ~ WO ~ !ParenComma ~ "(" ~ WO
+                ~ (&TrimFrom ~ TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ WO ~ ")"
             }
+                // `FROM` at the top level of the parentheses.
+                TrimFrom = _{
+                    (!(W ~ ^"from" ~ W) ~ (SkipParens | SkipBrackets | SkipQuoted | (!SkipStop ~ ANY)))*
+                    ~ W ~ ^"from" ~ W
+                }
                 TrimOption = _{ ((TrimKind ~ W)? ~ TrimPattern) | TrimKind }
                 TrimKind = { (TrimKindLeading | TrimKindTrailing | TrimKindBoth) }
                     TrimKindLeading = { ^"leading" }
@@ -653,4 +667,19 @@ NotFlag = { ^"not" }
 WHITESPACE = _{ " " | "\t" | "\n" | "\r\n" }
 W  = _{ WHITESPACE+ }
 WO = _{ WHITESPACE* }
+
+// Lookaheads that run over a part of the query without parsing it.
+// pest remembers nothing: when an alternative reads a nested part and fails,
+// the next one reads it again, and on every level of nesting the work
+// multiplies. A lookahead cuts such an alternative off before it enters the
+// nested expressions. It only cuts off what would fail anyway, so the language
+// does not change. The rules are silent: a named rule that fails inside
+// a lookahead goes to "expected ..." of the error message. They spell the
+// whitespace themselves, so call them from atomic rules only.
+SkipQuoted = _{ ("'" ~ (!"'" ~ ANY)* ~ "'") | ("\"" ~ (!"\"" ~ ANY)* ~ "\"") }
+SkipParens = _{ "(" ~ (SkipParens | SkipQuoted | (!("(" | ")" | "'" | "\"") ~ ANY))* ~ ")" }
+SkipBrackets = _{ "[" ~ (SkipBrackets | SkipQuoted | (!("[" | "]" | "'" | "\"") ~ ANY))* ~ "]" }
+// A comma at the top level of the parentheses that start here.
+ParenComma = _{ "(" ~ (SkipParens | SkipBrackets | SkipQuoted | (!SkipStop ~ ANY))* ~ "," }
+    SkipStop = _{ "(" | ")" | "[" | "]" | "," | "'" | "\"" }
 EOF = { (";" ~ WO)* ~ EOI }

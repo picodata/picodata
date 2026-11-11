@@ -17,9 +17,18 @@ const CORRECT: &[(&str, &str)] = &[
     ("1", "array[{}]"),
     ("1", "(select {})"),
     ("1", "1 in ({}, 2)"),
+    ("a", "coalesce({}, false)"),
+    ("a", "sum({}) filter (where true) over ()"),
+    ("a", "({}, 1)"),
+    ("a", "trim({})"),
+    ("'x'", "trim({} from a)"),
+    ("a", "trim({}, 'a')"),
 ];
 
-const ERRONEOUS: &[(&str, &str)] = &[("1 +", "1 in ({})")];
+const ERRONEOUS: &[(&str, &str)] = &[
+    ("1 +", "1 in ({})"),
+    ("1 +", "cast(f() over (partition by {}) as int)"),
+];
 
 /// `select` of 40 levels of the form.
 fn query((seed, level): (&str, &str)) -> String {
@@ -54,6 +63,16 @@ fn erroneous_forms_fail() {
     for &form in ERRONEOUS {
         assert!(parse(&query(form)).is_err(), "{form:?} parsed");
     }
+}
+
+/// The lookaheads must not add their rules to the error message.
+#[test]
+fn error_text_kept() {
+    let err = parse("select count(distinct) from t1")
+        .unwrap_err()
+        .to_string();
+    // pest writes "= unexpected ...; expected ..." when a rule leaks there.
+    assert!(err.contains("= expected Expr or CountAsterisk"), "{err}");
 }
 
 #[test]

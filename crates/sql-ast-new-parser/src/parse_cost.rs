@@ -16,9 +16,20 @@ const CORRECT: &[(&str, &str)] = &[
     ("1", "array[{}]"),
     ("1", "(select {})"),
     ("1", "1 in ({}, 2)"),
+    ("a", "coalesce({}, false)"),
+    ("a", "sum({}) filter (where true) over ()"),
+    ("a", "({}, 1)"),
+    ("a", "trim({})"),
+    ("'x'", "trim({} from a)"),
+    ("a", "trim({}, 'a')"),
+    ("1", "((select {}) union select 2)"),
+    ("1", "1 in ((select {}) union select 2)"),
 ];
 
-const ERRONEOUS: &[(&str, &str)] = &[("1 +", "1 in ({})")];
+const ERRONEOUS: &[(&str, &str)] = &[
+    ("1 +", "1 in ({})"),
+    ("1 +", "cast(f() over (partition by {}) as int)"),
+];
 
 /// `select` of 40 levels of the form.
 fn query((seed, level): (&str, &str)) -> String {
@@ -41,6 +52,20 @@ fn erroneous_forms_fail() {
     for &form in ERRONEOUS {
         assert!(parse(&query(form)).is_err(), "{form:?} parsed");
     }
+}
+
+/// The lookaheads must not add their rules to the error message.
+#[test]
+fn error_text_kept() {
+    let Err(err) = parse("select f(1 +) from t") else {
+        panic!("parsed");
+    };
+    // pest writes "= unexpected ...; expected ..." when a rule leaks there.
+    let expected = "= expected ValuesRow, Identifier, UnaryMinus, UnaryPlus, Literal, \
+        Parameter, ExpressionInParentheses, Substring, CurrentDate, CurrentTime, \
+        CurrentTimestamp, LocalTime, LocalTimestamp, Trim, Case, ArrayLiteral, CastOp, \
+        Type, or NotFlag";
+    assert!(err.to_string().contains(expected), "{err}");
 }
 
 #[test]
