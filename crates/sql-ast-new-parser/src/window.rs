@@ -240,20 +240,24 @@ fn parse_window_frame<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<Win
 }
 
 fn parse_frame_bound<'q>(pair: Pair<'q, Rule>, ctx: &ParseCtx) -> AstResult<FrameBound<'q, Raw>> {
-    let offset_expr = |pair: Pair<'q, Rule>| {
-        let expr_pair = pair
-            .into_inner()
-            .next()
-            .ok_or_else(|| parser_err(format_smolstr!("offset bound must contain `Expr`")))?;
-        parse_expr(expr_pair, ctx)
-    };
-
     match pair.as_rule() {
         Rule::PrecedingUnbounded => Ok(FrameBound::UnboundedPreceding),
-        Rule::PrecedingOffset => Ok(FrameBound::Preceding(offset_expr(pair)?)),
         Rule::CurrentRow => Ok(FrameBound::CurrentRow),
-        Rule::FollowingOffset => Ok(FrameBound::Following(offset_expr(pair)?)),
         Rule::FollowingUnbounded => Ok(FrameBound::UnboundedFollowing),
+        Rule::FrameOffset => {
+            let mut inner = pair.into_inner();
+            let expr_pair = inner
+                .next()
+                .ok_or_else(|| parser_err(format_smolstr!("offset bound must contain `Expr`")))?;
+            let offset = parse_expr(expr_pair, ctx)?;
+            match inner.next().map(|p| p.as_rule()) {
+                Some(Rule::Preceding) => Ok(FrameBound::Preceding(offset)),
+                Some(Rule::Following) => Ok(FrameBound::Following(offset)),
+                rule => Err(parser_err(format_smolstr!(
+                    "expected offset direction, got {rule:?}"
+                ))),
+            }
+        }
         rule => Err(parser_err(format_smolstr!(
             "expected frame bound, got {rule:?}"
         ))),
@@ -399,6 +403,25 @@ mod tests {
         insta::assert_snapshot!(
             render_window_func("sum(a) OVER (ORDER BY b RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)"),
             @"sum(a) OVER (ORDER BY b ASC RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)"
+        );
+    }
+
+    /// `unbounded`, `current`, `preceding` and `following` are not keywords:
+    /// the special bounds are not offsets with such columns, and the columns
+    /// still work as offsets.
+    #[test]
+    fn frame_bounds_and_columns() {
+        insta::assert_snapshot!(
+            render_window_func("sum(a) OVER (ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)"),
+            @"sum(a) OVER (ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)"
+        );
+        insta::assert_snapshot!(
+            render_window_func("sum(a) OVER (ROWS BETWEEN preceding PRECEDING AND following FOLLOWING)"),
+            @"sum(a) OVER (ROWS BETWEEN preceding PRECEDING AND following FOLLOWING)"
+        );
+        insta::assert_snapshot!(
+            render_window_func("sum(a) OVER (ROWS BETWEEN unbounded PRECEDING AND current FOLLOWING)"),
+            @"sum(a) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND current FOLLOWING)"
         );
     }
 

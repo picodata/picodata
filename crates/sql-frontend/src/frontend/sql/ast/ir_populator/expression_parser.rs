@@ -466,11 +466,14 @@ fn parse_frame_bound<M: Metadata>(
         Rule::PrecedingUnbounded => Ok(BoundType::PrecedingUnbounded),
         Rule::CurrentRow => Ok(BoundType::CurrentRow),
         Rule::FollowingUnbounded => Ok(BoundType::FollowingUnbounded),
-        Rule::PrecedingOffset | Rule::FollowingOffset => {
-            let offset_expr = bound
-                .into_inner()
+        Rule::FrameOffset => {
+            let mut inner = bound.into_inner();
+            let offset_expr = inner
                 .next()
                 .expect("Expr node expected under Offset window bound");
+            let direction = inner
+                .next()
+                .expect("direction expected under Offset window bound");
             let offset_expr_id = parse_expr_no_type_check(
                 Pairs::single(offset_expr),
                 param_types,
@@ -480,10 +483,10 @@ fn parse_frame_bound<M: Metadata>(
                 true,
             )?;
 
-            Ok(match rule {
-                Rule::PrecedingOffset => BoundType::PrecedingOffset(offset_expr_id),
-                Rule::FollowingOffset => BoundType::FollowingOffset(offset_expr_id),
-                _ => unreachable!("Offset bound expected"),
+            Ok(match direction.as_rule() {
+                Rule::Preceding => BoundType::PrecedingOffset(offset_expr_id),
+                Rule::Following => BoundType::FollowingOffset(offset_expr_id),
+                _ => unreachable!("Offset direction expected"),
             })
         }
         _ => panic!("Unexpected rule met under WindowFrameBound: {rule:?}"),

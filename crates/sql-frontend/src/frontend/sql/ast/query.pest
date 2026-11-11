@@ -541,13 +541,20 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                                     WindowFrameTypeRange = { ^"range" }
                                     WindowFrameTypeRows = { ^"rows" }
                                 WindowFrameSingle = { WindowFrameBound }
-                                WindowFrameBetween = ${ ^"between" ~ W ~ WindowFrameBound ~ W ~ ^"and" ~ W ~ WindowFrameBound }
-                                WindowFrameBound = _{ PrecedingUnbounded | PrecedingOffset | CurrentRow | FollowingUnbounded | FollowingOffset }
+                                // pest places the error where a rule last failed, and `and` is
+                                // not a rule: `&And` puts the error of a missing AND after the
+                                // first bound, not at the special bounds that failed before it.
+                                WindowFrameBetween = ${ ^"between" ~ W ~ WindowFrameBound ~ W ~ &And ~ ^"and" ~ W ~ WindowFrameBound }
+                                // `unbounded` and `current` are not keywords, so the offset,
+                                // which would read them as columns, goes last.
+                                WindowFrameBound = _{ PrecedingUnbounded | FollowingUnbounded | CurrentRow | FrameOffset }
                                     PrecedingUnbounded = ${ ^"unbounded" ~ W ~ ^"preceding" }
-                                    PrecedingOffset = ${ Expr ~ W ~ ^"preceding" }
                                     CurrentRow = ${ ^"current" ~ W ~ ^"row" }
-                                    FollowingOffset = ${ Expr ~ W ~ ^"following" }
                                     FollowingUnbounded = ${ ^"unbounded" ~ W ~ ^"following" }
+                                    // One rule for both directions reads the offset once.
+                                    FrameOffset = ${ Expr ~ W ~ (Preceding | Following) }
+                                        Preceding = { ^"preceding" }
+                                        Following = { ^"following" }
             ExpressionInParentheses = !{ "(" ~ Expr ~ ")" }
             // All forms start with the string, so it is read once, and the
             // tail tells the form. Without a tail it is the regex form

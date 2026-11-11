@@ -1341,11 +1341,16 @@ impl AstCore {
                             Rule::PrecedingUnbounded => BoundType::PrecedingUnbounded,
                             Rule::CurrentRow => BoundType::CurrentRow,
                             Rule::FollowingUnbounded => BoundType::FollowingUnbounded,
-                            Rule::PrecedingOffset | Rule::FollowingOffset => {
+                            Rule::FrameOffset => {
                                 let offset_expr_node_id = frame_bound_node
                                     .children
                                     .first()
                                     .expect("Expr node expected under Offset window bound");
+                                let direction_node_id = frame_bound_node
+                                    .children
+                                    .get(1)
+                                    .expect("direction expected under Offset window bound");
+                                let direction = self.nodes.get_node(*direction_node_id)?.rule;
                                 let offset_expr_pair = pairs_map.remove_pair(*offset_expr_node_id);
                                 let offset_expr_plan_node_id = parse_scalar_expr(
                                     Pairs::single(offset_expr_pair),
@@ -1357,14 +1362,14 @@ impl AstCore {
                                     true,
                                 )?;
 
-                                match frame_bound_node.rule {
-                                    Rule::PrecedingOffset => {
+                                match direction {
+                                    Rule::Preceding => {
                                         BoundType::PrecedingOffset(offset_expr_plan_node_id)
                                     }
-                                    Rule::FollowingOffset => {
+                                    Rule::Following => {
                                         BoundType::FollowingOffset(offset_expr_plan_node_id)
                                     }
-                                    _ => unreachable!("Offset bound expected"),
+                                    _ => unreachable!("Offset direction expected"),
                                 }
                             }
                             _ => panic!(

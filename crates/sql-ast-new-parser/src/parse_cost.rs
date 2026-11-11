@@ -34,6 +34,7 @@ const CORRECT: &[(&str, &str)] = &[
     ("1", "substring('a' for {})"),
     ("1", "substring('a', {})"),
     ("1", "substring('a', {}, 2)"),
+    ("1", "sum(a) over (rows {} following)"),
     ("1", "((select {}) union select 2)"),
     ("1", "1 in ((select {}) union select 2)"),
 ];
