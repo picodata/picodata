@@ -2544,9 +2544,9 @@ impl ParseNodes {
         ParseNodes { arena: Vec::new() }
     }
 
-    /// Adds children to already existing node.
-    /// New elements are added to the beginning of the current list
-    /// as we use inverted node order.
+    /// Appends `child` to the children of `node`.
+    /// `AstCore::fill` meets the children right to left and reverses
+    /// every list once after the walk.
     ///
     /// # Errors
     /// - Failed to retrieve node from arena.
@@ -2559,7 +2559,7 @@ impl ParseNodes {
                     format_smolstr!("(mutable) from arena with index {parent}"),
                 )
             })?;
-            parent_node.children.insert(0, child);
+            parent_node.children.push(child);
         }
         Ok(())
     }

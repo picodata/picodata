@@ -242,6 +242,11 @@ impl AstCore {
             }
         }
 
+        // The stack yields the children right to left: put them in text order.
+        for node in &mut self.nodes.arena {
+            node.children.reverse();
+        }
+
         // Sort tnt parameters pairs in their appearance order.
         // This allows to enumerate tnt parameters: `select ?, ?` -> `select $1, $2`
         tnt_parameters.sort_by_key(|p| p.as_span().start());
