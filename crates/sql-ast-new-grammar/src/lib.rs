@@ -40,7 +40,7 @@ const STEPS_PER_BYTE: usize = 350;
 /// The lookaheads of the grammars run over the nested parentheses on every
 /// level, so a deep part takes steps in proportion to its length times its
 /// depth. 4 times the most steps of a correct form 40 levels deep.
-const NESTED_STEPS: usize = 1_300_000;
+const NESTED_STEPS: usize = 900_000;
 
 /// The error text when a query runs out of the step budget.
 pub const TOO_COMPLEX: &str = "query is too complex to parse";

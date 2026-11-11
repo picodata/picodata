@@ -160,7 +160,7 @@ EmptyQuery = { WHITESPACE* }
 
 // General expressions.
 // This is the heart of the expression syntax.
-Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((!ParenQuery ~ ValuesRow ~ (WO ~ IsPostfix)*) | ExprAtomValue)))* }
+Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((&ParenQuery ~ ExprAtomValue) | (ValuesRow ~ (WO ~ IsPostfix)*) | ExprAtomValue)))* }
     // Keyword operators need a token boundary (`KwEnd` inside each keyword
     // token), not surrounding whitespace: `(true)and(false)` is legal, as in
     // PG, whose lexer splits the tokens on its own. `a andy` stays an
@@ -224,7 +224,14 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((!P
         IsPostfix = ${ ^"is" ~ KwEnd ~ WO ~ (NotFlag ~ WO)? ~ (True | False | Unknown | Null) }
             Unknown = { ^"unknown" ~ KwEnd }
         AtomicExpr = _{ Literal | Parameter | Over | CastOp | TypedLiteral | Trim | Substring | CurrentDate | CurrentTimestamp | CurrentTime | LocalTimestamp | LocalTime
-                    | IdentifierWithOptionalContinuation | (!ParenQuery ~ !ParenComma ~ ExpressionInParentheses) | UnaryOperator | Case | SubQuery | ArrayLiteral | (!ParenQuery ~ ValuesRow) }
+                    | IdentifierWithOptionalContinuation | ParenAtom | UnaryOperator | Case | ArrayLiteral }
+            // Everything that starts with a parenthesis. A query that starts
+            // with a query in parentheses goes straight to `SubQuery`.
+            // `!"("`: where no parenthesis follows, `ExpressionInParentheses`
+            // still shows up in "expected ..." of the error message.
+            ParenAtom = _{
+                (&ParenQuery ~ SubQuery) | ((!"(" | &ParenNoComma) ~ ExpressionInParentheses) | SubQuery | ValuesRow
+            }
             // The numeric alternatives are boundary-guarded at this use site,
             // not inside the tokens: `Integer` is a building block of
             // `Decimal`/`Double`, and non-expression sites (LIMIT, type
@@ -337,11 +344,16 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (WO ~ In ~ WO ~ ((!P
                 ^"trim" ~ WO ~ !ParenComma ~ "(" ~ WO
                 ~ (&TrimFrom ~ TrimOption ~ W ~ ^"from" ~ W)? ~ TrimTarget ~ WO ~ ")"
             }
-                // `FROM` at the top level of the parentheses.
+                // `FROM` at the top level of the parentheses. `FROM` follows
+                // a space, so the text skipped in one go has no spaces. A run
+                // of spaces goes in one go too: the check for `FROM` would
+                // otherwise run over the rest of the run at every space.
                 TrimFrom = _{
-                    (!(W ~ ^"from" ~ W) ~ (SkipParens | SkipBrackets | SkipQuoted | (!SkipStop ~ ANY)))*
+                    SkipTopWord
+                    ~ (!(W ~ ^"from" ~ W) ~ (SkipNested | W | (!("(" | ")" | "[" | "]" | "," | "'" | "\"") ~ ANY)) ~ SkipTopWord)*
                     ~ W ~ ^"from" ~ W
                 }
+                    SkipTopWord = _{ (!("(" | ")" | "[" | "]" | "," | "'" | "\"" | " " | "\t" | "\n" | "\r") ~ ANY)* }
                 TrimOption = _{ ((TrimKind ~ W)? ~ TrimPattern) | TrimKind }
                 TrimKind = { (TrimKindLeading | TrimKindTrailing | TrimKindBoth) }
                     TrimKindLeading = { ^"leading" }
@@ -444,15 +456,29 @@ Comma = _{ ^"," }
 // the next one reads it again, and on every level of nesting the work
 // multiplies. A lookahead cuts such an alternative off before it enters the
 // nested expressions. It only cuts off what would fail anyway, so the language
-// does not change. The rules are silent: a named rule that fails inside
-// a lookahead goes to "expected ..." of the error message. They spell the
-// whitespace themselves, so call them from atomic rules only.
-SkipQuoted = _{ ("'" ~ (!"'" ~ ANY)* ~ "'") | ("\"" ~ (!"\"" ~ ANY)* ~ "\"") }
-SkipParens = _{ "(" ~ (SkipParens | SkipQuoted | (!("(" | ")" | "'" | "\"") ~ ANY))* ~ ")" }
-SkipBrackets = _{ "[" ~ (SkipBrackets | SkipQuoted | (!("[" | "]" | "'" | "\"") ~ ANY))* ~ "]" }
+// does not change. They spell the whitespace themselves, so call them from
+// atomic rules only.
+//
+// The text between the brackets and quotes goes in the `Skip*Text` and
+// `SkipTopWord` rules, tried before the nested brackets: about 3 steps per
+// character. All the rules are silent, so they never show up in an error
+// message. Not atomic either: pest turns `(!("a" | "b") ~ ANY)*` of an
+// atomic rule into one step however long the text, and an error path that
+// runs a lookahead again and again would take time quadratic in the length
+// of the query within the step budget.
+SkipQuoted = _{ ("'" ~ SkipQuotedText ~ "'") | ("\"" ~ SkipDelimitedText ~ "\"") }
+    SkipQuotedText = _{ (!"'" ~ ANY)* }
+    SkipDelimitedText = _{ (!"\"" ~ ANY)* }
+SkipParens = _{ "(" ~ SkipParensText ~ ((SkipParens | SkipQuoted) ~ SkipParensText)* ~ ")" }
+    SkipParensText = _{ (!("(" | ")" | "'" | "\"") ~ ANY)* }
+SkipBrackets = _{ "[" ~ SkipBracketsText ~ ((SkipBrackets | SkipQuoted) ~ SkipBracketsText)* ~ "]" }
+    SkipBracketsText = _{ (!("[" | "]" | "'" | "\"") ~ ANY)* }
+SkipNested = _{ SkipParens | SkipBrackets | SkipQuoted }
+// The parentheses that start here close with no comma at the top level.
+ParenNoComma = _{ "(" ~ SkipTopText ~ (SkipNested ~ SkipTopText)* ~ ")" }
+    SkipTopText = _{ (!("(" | ")" | "[" | "]" | "," | "'" | "\"") ~ ANY)* }
 // A comma at the top level of the parentheses that start here.
-ParenComma = _{ "(" ~ (SkipParens | SkipBrackets | SkipQuoted | (!SkipStop ~ ANY))* ~ "," }
-    SkipStop = _{ "(" | ")" | "[" | "]" | "," | "'" | "\"" }
+ParenComma = _{ "(" ~ SkipTopText ~ (SkipNested ~ SkipTopText)* ~ "," }
 // A query in parentheses that starts with a query in parentheses, like
 // `((SELECT 1) UNION SELECT 2)`. Neither an expression nor a row.
 ParenQuery = _{

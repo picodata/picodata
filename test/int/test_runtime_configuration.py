@@ -594,9 +594,11 @@ def test_alter_system_sql_parse_step_max(cluster: Cluster):
     # A lower limit would reject short queries, this ALTER SYSTEM among them.
     with pytest.raises(
         TarantoolError,
-        match=rf"invalid value for '{sql_parse_step_max}': value must be 0 or between \d+ and 9223372036854775807",
+        match=rf"invalid value for '{sql_parse_step_max}': value must be 0 or between 900000 and 9223372036854775807",
     ):
         instance.sql(f"ALTER SYSTEM SET {sql_parse_step_max} = 899999")
+    instance.sql(f"ALTER SYSTEM SET {sql_parse_step_max} = 900000")
+    assert step_max() == [[900000]]
 
 
 def test_alter_system_pg_params(cluster: Cluster):

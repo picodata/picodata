@@ -56,6 +56,9 @@ const TOO_COMPLEX_ERROR: &[(&str, &str)] = &[
     ("1 +", "({})"),
     ("a", "sum({}) filter (where true)"),
     ("1 +", "trim({})"),
+    // Unclosed: still read as trim, for the error position (see
+    // `error_text_kept`), and every level reads the rest of the query again.
+    ("a", "trim({}"),
     ("1 +", "((select {}))"),
 ];
 
@@ -73,6 +76,13 @@ fn correct_forms_parse() {
             panic!("{form:?}: {e}\n{query}");
         }
     }
+}
+
+/// The check for `FROM` in `trim` runs once per run of spaces: at every space
+/// over the rest of the run, 10 000 spaces would take 50 million steps.
+#[test]
+fn trim_spaces_parse() {
+    parse(&format!("select trim('x'{})", " ".repeat(10_000))).unwrap();
 }
 
 #[test]
@@ -106,6 +116,17 @@ fn error_text_kept() {
         panic!("parsed");
     };
     assert!(!err.to_string().contains("Tail"), "{err}");
+
+    // An unclosed trim is still read as trim: the error is where `)` is missing.
+    for (query, pos) in [
+        ("select trim(both 'x' from name", "--> 1:31"),
+        ("select trim(a from b from t", "--> 1:22"),
+    ] {
+        let Err(err) = parse(query) else {
+            panic!("parsed");
+        };
+        assert!(err.to_string().contains(pos), "{err}");
+    }
 }
 
 /// A digit is a step of the budget: an error path that reads a long number

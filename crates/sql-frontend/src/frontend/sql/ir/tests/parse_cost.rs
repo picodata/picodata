@@ -54,6 +54,9 @@ const TOO_COMPLEX_ERROR: &[(&str, &str)] = &[
     ("1 +", "({})"),
     ("a", "sum({}) filter (where true)"),
     ("1 +", "trim({})"),
+    // Unclosed: still read as trim, for the error position (see
+    // `error_text_kept`), and every level reads the rest of the query again.
+    ("a", "trim({}"),
 ];
 
 /// `select` of 40 levels of the form.
@@ -84,6 +87,13 @@ fn correct_forms_parse() {
     }
 }
 
+/// The check for `FROM` in `trim` runs once per run of spaces: at every space
+/// over the rest of the run, 10 000 spaces would take 50 million steps.
+#[test]
+fn trim_spaces_parse() {
+    parse(&format!("select trim('x'{})", " ".repeat(10_000))).unwrap();
+}
+
 #[test]
 fn erroneous_forms_fail() {
     for (forms, too_complex) in [(SYNTAX_ERROR, false), (TOO_COMPLEX_ERROR, true)] {
@@ -106,6 +116,16 @@ fn error_text_kept() {
     // The tails of substring are tried at their first word only.
     let err = parse("select substring('x';)").unwrap_err().to_string();
     assert!(!err.contains("Tail"), "{err}");
+
+    // An unclosed trim is still read as trim: the error is where `)` is missing.
+    let err = parse("select trim(both 'x' from name")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("--> 1:31"), "{err}");
+    let err = parse("select trim(a from b from t")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("--> 1:22"), "{err}");
 }
 
 /// A digit is a step of the budget: an error path that reads a long number
