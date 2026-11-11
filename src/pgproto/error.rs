@@ -271,7 +271,7 @@ impl PgError {
             if let Error::Sbroad(e) = &**e {
                 return matches!(
                     e.kind(),
-                    SbroadErrorInner::ParsingError(_, message) if message != TOO_COMPLEX
+                    SbroadErrorInner::ParsingError(_, message) if !message.starts_with(TOO_COMPLEX)
                 );
             }
         }

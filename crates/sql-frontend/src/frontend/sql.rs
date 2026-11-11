@@ -19,8 +19,10 @@ pub mod ir;
 pub mod tree;
 mod type_system;
 
-/// The text of the parse error of a query that runs out of the step budget.
+/// The start of the parse error of a query that runs out of the step budget.
 pub use sql_ast_new_grammar::TOO_COMPLEX;
+/// The cap on the step budget of a query, `sql_parse_step_max`.
+pub use sql_ast_new_grammar::{set_step_max, DEFAULT_STEP_MAX, MIN_STEP_MAX};
 
 pub trait Ast<'q> {
     type AnalyzedAst;

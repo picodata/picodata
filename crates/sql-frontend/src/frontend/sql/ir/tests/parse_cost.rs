@@ -6,8 +6,8 @@
 //! test fails at once instead of hanging.
 
 use crate::errors::SbroadError;
-use crate::frontend::sql::ast::{AbstractSyntaxTree, ParsingPairsMap};
-use sql_ast_new_grammar::TOO_COMPLEX;
+use crate::frontend::sql::ast::{AbstractSyntaxTree, ParseTree, ParsingPairsMap, Rule};
+use sql_ast_new_grammar::{parse_with_budget, TOO_COMPLEX};
 use std::collections::HashMap;
 
 /// Expressions as (innermost level, one level with `{}` for the inner one).
@@ -38,9 +38,22 @@ const CORRECT: &[(&str, &str)] = &[
     ("1", "sum(a) over (rows {} following)"),
 ];
 
-const ERRONEOUS: &[(&str, &str)] = &[
-    ("1 +", "1 in ({})"),
+/// Forms with an error deep inside that no rule reads twice: they fail with
+/// the syntax error. The budget error here means a lookahead stopped working.
+const SYNTAX_ERROR: &[(&str, &str)] = &[
+    ("1 +", "({}, 1)"),
+    ("1 +", "substring({})"),
+    ("1 +", "sum(a) over (rows {} following)"),
     ("1 +", "cast(f() over (partition by {}) as int)"),
+];
+
+/// Forms whose error path still reads the nested part again: only the
+/// budget stops them.
+const TOO_COMPLEX_ERROR: &[(&str, &str)] = &[
+    ("1 +", "1 in ({})"),
+    ("1 +", "({})"),
+    ("a", "sum({}) filter (where true)"),
+    ("1 +", "trim({})"),
 ];
 
 /// `select` of 40 levels of the form.
@@ -73,8 +86,11 @@ fn correct_forms_parse() {
 
 #[test]
 fn erroneous_forms_fail() {
-    for &form in ERRONEOUS {
-        assert!(parse(&query(form)).is_err(), "{form:?} parsed");
+    for (forms, too_complex) in [(SYNTAX_ERROR, false), (TOO_COMPLEX_ERROR, true)] {
+        for &form in forms {
+            let err = parse(&query(form)).unwrap_err().to_string();
+            assert_eq!(err.contains(TOO_COMPLEX), too_complex, "{form:?}: {err}");
+        }
     }
 }
 
@@ -92,8 +108,25 @@ fn error_text_kept() {
     assert!(!err.contains("Tail"), "{err}");
 }
 
+/// A digit is a step of the budget: an error path that reads a long number
+/// again on every level must run out of the budget, not take quadratic time.
 #[test]
-fn too_complex_error() {
-    let err = parse(&query(ERRONEOUS[0])).unwrap_err().to_string();
-    assert!(err.contains(TOO_COMPLEX), "{err}");
+fn digits_take_steps() {
+    // pest keeps one limit for the whole process, and a test that parses with
+    // pest directly runs under the limit of a parse in another thread: a
+    // budget below that of any query could fail it.
+    let budget = sql_ast_new_grammar::MIN_STEP_MAX;
+    let parse =
+        |query: &str| parse_with_budget::<ParseTree, Rule>(Rule::Command, query, budget).map(drop);
+    parse("select 1").unwrap();
+    let err = parse(&format!("select {}", "1".repeat(2 * budget))).unwrap_err();
+    assert_eq!(err, TOO_COMPLEX);
+}
+
+/// A dense list of one-letter names takes the most steps per byte of a correct
+/// query, up to 180. 100 KB of it must fit the budget, where its constant part
+/// no longer helps.
+#[test]
+fn dense_list_parses() {
+    parse(&format!("select {}x", "x,".repeat(50_000))).unwrap();
 }

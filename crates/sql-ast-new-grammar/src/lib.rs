@@ -12,6 +12,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use pest::error::ErrorVariant;
@@ -24,14 +25,50 @@ use pest_derive::Parser;
 pub struct PairParser;
 
 /// Parser steps allowed per byte of the query.
-// XXX: a generous guess until the grammars stop re-reading nested parts.
-const STEPS_PER_BYTE: usize = 1000;
+///
+/// About 8 times the most a query of the tests (sbroad, `test/int/sql`, the
+/// corpus of the new parser) takes per byte from 1 KB on, 41, and twice the
+/// most of a dense list of one-letter names like `select x, x, ...`, 180. It
+/// does not grow with the nesting depth: long queries are shallow, and a
+/// budget fit for deep ones would let a megabyte of a malicious query block
+/// the thread for seconds. The time of a long query is bounded by the cap of
+/// [`set_step_max`].
+const STEPS_PER_BYTE: usize = 350;
 
-/// A query shorter than this gets the budget of a query this long.
-const MIN_LEN: usize = 1000;
+/// Parser steps allowed on top, for a deeply nested part of the query.
+///
+/// The lookaheads of the grammars run over the nested parentheses on every
+/// level, so a deep part takes steps in proportion to its length times its
+/// depth. 4 times the most steps of a correct form 40 levels deep.
+const NESTED_STEPS: usize = 1_300_000;
 
 /// The error text when a query runs out of the step budget.
 pub const TOO_COMPLEX: &str = "query is too complex to parse";
+
+/// The default cap of [`set_step_max`].
+///
+/// 30 million steps keep the thread for 60 to 150 ms, by the form of the
+/// query: well within the 1 s of the raft heartbeat and of the replication
+/// timeout, by which the other instances see a stuck thread. Correct queries
+/// reach the cap from about 170 KB on as a dense list of one-letter names,
+/// from about 700 KB on as the queries of the tests.
+pub const DEFAULT_STEP_MAX: usize = 30_000_000;
+
+/// The least cap of [`set_step_max`] but 0: the budget of an empty query.
+///
+/// A lower cap would reject short queries that parse now, among them the
+/// `ALTER SYSTEM` that would raise the cap back.
+pub const MIN_STEP_MAX: usize = NESTED_STEPS;
+
+/// The cap of [`set_step_max`].
+static STEP_MAX: AtomicUsize = AtomicUsize::new(DEFAULT_STEP_MAX);
+
+/// Caps the step budget of every query, whatever its length: picodata sets it
+/// from `sql_parse_step_max`. 0 removes the cap, but not the budget per byte,
+/// which stops the parses that grow exponentially.
+pub fn set_step_max(max: usize) {
+    STEP_MAX.store(max, Ordering::Relaxed);
+}
 
 /// Guards the step limit, which pest keeps in one process-wide variable and
 /// reads when a parse starts.
@@ -47,7 +84,8 @@ pub const TOO_COMPLEX: &str = "query is too complex to parse";
 /// would block the whole thread on `lock()`.
 static CALL_LIMIT_LOCK: Mutex<()> = Mutex::new(());
 
-/// Parse `input` with a step budget proportional to its length.
+/// Parse `input` with a step budget linear in its length: `STEPS_PER_BYTE`
+/// per byte plus `NESTED_STEPS`, at most the cap of [`set_step_max`].
 ///
 /// pest tries the alternatives of a rule one by one and remembers nothing,
 /// so a grammar can re-read a nested part on every level, and the work grows
@@ -56,23 +94,64 @@ static CALL_LIMIT_LOCK: Mutex<()> = Mutex::new(());
 /// a repetition, an optional or a lookahead).
 ///
 /// Every parse of a query text must go through here. The error is the text
-/// for the user: [`TOO_COMPLEX`] when the budget runs out, the pest message
-/// otherwise.
+/// for the user: [`TOO_COMPLEX`] with the budget and a hint when the budget
+/// runs out, the pest message otherwise.
 pub fn parse_limited<P: Parser<R>, R: RuleType>(
     rule: R,
     input: &str,
 ) -> Result<Pairs<'_, R>, String> {
-    let budget = STEPS_PER_BYTE.saturating_mul(input.len().max(MIN_LEN));
-    parse_with_budget::<P, R>(rule, input, budget)
+    parse_capped::<P, R>(rule, input, STEP_MAX.load(Ordering::Relaxed))
 }
 
-fn parse_with_budget<P: Parser<R>, R: RuleType>(
+/// [`parse_limited`] with the cap `max`, 0 for none.
+fn parse_capped<P: Parser<R>, R: RuleType>(
+    rule: R,
+    input: &str,
+    max: usize,
+) -> Result<Pairs<'_, R>, String> {
+    let budget = STEPS_PER_BYTE
+        .saturating_mul(input.len())
+        .saturating_add(NESTED_STEPS);
+    let capped = max != 0 && max < budget;
+    let budget = if capped { max } else { budget };
+    parse_steps::<P, R>(rule, input, budget).map_err(|e| {
+        e.unwrap_or_else(|| {
+            if capped {
+                format!(
+                    "{TOO_COMPLEX}: it takes over {budget} parser steps, the limit of \
+                    sql_parse_step_max; split it into smaller queries"
+                )
+            } else {
+                format!(
+                    "{TOO_COMPLEX}: it takes over {budget} parser steps for its {} bytes; \
+                    reduce its nesting",
+                    input.len()
+                )
+            }
+        })
+    })
+}
+
+/// [`parse_limited`] with a given budget, for the tests of what a rule costs.
+pub fn parse_with_budget<P: Parser<R>, R: RuleType>(
     rule: R,
     input: &str,
     budget: usize,
 ) -> Result<Pairs<'_, R>, String> {
-    // A panic inside pest leaves nothing to clean up: the next parse sets its
-    // own limit.
+    parse_steps::<P, R>(rule, input, budget)
+        .map_err(|e| e.unwrap_or_else(|| TOO_COMPLEX.to_owned()))
+}
+
+/// Parse `input` in at most `budget` steps. The error is `None` when the
+/// budget runs out, the pest message otherwise.
+fn parse_steps<P: Parser<R>, R: RuleType>(
+    rule: R,
+    input: &str,
+    budget: usize,
+) -> Result<Pairs<'_, R>, Option<String>> {
+    // A panic inside pest leaves the limit set, which does no harm: the next
+    // parse here sets its own, and the parses elsewhere are one-word checks
+    // far below any budget.
     let _lock = CALL_LIMIT_LOCK
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
@@ -82,9 +161,9 @@ fn parse_with_budget<P: Parser<R>, R: RuleType>(
     pest::set_call_limit(None);
     res.map_err(|e| match e.variant {
         // Our grammars raise no custom errors, only the step limit does.
-        ErrorVariant::CustomError { .. } => TOO_COMPLEX.to_owned(),
+        ErrorVariant::CustomError { .. } => None,
         // `Error` prints the line of the query with the error position.
-        ErrorVariant::ParsingError { .. } => e.to_string(),
+        ErrorVariant::ParsingError { .. } => Some(e.to_string()),
     })
 }
 
@@ -109,6 +188,27 @@ mod tests {
         // The limit does not outlive the parse.
         PairParser::parse(Rule::Command, "select 1").unwrap();
         parse_limited::<PairParser, Rule>(Rule::Command, "select 1").unwrap();
+    }
+
+    /// The cap bounds the budget of a long query; 0 removes the cap but not
+    /// the budget per byte.
+    #[test]
+    fn budget_capped() {
+        let parse = |query: &str, max| {
+            parse_capped::<PairParser, Rule>(Rule::Command, query, max).map(drop)
+        };
+        // About 170 steps per byte, 3.4 million.
+        let long = format!("select {}x", "x,".repeat(10_000));
+        let err = parse(&long, MIN_STEP_MAX).unwrap_err();
+        assert!(err.starts_with(TOO_COMPLEX), "{err}");
+        assert!(err.contains("sql_parse_step_max"), "{err}");
+        parse(&long, 0).unwrap();
+        parse(&long, DEFAULT_STEP_MAX).unwrap();
+
+        let deep = format!("select {}1 +{}", "1 in (".repeat(40), ")".repeat(40));
+        let err = parse(&deep, 0).unwrap_err();
+        assert!(err.starts_with(TOO_COMPLEX), "{err}");
+        assert!(err.contains("reduce its nesting"), "{err}");
     }
 
     #[test]

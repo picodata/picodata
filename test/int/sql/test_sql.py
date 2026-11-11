@@ -669,6 +669,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "sql_ddl_timeout",
         "sql_log",
         "sql_motion_row_max",
+        "sql_parse_step_max",
         "sql_preemption",
         "sql_preemption_interval_us",
         "sql_preemption_opcode_max",

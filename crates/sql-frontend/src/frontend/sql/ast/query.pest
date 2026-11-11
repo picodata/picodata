@@ -505,10 +505,16 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                 True     = { ^"true" }
                 False    = { ^"false" }
                 Null     = { ^"null" }
-                Decimal = @{ Integer ~ ("." ~ ASCII_DIGIT*) }
-                Double = @{ Integer ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ Integer) }
-                Integer = @{ ("+" | "-")? ~ ASCII_DIGIT+ }
-                Unsigned = @{ ASCII_DIGIT+ }
+                Decimal = @{ Integer ~ ("." ~ Digit*) }
+                Double = @{ Integer ~ ("." ~ Digit*)? ~ (^"e" ~ Integer) }
+                Integer = @{ ("+" | "-")? ~ ASCII_DIGIT ~ Digit* }
+                Unsigned = @{ ASCII_DIGIT ~ Digit* }
+                // `~ ""` makes a digit a step of the budget: pest counts all of
+                // `ASCII_DIGIT+` as one, and an error path that reads a long
+                // number again on every level would take quadratic time. The
+                // first digit is not counted, so that a word that is not a
+                // number takes no step in the literal rules.
+                Digit = _{ ASCII_DIGIT ~ "" }
                 SingleQuotedString = @{ "'" ~ ((!("'") ~ ANY) | "''")* ~ "'" }
                 UnquotedString = @{ ((!("'") ~ ANY) | "''")* }
             Parameter = { PgParameter | TntParameter }

@@ -73,6 +73,7 @@ pub(crate) const DEFAULT_SQL_PREEMPTION_INTERVAL_US: u64 = 500;
 pub(crate) const DEFAULT_SQL_PREEMPTION_OPCODE_MAX: u64 = 1024;
 pub(crate) const DEFAULT_SQL_LOG: bool = false;
 pub(crate) const DEFAULT_SQL_RUNTIME_CONCURRENCY_MAX: u64 = 50;
+pub(crate) const DEFAULT_SQL_PARSE_STEP_MAX: u64 = ::sql::frontend::sql::DEFAULT_STEP_MAX as u64;
 pub const DEFAULT_EXPERIMENTAL_SHARDING_IMPLEMENTATION: bool = false;
 pub const DEFAULT_REPLICATION_MODE: ReplicationMode = ReplicationMode::Async;
 pub const DEFAULT_GOVERNOR_DDL_RPC_TIMEOUT: f64 = 30.0;
@@ -2702,6 +2703,15 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 5000)]
     pub sql_motion_row_max: u64,
 
+    /// Maximum number of parser steps for the text of an SQL query, whatever
+    /// its length. A step is an attempt of a rule of the grammar. The parser
+    /// cannot yield, so the limit bounds the time a query keeps the tx thread.
+    /// Value of `0` disables this limit, but not the limit of 350 steps per
+    /// byte of the query.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = DEFAULT_SQL_PARSE_STEP_MAX)]
+    pub sql_parse_step_max: u64,
+
     /// DQL replicaset data reading strategy.
     /// Allowed values: "leader", "replica", "any".
     /// Default value: "leader".
@@ -3249,6 +3259,21 @@ pub fn validate_alter_system_parameter_value<'v>(
         }
     }
 
+    if name == system_parameter_name!(sql_parse_step_max) {
+        let step_max = casted_value
+            .integer()
+            .expect("invalid value for sql_parse_step_max");
+
+        // A lower limit would reject short queries, ALTER SYSTEM among them.
+        let min = ::sql::frontend::sql::MIN_STEP_MAX as i64;
+        if step_max != 0 && step_max < min {
+            return Err(Error::other(format!(
+                "invalid value for '{name}': value must be 0 or between {min} and {}",
+                i64::MAX,
+            )));
+        }
+    }
+
     if name == system_parameter_name!(jwt_auth_token_lifetime)
         || name == system_parameter_name!(jwt_refresh_token_lifetime)
     {
@@ -3603,6 +3628,9 @@ pub fn apply_alter_system_parameter(
         let value = value as i64;
         // Cache the value.
         DYNAMIC_CONFIG.sql_motion_row_max.update(value);
+    } else if name == system_parameter_name!(sql_parse_step_max) {
+        let value = v.as_u64().expect("type is already checked");
+        ::sql::frontend::sql::set_step_max(usize::try_from(value).unwrap_or(usize::MAX));
     } else if name == system_parameter_name!(read_preference) {
         let value = v.as_str().expect("type is already checked");
         let value = options::ReadPreference::from_str(value).expect("value is already checked");

@@ -547,6 +547,58 @@ def test_alter_system_vbde_opcode_param(cluster: Cluster):
         instance.sql(f"ALTER SYSTEM SET {sql_vdbe_opcode_max} = 'x'")
 
 
+def test_alter_system_sql_parse_step_max(cluster: Cluster):
+    instance = cluster.add_instance()
+    sql_parse_step_max = "sql_parse_step_max"
+
+    def step_max():
+        return instance.sql(f"SELECT value FROM _pico_db_config WHERE key = '{sql_parse_step_max}'")
+
+    assert step_max() == [[30000000]]
+
+    # 40 KB, about 2.7 million parser steps. The syntax error at the end
+    # keeps the query out of the plan cache, so every run parses it.
+    query = "SELECT " + "1," * 20_000 + ")"
+
+    def parses():
+        with pytest.raises(TarantoolError, match="rule parsing error") as error:
+            instance.sql(query)
+        assert "too complex" not in str(error.value)
+
+    def capped():
+        with pytest.raises(
+            TarantoolError,
+            match="query is too complex to parse: it takes over 1300000 parser steps, the limit of sql_parse_step_max",
+        ):
+            instance.sql(query)
+
+    parses()
+    instance.sql(f"ALTER SYSTEM SET {sql_parse_step_max} = 1300000")
+    capped()
+    # The cap lives in the memory of the process: a restart sets it again.
+    instance.restart()
+    instance.wait_online()
+    capped()
+
+    instance.sql(f"ALTER SYSTEM RESET {sql_parse_step_max}")
+    assert step_max() == [[30000000]]
+    parses()
+
+    # 0 disables the limit, but not the budget per byte of the query.
+    instance.sql(f"ALTER SYSTEM SET {sql_parse_step_max} = 0")
+    parses()
+    deep = "SELECT " + "1 IN (" * 40 + "1 +" + ")" * 40
+    with pytest.raises(TarantoolError, match="query is too complex to parse: .* reduce its nesting"):
+        instance.sql(deep)
+
+    # A lower limit would reject short queries, this ALTER SYSTEM among them.
+    with pytest.raises(
+        TarantoolError,
+        match=rf"invalid value for '{sql_parse_step_max}': value must be 0 or between \d+ and 9223372036854775807",
+    ):
+        instance.sql(f"ALTER SYSTEM SET {sql_parse_step_max} = 899999")
+
+
 def test_alter_system_pg_params(cluster: Cluster):
     instance = cluster.add_instance()
     pg_portal_max = "pg_portal_max"

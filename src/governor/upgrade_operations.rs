@@ -179,6 +179,8 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             // Resharder internals
             ("sql", "ALTER SYSTEM RESET resharder_bucket_count_max"),
             ("sql", "ALTER SYSTEM RESET resharder_chunk_size_max"),
+            // The cap on the parser steps of an SQL query.
+            ("sql", "ALTER SYSTEM RESET sql_parse_step_max"),
             ("sql", RevokedJwt::SQL_CREATE),
             ("sql", "ALTER INDEX \"535_pkey\" RENAME TO _pico_revoked_jwt_pkey"),
             ("sql", RevokedJwt::SQL_CREATE_INDEX),

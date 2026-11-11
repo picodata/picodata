@@ -29,6 +29,12 @@ rule parsing error
 -- ERROR:
 rule parsing error
 
+-- TEST: test_arbitrary_too_complex
+-- SQL:
+select 1 in (1 in (1 in (1 in (1 in (1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1 +)))));
+-- ERROR:
+query is too complex to parse
+
 -- TEST: test_arbitrary_invalid-3
 -- SQL:
 select "a" + "b" and true from "arithmetic_space";
