@@ -2,7 +2,7 @@ use pest::iterators::Pairs;
 
 use crate::errors::SbroadError;
 use crate::frontend::sql::ast::ParsingPairsMap;
-use crate::frontend::sql::type_system::{self, get_parameter_derived_types, TypeAnalyzer};
+use crate::frontend::sql::type_system::{self, TypeAnalyzer};
 use crate::ir::metadata::Metadata;
 use crate::ir::node::NodeId;
 use crate::ir::types::UnrestrictedType;
@@ -21,7 +21,7 @@ pub(in crate::frontend::sql) fn parse_values_rows<M>(
 where
     M: Metadata,
 {
-    let param_types = get_parameter_derived_types(type_analyzer);
+    let param_types = type_analyzer.get_parameter_types();
     let mut values_rows_ids: Vec<NodeId> = Vec::with_capacity(rows.len());
     for ast_row_id in rows {
         let row_pair = pairs_map.remove_pair(*ast_row_id);
@@ -31,7 +31,7 @@ where
         //  - `VALUES ($1), (1)`: to infer parameter type in the 1st row we need the 2nd row
         let expr_id = parse_expr_no_type_check(
             Pairs::single(row_pair),
-            &param_types,
+            param_types,
             &[],
             worker,
             plan,

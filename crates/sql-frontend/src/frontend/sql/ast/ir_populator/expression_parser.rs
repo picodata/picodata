@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use crate::errors::{Entity, SbroadError};
 use crate::frontend::sql::ast::Rule;
 use crate::frontend::sql::ir::SubtreeCloner;
-use crate::frontend::sql::type_system::{self, get_parameter_derived_types, TypeAnalyzer};
+use crate::frontend::sql::type_system::{self, TypeAnalyzer};
 use crate::ir::columns::RelColumn;
 use crate::ir::expression::{ColumnWithScan, FunctionFeature, Substring, TrimKind};
 use crate::ir::metadata::Metadata;
@@ -31,7 +31,7 @@ use super::{
 
 fn parse_trim<M: Metadata>(
     pair: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -177,7 +177,7 @@ fn cast_type_from_type_pair(type_pair: Pair<Rule>) -> Result<CastType, SbroadErr
 
 fn parse_window_func<M: Metadata>(
     pair: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -456,7 +456,7 @@ fn parse_window_func<M: Metadata>(
 
 fn parse_frame_bound<M: Metadata>(
     bound: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -492,7 +492,7 @@ fn parse_frame_bound<M: Metadata>(
 
 fn parse_substring<M: Metadata>(
     pair: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -696,7 +696,7 @@ fn parse_substring<M: Metadata>(
 
 fn parse_identifier_with_continuation<M: Metadata>(
     primary: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -892,7 +892,7 @@ fn parse_reference<M: Metadata>(
 fn parse_function_invocation<M: Metadata>(
     mut norm_fn_name: SmolStr,
     continuation: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -997,7 +997,7 @@ fn parse_function_invocation<M: Metadata>(
 
 fn parse_case<M: Metadata>(
     primary: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -1088,7 +1088,7 @@ fn parse_case<M: Metadata>(
 /// Parses the expressions of a `Row` or an `ArrayLiteral`.
 fn parse_expr_list<M: Metadata>(
     primary: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -1111,7 +1111,7 @@ fn parse_expr_list<M: Metadata>(
 
 fn parse_exists<M: Metadata>(
     primary: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -1146,7 +1146,7 @@ fn parse_exists<M: Metadata>(
 
 fn parse_cast_op<M: Metadata>(
     primary: Pair<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -1240,7 +1240,7 @@ fn parse_timestamp(primary: Pair<Rule>, plan: &mut Plan) -> Result<ParseExpressi
 #[allow(clippy::too_many_lines)]
 fn parse_expr_pratt<M>(
     expression_pairs: Pairs<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -1578,7 +1578,7 @@ where
 
 pub(in crate::frontend::sql) fn parse_expr_no_type_check<M>(
     expression_pairs: Pairs<Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     referred_relation_ids: &[NodeId],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
@@ -1614,10 +1614,9 @@ pub(in crate::frontend::sql) fn parse_scalar_expr<M>(
 where
     M: Metadata,
 {
-    let param_types = get_parameter_derived_types(type_analyzer);
     let expr_id = parse_expr_no_type_check(
         expression_pairs,
-        &param_types,
+        type_analyzer.get_parameter_types(),
         referred_relation_ids,
         worker,
         plan,

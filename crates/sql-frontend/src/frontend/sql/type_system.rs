@@ -37,17 +37,6 @@ pub type TypeReport = GenericTypeReport<NodeId>;
 // needs the `TYPE_SYSTEM` registry shared with the old pipeline, lives here.
 pub(super) use sql_ast_new_analyzer::AstTypeAnalyzer;
 
-pub fn get_parameter_derived_types(analyzer: &TypeAnalyzer) -> Vec<DerivedType> {
-    analyzer
-        .get_parameter_types()
-        .iter()
-        .map(|t| match t {
-            Some(t) => (*t).into(),
-            None => DerivedType::unknown(),
-        })
-        .collect()
-}
-
 fn order_by_to_type_expr(
     order_by: &[OrderByElement],
     plan: &Plan,
@@ -793,9 +782,9 @@ pub fn analyze_and_coerce_scalar_expr(
 ) -> Result<(), SbroadError> {
     analyze_scalar_expr(type_analyzer, expr_id, desired_type, plan, subquery_map)?;
     let report = type_analyzer.get_report();
-    let params = get_parameter_derived_types(type_analyzer);
+    let params = type_analyzer.get_parameter_types();
     coerce_scalar_expr(report, expr_id, plan)?;
-    annotate_composite_types(report, &params, expr_id, plan)
+    annotate_composite_types(report, params, expr_id, plan)
 }
 
 /// Coerce expression types in accordance with the type report.
@@ -877,7 +866,7 @@ fn coerce_scalar_expr(
 /// Write inferred result types onto composite expressions.
 fn annotate_composite_types(
     report: &TypeReport,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     expr_id: NodeId,
     plan: &mut Plan,
 ) -> Result<(), SbroadError> {
@@ -922,7 +911,10 @@ fn annotate_composite_types(
             }
             MutExpression::Parameter(Parameter {
                 param_type, index, ..
-            }) => *param_type = param_types[*index as usize - 1],
+            }) => {
+                *param_type = param_types[*index as usize - 1]
+                    .map_or(DerivedType::unknown(), DerivedType::from)
+            }
             // Bound above: their return type, not the type their context coerced them to.
             MutExpression::ScalarFunction(_) | MutExpression::Over(_) => {}
             _ => unreachable!("filter restricts node kinds"),
@@ -1008,6 +1000,7 @@ pub fn analyze_values_rows(
     analyze_homogeneous_rows(type_analyzer, "VALUES", &type_rows, desired_types)?;
 
     let report = type_analyzer.get_report();
+    let params = type_analyzer.get_parameter_types();
     let mut new_list = Vec::new();
     for row_id in rows {
         if let Expression::Row(Row { list, .. }) = plan.get_expression_node(*row_id)? {
@@ -1015,10 +1008,9 @@ pub fn analyze_values_rows(
             new_list.clone_from(list);
         }
 
-        let params = get_parameter_derived_types(type_analyzer);
         for child in &new_list {
             coerce_scalar_expr(report, *child, plan)?;
-            annotate_composite_types(report, &params, *child, plan)?;
+            annotate_composite_types(report, params, *child, plan)?;
         }
 
         if let MutExpression::Row(Row { list, .. }) = plan.get_mut_expression_node(*row_id)? {

@@ -10,6 +10,7 @@ use crate::ir::node::{NodeId, Parameter};
 use crate::ir::options::OptionParamValue;
 use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::Plan;
+use sql_type_system::expr::Type;
 
 use super::{parse_scalar_expr, ExpressionWalker};
 
@@ -54,9 +55,12 @@ fn get_param_index(
         .expect("Concrete param expected under Parameter node");
     match param_pair.as_rule() {
         Rule::TntParameter => {
+            // `AstCore::fill` sorts the pairs by position. The pair itself is
+            // compared too, so a pair from another parse is not found.
             let pos = tnt_parameters_positions
-                .iter()
-                .position(|p| p == &param_pair)
+                .binary_search_by_key(&param_pair.as_span().start(), |p| p.as_span().start())
+                .ok()
+                .filter(|&pos| tnt_parameters_positions[pos] == param_pair)
                 .expect("Couldn't find tnt parameter pair in a vec of tnt parameters pairs");
             Ok(pos + 1)
         }
@@ -87,7 +91,7 @@ fn get_param_index(
 
 pub(in crate::frontend::sql) fn parse_param<M: Metadata>(
     pair: Pair<'_, Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     worker: &mut ExpressionWalker<M>,
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
@@ -96,7 +100,7 @@ pub(in crate::frontend::sql) fn parse_param<M: Metadata>(
 
 pub(in crate::frontend::sql) fn parse_param_with_positions(
     pair: Pair<'_, Rule>,
-    param_types: &[DerivedType],
+    param_types: &[Option<Type>],
     tnt_parameters_positions: &[Pair<'_, Rule>],
     plan: &mut Plan,
 ) -> Result<NodeId, SbroadError> {
@@ -109,7 +113,10 @@ pub(in crate::frontend::sql) fn parse_param_with_positions(
         )));
     }
 
-    let ty = param_types.get(index - 1);
-    let ty = ty.cloned().unwrap_or(DerivedType::unknown());
+    let ty = param_types
+        .get(index - 1)
+        .copied()
+        .flatten()
+        .map_or(DerivedType::unknown(), DerivedType::from);
     Ok(plan.add_param(index.try_into().expect("invalid parameter idnex"), ty))
 }

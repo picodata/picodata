@@ -94,10 +94,9 @@ fn parse_update_operand(
 ) -> Result<ParsedUpdateOperand> {
     let node = ast.nodes.get_node(node_id)?;
     if node.rule == Rule::Parameter {
-        let param_types = type_system::get_parameter_derived_types(ctx.type_analyzer);
         let node = parse_param_with_positions(
             ctx.pairs_map.remove_pair(node_id),
-            &param_types,
+            ctx.type_analyzer.get_parameter_types(),
             ctx.tnt_parameters_positions,
             ctx.plan,
         )?;

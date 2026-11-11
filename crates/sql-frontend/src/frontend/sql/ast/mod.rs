@@ -902,7 +902,7 @@ where
         Some(ast_id) => vec![map.get(ast_id)?],
         None => Vec::new(),
     };
-    let param_types = type_system::get_parameter_derived_types(type_analyzer);
+    let param_types = type_analyzer.get_parameter_types();
     let mut with_ordinality = false;
     let mut args = Vec::with_capacity(rest.len());
     for child_id in rest {
@@ -913,7 +913,7 @@ where
                 // with a message about table functions.
                 args.push(parse_expr_no_type_check(
                     Pairs::single(arg_pair),
-                    &param_types,
+                    param_types,
                     &referred_relation_ids,
                     worker,
                     plan,
