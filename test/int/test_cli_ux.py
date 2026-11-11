@@ -1039,6 +1039,7 @@ def test_picodata_version_reports_asan_allocator(cluster: Cluster):
     assert_starts_with(stdout.splitlines()[2], b"allocator asan ")
 
 
+@pytest.mark.skip_asan("ASan takes precedence over the preloaded allocator")
 def test_picodata_version_reports_preloaded_allocator(cluster: Cluster):
     jemalloc = ctypes.util.find_library("jemalloc")
     if jemalloc is None:
