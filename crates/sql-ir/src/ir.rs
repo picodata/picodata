@@ -948,6 +948,8 @@ pub struct SubtreeShape {
     /// `SerializeAsEmptyTable` opcode.
     pub has_customization_opcodes: bool,
     /// Whether the subtree can produce a row even when it reads nothing.
+    /// Always `false` for a DML top: with no bucket its stage has no row to
+    /// write.
     pub emits_row_from_empty_input: bool,
     /// Structural hash, calculated on first use.
     pub hash: OnceCell<SubtreeHash>,

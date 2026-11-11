@@ -269,7 +269,8 @@ pub struct SubtreeDispatchFlags {
     /// Whether the subtree contains per-replicaset customization opcodes.
     pub has_customization_opcodes: bool,
     /// Whether the subtree can produce a row even when it reads nothing —
-    /// `count(*)` over no rows is `0`, not "no row".
+    /// `count(*)` over no rows is `0`, not "no row". Always `false` for a
+    /// DML top: with no bucket its stage has no row to write.
     pub emits_row_from_empty_input: bool,
 }
 
@@ -840,6 +841,16 @@ impl ExecutionPlan {
                 }
                 _ => {}
             }
+        }
+        // UPDATE and DELETE write only the rows this stage reads, and an
+        // empty bucket set reads none. INSERT writes the rows of its source,
+        // but a scalar-aggregate source never shares the INSERT stage: the
+        // planner keeps the source local only when it is distributed by the
+        // target sharding key (`resolve_insert_conflicts`), so `INSERT ...
+        // SELECT count(*)` gets a Segment motion and its own stage. An
+        // aggregate subquery of a local source only fills values of its rows.
+        if ir_plan.get_relation_node(top_id)?.is_dml() {
+            emits_row_from_empty_input = false;
         }
         // The shape stays in the prepared plan, so it must not keep the
         // capacity reserved for the whole plan.

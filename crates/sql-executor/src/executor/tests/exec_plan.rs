@@ -233,6 +233,29 @@ fn subtree_dispatch_flags_find_customization_opcodes() {
     assert!(flags.has_customization_opcodes);
 }
 
+/// A DML stage that reads no bucket has no row to write, even with an
+/// aggregate in it (in `SET`, or a grouped source of a local INSERT): its
+/// flags must not make the router run it on an arbitrary node, which storage
+/// rejects.
+#[test]
+fn dml_dispatch_flags_ignore_aggregates() {
+    let coordinator = RouterRuntimeMock::new();
+    for sql in [
+        "UPDATE t5 SET b = (SELECT count(*) FROM t5 WHERE a = 1) WHERE a = 1 AND a = 2",
+        "INSERT INTO t5 SELECT a, count(*) FROM t5 WHERE a = 1 AND a = 2 GROUP BY a",
+    ] {
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+        let top = query.get_exec_plan().get_ir_plan().get_top().unwrap();
+        let buckets = query.bucket_discovery(top).unwrap();
+        assert_eq!(Buckets::new_empty(), buckets, "{sql}");
+        let flags = query
+            .get_exec_plan()
+            .subtree_dispatch_flags_at(top)
+            .unwrap();
+        assert!(!flags.emits_row_from_empty_input, "{sql}");
+    }
+}
+
 #[test]
 fn exec_plan_subtree_two_stage_groupby_test() {
     let sql = r#"SELECT "T1"."FIRST_NAME" FROM "test_space" as "T1" group by "T1"."FIRST_NAME""#;

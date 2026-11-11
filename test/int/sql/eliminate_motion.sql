@@ -851,6 +851,96 @@ projection (count(*)::int -> col_1)
 ''
 buckets = []
 
+-- TEST: scalar-agg-update-no-buckets
+-- SQL:
+UPDATE t SET b = (SELECT count(*) FROM t WHERE a = 1) WHERE a = 1 AND a = 2;
+
+-- TEST: scalar-agg-update-no-buckets-explain
+-- SQL:
+EXPLAIN UPDATE t SET b = (SELECT count(*) FROM t WHERE a = 1) WHERE a = 1 AND a = 2;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+update t (b = col_0)
+  motion [policy: local, program: ReshardIfNeeded]
+    projection (ROW($0) -> col_0, t.id::int -> col_1)
+      selection ((t.a::int = 1::int and t.a::int = 2::int))
+        scan t
+subquery $0:
+  scan
+    projection (count(*)::int -> col_1)
+      selection (t.a::int = 1::int)
+        scan t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = []
+
+-- TEST: scalar-agg-delete-no-buckets
+-- SQL:
+DELETE FROM t WHERE b = (SELECT count(*) FROM t WHERE a = 1) AND a = 1 AND a = 2;
+
+-- TEST: scalar-agg-update-sharding-key-no-buckets
+-- SQL:
+UPDATE t SET a = (SELECT count(*) FROM t WHERE a = 1) WHERE a = 1 AND a = 2;
+
+-- TEST: scalar-agg-dml-no-buckets-unchanged
+-- SQL:
+SELECT id, a, b FROM t;
+-- UNORDERED:
+1, 2, 3,
+3, 2, 1,
+4, 4, 5,
+6, 1, 7,
+10, 1, 1,
+11, 1, 1
+
+-- TEST: scalar-agg-insert-no-buckets
+-- SQL:
+INSERT INTO t SELECT 100, 1, count(*) FROM t WHERE a = 1 AND a = 2;
+
+-- TEST: scalar-agg-insert-no-buckets-row
+-- SQL:
+SELECT id, a, b FROM t WHERE id = 100;
+-- EXPECTED:
+100, 1, 0
+
+-- TEST: grouped-agg-insert-no-buckets
+-- SQL:
+INSERT INTO t SELECT a + 1000, a, count(*) FROM t WHERE a = 1 AND a = 2 GROUP BY a;
+
+-- TEST: grouped-agg-insert-no-buckets-explain
+-- SQL:
+EXPLAIN INSERT INTO t
+SELECT a + 1000, a, count(*) FROM t WHERE a = 1 AND a = 2 GROUP BY a;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+insert into t on conflict: fail
+  motion [policy: local segment([ref(a)]), program: ReshardIfNeeded]
+    projection (t.a::int + 1000::int -> col_1, t.a::int -> a, count(*)::int -> col_2)
+      group by (t.a::int)
+        selection ((t.a::int = 1::int and t.a::int = 2::int))
+          scan t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]
+
+-- TEST: grouped-agg-insert-no-buckets-nothing
+-- SQL:
+SELECT count(*) FROM t WHERE id > 1000;
+-- EXPECTED:
+0
+
 -- TEST: init-3
 -- SQL:
 DROP TABLE t;
