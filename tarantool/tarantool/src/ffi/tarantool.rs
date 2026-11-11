@@ -820,6 +820,11 @@ extern "C" {
     pub fn box_txn_rollback() -> c_int;
     pub fn box_txn_alloc(size: usize) -> *mut c_void;
     pub fn box_txn_set_flags(flags: u32) -> c_int;
+
+    /// The current transaction's flags, or 0 if there is no current
+    /// transaction.
+    #[cfg(feature = "picodata")]
+    pub fn box_txn_flags() -> u32;
 }
 
 // Indexes, spaces and tuples.

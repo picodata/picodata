@@ -198,3 +198,37 @@ pub fn set_force_async() -> Result<(), TarantoolError> {
     }
     Ok(())
 }
+
+#[cfg(feature = "picodata")]
+const TXN_SYNC_WAL: u32 = 0x2000;
+
+/// Sets TXN_SYNC_WAL flag into the current transaction's flags.
+///
+/// The write ahead log will be flushed to stable storage (`fdatasync`) before
+/// the transaction is reported as committed, so [`commit`] returning implies
+/// that the data reached the device and can not be lost on a machine crash.
+///
+/// With the default `box.cfg.wal_mode = 'write'` a transaction is reported as
+/// committed as soon as `write` on the log returns, which leaves the log tail
+/// vulnerable to a host crash. This asks for durability per transaction,
+/// without paying for `wal_mode = 'fsync'` on every write in the instance.
+/// Redundant under `wal_mode = 'fsync'` because the log is already opened
+/// with `O_SYNC` and ignored under `wal_mode = 'none'`.
+///
+/// Returns an error if there is no current transaction.
+#[cfg(feature = "picodata")]
+pub fn set_sync_wal() -> Result<(), TarantoolError> {
+    if unsafe { ffi::box_txn_set_flags(TXN_SYNC_WAL) } < 0 {
+        return Err(TarantoolError::last());
+    }
+    Ok(())
+}
+
+/// Returns `true` if the current transaction was marked with [`set_sync_wal`].
+///
+/// Returns `false` if there is no current transaction. Meant for assertions at
+/// call sites that require durability.
+#[cfg(feature = "picodata")]
+pub fn is_sync_wal() -> bool {
+    unsafe { ffi::box_txn_flags() & TXN_SYNC_WAL != 0 }
+}

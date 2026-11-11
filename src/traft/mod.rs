@@ -14,6 +14,8 @@ pub use network::ConnectionPool;
 use op::Op;
 use picodata_plugin::util::msgpack_decode_bin;
 use protobuf::Message as _;
+pub use raft_storage::transaction_raft;
+pub use raft_storage::transaction_raft_replayable;
 pub use raft_storage::RaftSpaceAccess;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;

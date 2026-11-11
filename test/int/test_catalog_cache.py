@@ -1,7 +1,11 @@
 import pytest
 
 from conftest import Cluster, Instance, ProcessDead, Retriable, TarantoolError, log_crawler
-from framework.util.build import has_debug_assertions
+from framework.util.build import (
+    has_debug_assertions,
+    picodata_executable_path,
+    skip_unless_debug_tarantool,
+)
 
 NOT_OPERABLE = "cannot be modified now as DDL operation is in progress"
 
@@ -16,11 +20,6 @@ def is_debug_build(instance: Instance) -> bool:
 def skip_unless_debug_build(instance: Instance):
     if not is_debug_build(instance):
         pytest.skip("needs a debug build")
-
-
-def skip_unless_debug_tarantool(instance: Instance):
-    if not instance.eval("return require('tarantool').build.target").endswith("-Debug"):
-        pytest.skip("WAL injections need a build with the debug_tarantool feature")
 
 
 def table_id(instance: Instance, name: str) -> int:
@@ -180,7 +179,7 @@ def test_unparsable_pico_index_row_crashes_on_start(instance: Instance):
 
 
 def test_change_visible_before_wal(instance: Instance):
-    skip_unless_debug_tarantool(instance)
+    skip_unless_debug_tarantool(picodata_executable_path())
 
     instance.sql("CREATE TABLE t (id INT PRIMARY KEY) DISTRIBUTED BY (id)")
     applied = instance.raft_get_index()
@@ -207,7 +206,7 @@ def test_change_visible_before_wal(instance: Instance):
 def test_snapshot_visible_before_wal(cluster: Cluster):
     # i3 is a replica, so DDL doesn't wait for it while it's offline.
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
-    skip_unless_debug_tarantool(i3)
+    skip_unless_debug_tarantool(picodata_executable_path())
     i1.sql("CREATE TABLE a (id INT PRIMARY KEY) DISTRIBUTED GLOBALLY")
     i3.raft_wait_index(i1.call(".proc_get_index"))
     i3.terminate()

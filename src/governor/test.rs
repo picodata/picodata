@@ -227,8 +227,7 @@ fn setup_topology(
         learners,
         ..Default::default()
     };
-    tarantool::transaction::transaction(|| node.raft_storage.persist_conf_state(&conf_state))
-        .unwrap();
+    crate::traft::transaction_raft(|| node.raft_storage.persist_conf_state(&conf_state)).unwrap();
 }
 
 fn setup_governor_loop_state(

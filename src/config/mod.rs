@@ -2873,6 +2873,12 @@ pub struct AlterSystemParameters {
     #[introspection(scope = tier)]
     pub replication_mode: String,
 
+    /// Durability mode of the tarantool write-ahead log, see [`WalMode`].
+    ///
+    /// The raft log does not fully follow this setting: raft state needs
+    /// durability semantics of its own, regardless of configured wal_mode.
+    /// The split is implemented by the raft persist helpers, see
+    /// `traft::transaction_raft` and `traft::transaction_raft_replayable`.
     #[introspection(sbroad_type = SbroadType::String)]
     #[introspection(config_default = WalMode::Write)]
     #[introspection(scope = tier)]
@@ -3830,6 +3836,11 @@ tarantool::define_str_enum! {
         /// instance does not store any data and is not a part of any sort of a communication.
         None = "none",
         /// Fibers wait for their data to be written to the write-ahead log (no fsync(2));
+        ///
+        /// The tail of the log therefore is not guaranteed to be durable and lives in OS or disk
+        /// caches and thus can be lost on a host crash. Some raft state is exempt and is
+        /// always fsynced, see `traft::transaction_raft`; the rest of the raft log follows
+        /// this setting, see `traft::transaction_raft_replayable`.
         #[default]
         Write = "write",
         /// Fibers wait for their data, fsync(2) follows each write(2);

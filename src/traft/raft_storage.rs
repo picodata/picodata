@@ -2,9 +2,12 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
+use ::tarantool::error::TarantoolError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::{Space, SpaceId, SpaceType};
-use ::tarantool::transaction::transaction;
+use ::tarantool::transaction::{
+    set_force_async, set_sync_wal, transaction, transaction_force_async, TransactionError,
+};
 use ::tarantool::tuple::ToTupleBuffer;
 use std::cmp::Ordering;
 use std::convert::TryFrom as _;
@@ -17,6 +20,70 @@ use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
+
+/// Runs `f` in a transaction suitable for modifying `_raft_log` / `_raft_state`.
+///
+/// Such a transaction is:
+///
+/// - **force async**, so it does not enter the synchronous replication limbo
+///   and cannot be rolled back by a leader change.
+///   For details see [`tarantool::transaction::transaction_force_async`]
+/// - **flushed to stable storage** before it is reported as committed. Raft may
+///   not ack a vote, a term or a snapshot to the leader until it survives a
+///   crash. The default `wal_mode = write` does not guarantee durability in
+///   case of a host crash, and losing the vote breaks election safety.
+///
+/// Every write of the term, the vote, a snapshot or the instance identity
+/// must go through this.
+/// Use [`transaction_raft_replayable`] for writes that raft can lose,
+/// including the log entries, which follow `wal_mode`; the current
+/// status of the acks and the plan to close the gap are documented
+/// there.
+pub fn transaction_raft<T, E, F>(f: F) -> Result<T, TransactionError<E>>
+where
+    F: FnOnce() -> Result<T, E>,
+    E: From<TarantoolError>,
+{
+    transaction(|| -> Result<T, E> {
+        set_force_async()?;
+        set_sync_wal()?;
+        f()
+    })
+}
+
+/// Runs `f` in a transaction for the raft state that may be lost on a host
+/// crash: the applied index, the commit index, the conf state and the log
+/// entries.
+///
+/// Such a transaction is **force async** like [`transaction_raft`], but is not
+/// flushed to stable storage. Raft promises none of this state to other
+/// nodes, and what a crash takes away is restored from the durable raft log:
+///
+/// - the WAL is append-only, so a crash loses a tail of it and never a write
+///   in the middle. A write is durable once any later [`transaction_raft`] is.
+/// - the applied index is written in the same transaction as the effects of
+///   the entry, so the two are lost together, and the entry is applied again
+///   on restart.
+/// - the commit index is written before the entries it covers are applied, so
+///   the restored applied index never exceeds the restored commit index, as
+///   raft-rs requires. A lost commit index is learned from the leader again.
+/// - the conf state is written together with the applied index, and the conf
+///   change that produced it is applied again as well.
+/// - the log entries which the node has acked can be lost with the WAL tail.
+///   The paper prescribes the opposite - a follower puts an entry on stable
+///   storage before it responds - and fsyncing the log entries here. The fix
+///   is planned behind several batching related optimizations, because otherwise
+///   global table insert performance degrades by 10x+.
+///
+/// The term, the vote and snapshots are promises to other nodes, and must go
+/// through [`transaction_raft`] instead.
+pub fn transaction_raft_replayable<T, E, F>(f: F) -> Result<T, TransactionError<E>>
+where
+    F: FnOnce() -> Result<T, E>,
+    E: From<TarantoolError>,
+{
+    transaction_force_async(f)
+}
 
 #[derive(Clone, Debug)]
 pub struct RaftSpaceAccess {
@@ -83,7 +150,7 @@ impl RaftSpaceAccess {
             return raft_storage;
         }
 
-        transaction(|| -> Result<(), ()> {
+        transaction_raft(|| -> tarantool::Result<()> {
             let raft_id = 1;
             raft_storage.persist_raft_id(raft_id).unwrap();
             raft_storage
@@ -100,7 +167,7 @@ impl RaftSpaceAccess {
             raft_storage.persist_conf_state(&cs).unwrap();
 
             let hs = raft::HardState::default();
-            raft_storage.persist_hard_state(&hs).unwrap();
+            raft_storage.persist_hard_state(&hs, true).unwrap();
 
             Ok(())
         })
@@ -376,128 +443,192 @@ impl RaftSpaceAccess {
             .collect()
     }
 
+    /// The `_raft_state` space, for modification.
+    ///
+    /// Reads may use the field directly; every write must go through here or
+    /// through [`Self::state_for_replayable_write`], so that the durability
+    /// assertion below cannot be bypassed by accident.
+    fn state_for_write(&self) -> tarantool::Result<&Space> {
+        Self::assert_durable_txn()?;
+
+        Ok(&self.space_raft_state)
+    }
+
+    /// The `_raft_state` space, for modifying the keys that may be lost on a
+    /// host crash, see [`transaction_raft_replayable`].
+    fn state_for_replayable_write(&self) -> &Space {
+        Self::debug_assert_txn();
+        &self.space_raft_state
+    }
+
+    /// The `_raft_log` space, for modification. See [`Self::state_for_write`].
+    fn log_for_write(&self) -> tarantool::Result<&Space> {
+        Self::assert_durable_txn()?;
+
+        Ok(&self.space_raft_log)
+    }
+
+    /// The `_raft_log` space, for modifying the entries that may be lost on a
+    /// host crash, see [`transaction_raft_replayable`].
+    fn log_for_replayable_write(&self) -> &Space {
+        Self::debug_assert_txn();
+        &self.space_raft_log
+    }
+
+    /// Raft may not ack a vote, a term or a snapshot to the leader before
+    /// they have reached stable storage, so those modifications of the raft
+    /// spaces have to run in a transaction opened by [`transaction_raft`].
+    /// The log entries follow `wal_mode` instead, see
+    /// [`Self::persist_entries_replayable`].
+    ///
+    /// The check is not debug-only: the durable writes are what election
+    /// safety rests on, so a misplaced write must fail in release too,
+    /// not silently skip the fsync.
+    fn assert_durable_txn() -> tarantool::Result<()> {
+        if !::tarantool::transaction::is_sync_wal() {
+            return Err(tarantool::error::Error::other(
+                "raft storage must only be modified inside transaction_raft()",
+            ));
+        }
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn debug_assert_txn() {
+        debug_assert!(
+            tarantool::transaction::is_in_transaction(),
+            "raft storage must only be modified inside a transaction",
+        );
+    }
+
     #[inline(always)]
     pub fn persist_raft_id(&self, raft_id: RaftId) -> tarantool::Result<()> {
-        self.space_raft_state.insert(&("raft_id", raft_id))?;
+        self.state_for_write()?.insert(&("raft_id", raft_id))?;
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_instance_name(&self, instance_name: &InstanceName) -> tarantool::Result<()> {
-        self.space_raft_state
+        self.state_for_write()?
             .insert(&("instance_name", instance_name))?;
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_instance_uuid(&self, instance_uuid: &str) -> tarantool::Result<()> {
-        self.space_raft_state
+        self.state_for_write()?
             .insert(&("instance_uuid", instance_uuid))?;
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_tier(&self, tier: &str) -> tarantool::Result<()> {
-        self.space_raft_state.insert(&("tier", tier))?;
+        self.state_for_write()?.insert(&("tier", tier))?;
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_cluster_name(&self, cluster_name: &str) -> tarantool::Result<()> {
-        self.space_raft_state
+        self.state_for_write()?
             .insert(&("cluster_name", cluster_name))?;
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_cluster_uuid(&self, cluster_uuid: &str) -> tarantool::Result<()> {
-        self.space_raft_state
+        self.state_for_write()?
             .insert(&("cluster_uuid", cluster_uuid))?;
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_gen(&self, gen: u64) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("gen", gen))?;
+        self.state_for_write()?.replace(&("gen", gen))?;
         Ok(())
     }
 
     #[inline(always)]
     fn persist_term(&self, term: RaftTerm) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("term", term))?;
-        metrics::record_raft_term(term);
+        self.state_for_write()?.replace(&("term", term))?;
         Ok(())
     }
 
     #[inline(always)]
     fn persist_vote(&self, vote: RaftId) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("vote", vote))?;
+        self.state_for_write()?.replace(&("vote", vote))?;
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_commit(&self, commit: RaftId) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("commit", commit))?;
+        self.state_for_replayable_write()
+            .replace(&("commit", commit))?;
         metrics::record_raft_commit_index(commit);
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_applied(&self, index: RaftId, term: RaftTerm) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("applied", index))?;
-        self.space_raft_state.replace(&("applied_term", term))?;
+        self.state_for_replayable_write()
+            .replace(&("applied", index))?;
+        self.state_for_replayable_write()
+            .replace(&("applied_term", term))?;
         metrics::record_raft_applied_index(index);
         Ok(())
     }
 
     #[inline(always)]
     fn persist_voters(&self, voters: &[RaftId]) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("voters", voters))?;
+        self.state_for_replayable_write()
+            .replace(&("voters", voters))?;
         Ok(())
     }
 
     #[inline(always)]
     fn persist_learners(&self, learners: &[RaftId]) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("learners", learners))?;
+        self.state_for_replayable_write()
+            .replace(&("learners", learners))?;
         Ok(())
     }
 
     #[inline(always)]
     fn persist_voters_outgoing(&self, voters_outgoing: &[RaftId]) -> tarantool::Result<()> {
-        self.space_raft_state
+        self.state_for_replayable_write()
             .replace(&("voters_outgoing", voters_outgoing))?;
         Ok(())
     }
 
     #[inline(always)]
     fn persist_learners_next(&self, learners_next: &[RaftId]) -> tarantool::Result<()> {
-        self.space_raft_state
+        self.state_for_replayable_write()
             .replace(&("learners_next", learners_next))?;
         Ok(())
     }
 
     #[inline(always)]
     fn persist_auto_leave(&self, auto_leave: bool) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("auto_leave", auto_leave))?;
+        self.state_for_replayable_write()
+            .replace(&("auto_leave", auto_leave))?;
         Ok(())
     }
 
     #[inline(always)]
     fn persist_compacted_term(&self, compacted_term: RaftTerm) -> tarantool::Result<()> {
-        self.space_raft_state
+        self.state_for_write()?
             .replace(&("compacted_term", compacted_term))?;
         Ok(())
     }
 
     #[inline(always)]
     pub fn persist_join_state(&self, join_state: String) -> tarantool::Result<()> {
-        self.space_raft_state.replace(&("join_state", join_state))?;
+        self.state_for_write()?
+            .replace(&("join_state", join_state))?;
         Ok(())
     }
 
     #[inline(always)]
     fn persist_compacted_index(&self, compacted_index: RaftTerm) -> tarantool::Result<()> {
-        self.space_raft_state
+        self.state_for_write()?
             .replace(&("compacted_index", compacted_index))?;
         Ok(())
     }
@@ -509,7 +640,7 @@ impl RaftSpaceAccess {
     /// In debug mode panics if invoked out of a transaction.
     ///
     pub fn persist_conf_state(&self, cs: &raft::ConfState) -> tarantool::Result<()> {
-        debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+        debug_assert!(tarantool::transaction::is_in_transaction());
         self.persist_voters(&cs.voters)?;
         self.persist_learners(&cs.learners)?;
         self.persist_voters_outgoing(&cs.voters_outgoing)?;
@@ -518,34 +649,80 @@ impl RaftSpaceAccess {
         Ok(())
     }
 
+    /// Whether the term or the vote in `hs` differs from the stored ones.
+    /// Only their change makes the persist transaction durable, and the
+    /// same method drives that decision in `NodeImpl::advance`, so the
+    /// two cannot drift apart.
+    pub fn term_or_vote_changed(&self, hs: &raft::HardState) -> tarantool::Result<bool> {
+        let changed = |key: &str, value: u64| -> tarantool::Result<bool> {
+            Ok(self.try_get_raft_state::<u64>(key)? != Some(value))
+        };
+        Ok(changed("term", hs.term)? || changed("vote", hs.vote)?)
+    }
+
     /// Persists the `HardState` (term, vote, and commit index).
+    ///
+    /// `term_vote_changed` must be the decision of
+    /// [`Self::term_or_vote_changed`] for this hard state: only their
+    /// change is written, and the same decision picks the transaction
+    /// kind in `NodeImpl::advance`. The check runs once in `advance`
+    /// and is passed down, so the raft hot path does not read the
+    /// stored term and vote twice per ready.
     ///
     /// # Panics
     ///
     /// In debug mode panics if invoked out of a transaction.
-    ///
-    pub fn persist_hard_state(&self, hs: &raft::HardState) -> tarantool::Result<()> {
-        debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
-        self.persist_term(hs.term)?;
-        self.persist_vote(hs.vote)?;
+    pub fn persist_hard_state(
+        &self,
+        hs: &raft::HardState,
+        term_vote_changed: bool,
+    ) -> tarantool::Result<()> {
+        debug_assert!(tarantool::transaction::is_in_transaction());
+        // The term is recorded here, on change; the metric below tracks
+        // it on every hard state regardless.
+        if term_vote_changed {
+            self.persist_term(hs.term)?;
+            self.persist_vote(hs.vote)?;
+        }
         self.persist_commit(hs.commit)?;
+        metrics::record_raft_term(hs.term);
         Ok(())
     }
 
-    /// Persists a slice of entries.
+    /// Persists a slice of entries durably.
+    ///
+    /// Use it for the entries which must be durable regardless of
+    /// `wal_mode`: bootstrap and join. The persist transaction of a raft [`raft::Ready`] picks
+    /// between this function and [`Self::persist_entries_replayable`],
+    /// because the log entries follow `wal_mode`.
     ///
     /// # Panics
     ///
     /// Panics if one `raft::Entry` of provided fails to be converted
     /// into `traft::Entry`.
     pub fn persist_entries(&self, entries: &[raft::Entry]) -> tarantool::Result<()> {
+        self.persist_entries_via(self.log_for_write()?, entries)
+    }
+
+    /// Same as [`Self::persist_entries`], but for a transaction opened by
+    /// [`transaction_raft_replayable`]: for data that may be lost on a host
+    /// crash but can be replayed. Most commonly this is the entry that is durable
+    /// in the log but its effect is not, so it is applied and the applied
+    /// index is written in the same replayable transaction so it is lost together
+    /// with the effect and the entry is applied again on restart. For details see
+    /// `transaction_raft_replayable`.
+    pub fn persist_entries_replayable(&self, entries: &[raft::Entry]) -> tarantool::Result<()> {
+        self.persist_entries_via(self.log_for_replayable_write(), entries)
+    }
+
+    fn persist_entries_via(&self, log: &Space, entries: &[raft::Entry]) -> tarantool::Result<()> {
         let err_with_ctx = |error, entry| format!("{error}: {entry:?}");
         for entry in entries {
             // FIXME: this deserialize -> serialize step is redundant
             let row = traft::Entry::try_from(entry)
                 .map_err(|error| err_with_ctx(error, entry))
                 .unwrap();
-            self.space_raft_log.replace(&row)?;
+            log.replace(&row)?;
         }
         Ok(())
     }
@@ -653,7 +830,7 @@ impl RaftSpaceAccess {
     /// - `up_to > applied + 1`
     ///
     pub fn compact_log(&self, up_to: RaftIndex) -> tarantool::Result<u64> {
-        debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+        debug_assert!(tarantool::transaction::is_in_transaction());
 
         // We cannot drop entries, which weren't applied yet
         #[cfg(debug_assertions)]
@@ -676,16 +853,25 @@ impl RaftSpaceAccess {
         let compacted_term = tuple
             .field::<RaftTerm>(Self::FIELD_ENTRY_TERM)?
             .expect("term is non-nullable");
-        self.space_raft_log.delete(&(compacted_index,))?;
-        self.persist_compacted_index(compacted_index)?;
-        self.persist_compacted_term(compacted_term)?;
+        // The compaction is replayable: a crash which loses it loses it
+        // together with the entries it removed, so the log simply stays
+        // longer and is compacted again. The compacted indexes are
+        // written through the replayable accessor directly - the shared
+        // persist_compacted_* helpers are durable for the sake of the
+        // snapshot path.
+        let log = self.log_for_replayable_write();
+        log.delete(&(compacted_index,))?;
+        self.state_for_replayable_write()
+            .replace(&("compacted_index", compacted_index))?;
+        self.state_for_replayable_write()
+            .replace(&("compacted_term", compacted_term))?;
 
         let mut num_deleted = 1;
         for tuple in iter {
             let index = tuple?
                 .field::<RaftIndex>(Self::FIELD_ENTRY_INDEX)?
                 .expect("index is non-nullable");
-            self.space_raft_log.delete(&(index,))?;
+            log.delete(&(index,))?;
             num_deleted += 1;
         }
 
@@ -924,7 +1110,6 @@ macro_rules! assert_err_starts_with {
 
 mod tests {
     use super::*;
-    use ::tarantool::transaction::transaction;
 
     fn dummy_entry(index: RaftIndex, term: RaftTerm) -> raft::Entry {
         raft::Entry {
@@ -932,6 +1117,93 @@ mod tests {
             index,
             ..Default::default()
         }
+    }
+
+    /// Make sure `TXN_SYNC_WAL` matches tarantool constant
+    #[::tarantool::test]
+    fn test_sync_wal_flag_matches_tarantool() {
+        let lua = ::tarantool::lua_state();
+        let expected: u32 = lua
+            .eval("return box.internal.TXN_SYNC_WAL")
+            .expect("tarantool must publish the flag value");
+
+        transaction_raft(|| -> tarantool::Result<()> {
+            let flags = unsafe { ::tarantool::ffi::tarantool::box_txn_flags() };
+            assert_eq!(
+                flags & expected,
+                expected,
+                "transaction_raft must set TXN_SYNC_WAL (0x{expected:x}), \
+                 got flags 0x{flags:x}",
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// The replayable writes are not flushed to stable storage: the
+    /// transaction is force async, like [`transaction_raft`], but does
+    /// not sync.
+    #[::tarantool::test]
+    fn test_replayable_txn_does_not_sync() {
+        let lua = ::tarantool::lua_state();
+        let sync_wal: u32 = lua
+            .eval("return box.internal.TXN_SYNC_WAL")
+            .expect("tarantool must publish the flag value");
+        let force_async: u32 = lua
+            .eval("return box.internal.TXN_FORCE_ASYNC")
+            .expect("tarantool must publish the flag value");
+
+        transaction_raft_replayable(|| -> tarantool::Result<()> {
+            let flags = unsafe { ::tarantool::ffi::tarantool::box_txn_flags() };
+            assert_eq!(flags & sync_wal, 0, "got flags 0x{flags:x}");
+            assert_eq!(
+                flags & force_async,
+                force_async,
+                "the replayable transaction must be force async, \
+                 got flags 0x{flags:x}"
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// A hard state that only advances the commit index is persisted without
+    /// a sync, see `raft::Ready::must_sync`.
+    #[::tarantool::test]
+    fn test_commit_only_hard_state_needs_no_sync() {
+        let storage = RaftSpaceAccess::new().unwrap();
+        let hs = |term, vote, commit| raft::HardState {
+            term,
+            vote,
+            commit,
+            ..Default::default()
+        };
+        transaction_raft(|| storage.persist_hard_state(&hs(2, 1, 10), true)).unwrap();
+
+        // Would trip the durability assertion if it rewrote the term or vote.
+        transaction_raft_replayable(|| storage.persist_hard_state(&hs(2, 1, 11), false)).unwrap();
+        assert_eq!(storage.term().unwrap(), 2);
+        assert_eq!(storage.commit().unwrap(), 11);
+    }
+
+    /// A change of the term or the vote outside [`transaction_raft`] fails
+    /// errors out instead of silently skipping the sync.
+    #[::tarantool::test]
+    fn test_changed_term_or_vote_requires_durable_txn() {
+        let storage = RaftSpaceAccess::new().unwrap();
+        let hs = raft::HardState {
+            term: 3,
+            vote: 2,
+            commit: 1,
+            ..Default::default()
+        };
+        assert_err_starts_with!(
+            transaction_raft_replayable(|| storage.persist_hard_state(&hs, true)),
+            concat!(
+                "transaction rolled-back: ",
+                "raft storage must only be modified inside transaction_raft()",
+            )
+        );
     }
 
     #[::tarantool::test]
@@ -961,7 +1233,7 @@ mod tests {
         assert_err!(S::term(&storage, 1), "log unavailable");
 
         // Part 2. Whole log was compacted.
-        transaction(|| -> tarantool::Result<()> {
+        transaction_raft(|| -> tarantool::Result<()> {
             storage.persist_compacted_term(9)?;
             storage.persist_compacted_index(99)?;
             Ok(())
@@ -992,7 +1264,7 @@ mod tests {
             dummy_entry(101, 10),
             dummy_entry(102, 10),
         ];
-        storage.persist_entries(&test_entries).unwrap();
+        transaction_raft(|| storage.persist_entries(&test_entries)).unwrap();
 
         let (first, last) = (100, 102);
         assert_eq!(S::first_index(&storage), Ok(first));
@@ -1044,12 +1316,14 @@ mod tests {
         // NOTE: see <https://git.picodata.io/core/picodata/-/issues/2646#note_198362>.
         let _ = std::panic::take_hook();
         let panicking_raft_entry = std::panic::catch_unwind(|| {
-            storage.persist_entries(&[raft::Entry {
-                term: 103,
-                index: 10,
-                context: vec![0x00, 0x00, 0x00, 0x00],
-                ..Default::default()
-            }])
+            transaction_raft(|| {
+                storage.persist_entries(&[raft::Entry {
+                    term: 103,
+                    index: 10,
+                    context: vec![0x00, 0x00, 0x00, 0x00],
+                    ..Default::default()
+                }])
+            })
         });
         let error = panicking_raft_entry.unwrap_err();
         let msg = error.downcast_ref::<String>().unwrap();
@@ -1149,14 +1423,17 @@ mod tests {
         let storage = RaftSpaceAccess::new().unwrap();
 
         let (first, last) = (1, 10);
-        for i in first..=last {
-            storage.persist_entries(&[dummy_entry(i, i)]).unwrap();
-        }
         let applied = 8;
-        storage.persist_applied(applied, 1).unwrap();
+        transaction_raft(|| -> tarantool::Result<()> {
+            for i in first..=last {
+                storage.persist_entries(&[dummy_entry(i, i)])?;
+            }
+            storage.persist_applied(applied, 1)
+        })
+        .unwrap();
         let entries =
             |lo, hi| S::entries(&storage, lo, hi, u64::MAX, GetEntriesContext::empty(false));
-        let compact_log = |up_to| transaction(|| storage.compact_log(up_to));
+        let compact_log = |up_to| transaction_raft(|| storage.compact_log(up_to));
 
         assert_eq!(S::first_index(&storage), Ok(first));
         assert_eq!(S::last_index(&storage), Ok(last));
@@ -1211,7 +1488,7 @@ mod tests {
             commit: 98,
             ..Default::default()
         };
-        transaction(|| storage.persist_hard_state(&hs)).unwrap();
+        transaction_raft(|| storage.persist_hard_state(&hs, true)).unwrap();
         assert_eq!(S::initial_state(&storage).unwrap().hard_state, hs);
     }
 
@@ -1235,7 +1512,7 @@ mod tests {
             ..Default::default()
         };
 
-        transaction(|| storage.persist_conf_state(&cs)).unwrap();
+        transaction_raft(|| storage.persist_conf_state(&cs)).unwrap();
         assert_eq!(S::initial_state(&storage).unwrap().conf_state, cs);
     }
 
@@ -1244,18 +1521,20 @@ mod tests {
         let storage = RaftSpaceAccess::new().unwrap();
         let raft_state = Space::find(RaftSpaceAccess::SPACE_RAFT_STATE).unwrap();
 
-        storage.persist_cluster_name("test_cluster").unwrap();
-        storage.persist_cluster_name("test_cluster_2").unwrap_err();
+        transaction_raft(|| storage.persist_cluster_name("test_cluster")).unwrap();
+        transaction_raft(|| storage.persist_cluster_name("test_cluster_2")).unwrap_err();
         assert_eq!(storage.cluster_name().unwrap(), "test_cluster".to_string());
 
         raft_state.delete(&("id",)).unwrap();
         assert_eq!(storage.raft_id().unwrap(), None);
 
-        storage.persist_raft_id(16).unwrap();
+        transaction_raft(|| storage.persist_raft_id(16)).unwrap();
         assert_err!(
-            storage.persist_raft_id(32),
+            transaction_raft(|| storage.persist_raft_id(32)),
             concat!(
-                "box error:",
+                // transaction_raft wraps the inner error
+                "transaction rolled-back:",
+                " box error:",
                 " TupleFound:",
                 " Duplicate key exists in unique index \"pk\" in space \"_raft_state\"",
                 " with old tuple - [\"raft_id\", 16]",

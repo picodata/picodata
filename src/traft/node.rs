@@ -63,6 +63,8 @@ use crate::traft::error::Error;
 use crate::traft::network::WorkerOptions;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Acl, Ddl, Dml, Op};
+use crate::traft::transaction_raft;
+use crate::traft::transaction_raft_replayable;
 use crate::traft::Flags;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
@@ -97,7 +99,6 @@ use ::tarantool::space::FieldType as SFT;
 use ::tarantool::space::SpaceId;
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
-use ::tarantool::transaction::transaction_force_async;
 use ::tarantool::tuple::RawByteBuf;
 use ::tarantool::tuple::{Decode, Tuple};
 use picodata_plugin::util::DisplayErrorLocation;
@@ -731,9 +732,7 @@ impl NodeImpl {
         let term: RaftTerm = raft_storage.term()?;
         let lc = {
             let gen = raft_storage.gen().unwrap() + 1;
-            // Make asynchronous intentionally because do not want to block
-            // raft state modification due to synchronous transactions.
-            transaction_force_async(|| -> tarantool::Result<()> { raft_storage.persist_gen(gen) })?;
+            transaction_raft(|| -> tarantool::Result<()> { raft_storage.persist_gen(gen) })?;
             LogicalClock::new(raft_id, gen)
         };
 
@@ -1136,7 +1135,18 @@ impl NodeImpl {
             // we need to modify tarantool system spaces. It is okay to do it
             // with asynchronous transaction because when instance is catching up
             // it replays entries which already applied on other instances.
-            transaction_force_async(|| -> tarantool::Result<()> {
+            //
+            // Not flushed to stable storage: the applied index is written
+            // together with the effects of the entry, so a host crash loses
+            // both and the entry is applied again from the raft log.
+            //
+            // This assumes all effects of the entry are lost with the WAL
+            // tail. Vinyl may break that assumption, because no cross engine
+            // transactions are supported, but currently vinyl cant be used
+            // for global tables so no DML can face that. Though DDL on sharded
+            // vinyl tables may be affected, see
+            // https://git.picodata.io/core/picodata/-/work_items/3351
+            transaction_raft_replayable(|| -> tarantool::Result<()> {
                 self.main_loop_status("handling committed entries");
 
                 match entry.entry_type {
@@ -3244,13 +3254,32 @@ impl NodeImpl {
             let mut received_snapshot = false;
             let mut changed_parameters = Vec::new();
 
-            // Make asynchronous intentionally because do not want to block
-            // raft state modification due to synchronous transactions.
-            if let Err(e) = transaction_force_async(|| -> Result<(), Error> {
+            // Strictly speaking we should fsync all entries up to node's `last_index`
+            // before the node acks them, so leader record of replica position (`matched`)
+            // does not become "in the future" when replica loses tail of the log
+            // due to a failure. That is planned behind batching and group commit
+            // optimizations, but currently we only sync essential state that is not
+            // on the hot path (vote, term), because otherwise sync affects all global table inserts
+            // and makes them more than 10x slower.
+            let hard_state_changed = match &hard_state {
+                // Only a change of the term or the vote requires a durable
+                // transaction; the same check drives `persist_hard_state`.
+                Some(hs) => self.raft_storage.term_or_vote_changed(hs)?,
+                None => false,
+            };
+            let needs_sync = hard_state_changed || snapshot.is_some();
+            // Not `Ready::must_sync`: raft-rs sets that flag for any
+            // ready which carries new entries - the library expects the
+            // entries to be synced before they are acked, per the
+            // paper. That is the sync-everything approach we defer behind
+            // batching and group commit. The flag agrees with this decision
+            // on everything else: the term or vote change and the snapshot.
+            let persist = || -> Result<(), Error> {
                 // Raft HardState changed, and we need to persist it.
                 if let Some(hard_state) = hard_state {
                     tlog!(Debug, "hard state: {hard_state:?}");
-                    self.raft_storage.persist_hard_state(hard_state)?;
+                    self.raft_storage
+                        .persist_hard_state(hard_state, hard_state_changed)?;
                     new_term = Some(hard_state.term);
                     new_commit = Some(hard_state.commit);
                 }
@@ -3260,7 +3289,15 @@ impl NodeImpl {
                     #[rustfmt::skip]
                     debug_assert!(raw_snapshot.is_empty(), "can't have both the snapshot & log entries");
 
-                    self.raft_storage.persist_entries(entries_to_persist)?;
+                    if needs_sync {
+                        // The same transaction persists the term, the vote
+                        // or the snapshot, so the entries get the durable
+                        // transaction too.
+                        self.raft_storage.persist_entries(entries_to_persist)?;
+                    } else {
+                        self.raft_storage
+                            .persist_entries_replayable(entries_to_persist)?;
+                    }
                 }
 
                 if let Some(snapshot) = &snapshot {
@@ -3316,7 +3353,13 @@ impl NodeImpl {
                 }
 
                 Ok(())
-            }) {
+            };
+            let res = if needs_sync {
+                transaction_raft(persist)
+            } else {
+                transaction_raft_replayable(persist)
+            };
+            if let Err(e) = res {
                 tlog!(Warning, "dropping raft ready: {ready:#?}");
                 panic!("transaction failed: {e}");
             }
@@ -3430,9 +3473,9 @@ impl NodeImpl {
         if let Some(commit) = light_rd.commit_index() {
             debug_assert!(self.raw_node.raft.state == RaftStateRole::Leader);
 
-            // Make asynchronous intentionally because do not want to block
-            // raft state modification due to synchronous transactions.
-            if let Err(e) = transaction_force_async(|| -> Result<(), Error> {
+            // The commit index may be lost on a host crash and learned again,
+            // see `transaction_raft_replayable`.
+            if let Err(e) = transaction_raft_replayable(|| -> Result<(), Error> {
                 self.main_loop_status("persisting commit index");
 
                 self.raft_storage.persist_commit(commit)?;
@@ -3531,9 +3574,11 @@ impl NodeImpl {
 
         let compact_until = self.get_adjusted_compaction_index(old_last_index)?;
 
-        // Make asynchronous intentionally because do not want to block
-        // raft state modification due to synchronous transactions.
-        transaction_force_async(|| -> traft::Result<()> {
+        // The compaction is replayable: a crash losing it brings the
+        // entries it removed back, so the log simply stays longer and
+        // is compacted again - no reason to stall the raft loop on an
+        // fsync of the whole WAL tail.
+        transaction_raft_replayable(|| -> traft::Result<()> {
             self.main_loop_status("log auto compaction");
             self.raft_storage.compact_log(compact_until)?;
 

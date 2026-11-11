@@ -302,3 +302,16 @@ def assert_error_injection_supported(executable: str, error: str) -> None:
         f"'{ERROR_INJECTION_FEATURE}' cargo feature. Rebuild picodata with it enabled, "
         f"e.g. `make build-dev` or `cargo build --features {ERROR_INJECTION_FEATURE}`."
     )
+
+
+def skip_unless_debug_tarantool(executable: str | Path) -> None:
+    """
+    Skip the test unless `executable` bundles a Debug build of the tarantool
+    core: the WAL injections (e.g. ERRINJ_WAL_DELAY, ERRINJ_SYNC_WAL_DELAY)
+    live under NDEBUG and are inert in other builds, so a test relying on
+    them would be vacuous. Works on the binary alone, so a test can check it
+    before deploying anything.
+    """
+    tarantool = _long_version_info(executable).get("tarantool") or {}
+    if tarantool.get("build_profile") != "Debug":
+        pytest.skip("WAL injections need a build with the debug_tarantool feature")
