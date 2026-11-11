@@ -1,4 +1,4 @@
-use crate::ir::node::{ddl::Ddl, CreateTable};
+use crate::ir::node::{ddl::Ddl, CreateProc, CreateTable};
 use pretty_assertions::assert_eq;
 use smol_str::{SmolStr, ToSmolStr};
 
@@ -12,6 +12,19 @@ use tarantool::index::SortOrder;
 
 fn column_def_type(data_type: DataType) -> ColumnDefType {
     data_type.try_into().unwrap()
+}
+
+#[test]
+fn procedure_body_is_kept_verbatim() {
+    // The spaces next to `$$` are not part of the body, the ones inside are.
+    let input =
+        "create procedure p(int) language sql as $$  insert into t(a, b)\n  values(1, 2)  $$";
+    let plan = transform_into_plan(input, &[], &RouterConfigurationMock::new()).unwrap();
+    let top_node = plan.get_ddl_node(plan.get_top().unwrap()).unwrap();
+    let Ddl::CreateProc(CreateProc { body, .. }) = top_node else {
+        panic!("expected create procedure")
+    };
+    assert_eq!(body, "insert into t(a, b)\n  values(1, 2)");
 }
 
 #[test]

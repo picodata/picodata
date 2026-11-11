@@ -176,34 +176,19 @@ impl AstCore {
                 None => break,
             };
 
-            // Save node to AST.
-            let arena_node_id = self.nodes.push_node(ParseNode::new(
-                stack_node.pair.as_rule(),
-                Some(SmolStr::from(stack_node.pair.as_str())),
-            ));
-
-            // Save procedure body (a special case).
-            if stack_node.pair.as_rule() == Rule::ProcBody {
-                let span = stack_node.pair.as_span();
-                let body = &query[span.start()..span.end()];
-                self.nodes
-                    .update_value(arena_node_id, Some(SmolStr::from(body)))?;
-            }
+            // Save node to AST. Only leaves and the procedure body keep
+            // their text: copying it for every inner node costs depth × length.
+            let rule = stack_node.pair.as_rule();
+            let children = stack_node.pair.clone().into_inner();
+            let value = (children.is_empty() || rule == Rule::ProcBody)
+                .then(|| SmolStr::from(stack_node.pair.as_str()));
+            let arena_node_id = self.nodes.push_node(ParseNode::new(rule, value));
 
             // Update parent's node children list.
             self.nodes
                 .add_child(stack_node.arena_parent_id, arena_node_id)?;
 
-            // Clean parent values (only leafs and special nodes like
-            // procedure body should contain data)
-            if let Some(parent) = stack_node.arena_parent_id {
-                let parent_node = self.nodes.get_node(parent)?;
-                if parent_node.rule != Rule::ProcBody {
-                    self.nodes.update_value(parent, None)?;
-                }
-            }
-
-            match stack_node.pair.as_rule() {
+            match rule {
                 Rule::Expr
                 | Rule::Row
                 | Rule::Literal
@@ -237,7 +222,7 @@ impl AstCore {
                 return Err(SbroadError::UseOfBothParamsStyles());
             }
 
-            for parse_child in stack_node.pair.into_inner() {
+            for parse_child in children {
                 stack.push(StackParseNode::new(parse_child, Some(arena_node_id)));
             }
         }
@@ -4425,5 +4410,29 @@ pub(in crate::frontend::sql) fn parse_insert_source<M: Metadata>(
             Ok(values_id)
         }
         rule => panic!("unexpected insert source {rule:?}"),
+    }
+}
+
+#[cfg(test)]
+mod fill_tests {
+    use crate::frontend::sql::ast::{AbstractSyntaxTree, Rule};
+    use crate::frontend::sql::Ast;
+
+    /// A copy of the text in an inner node costs depth × length, and no plan
+    /// would show it, so check the tree itself.
+    #[test]
+    fn only_leaves_and_procedure_bodies_keep_text() {
+        for query in [
+            "select cast(cast('a long text' as text) as text) from t where a = ?",
+            "values (1, 'a'), ((2), 'b')",
+            "update t set b = (select a from t) where a in (1, 2)",
+            "create procedure p(int) language sql as $$insert into t(a, b) values(1, 2)$$",
+        ] {
+            let ast = AbstractSyntaxTree::new(query).unwrap();
+            for node in &ast.core.nodes.arena {
+                let keeps_text = node.children.is_empty() || node.rule == Rule::ProcBody;
+                assert_eq!(node.value.is_some(), keeps_text, "{query}: {node:?}");
+            }
+        }
     }
 }

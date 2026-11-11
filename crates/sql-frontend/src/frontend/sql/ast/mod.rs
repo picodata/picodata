@@ -2563,21 +2563,6 @@ impl ParseNodes {
         }
         Ok(())
     }
-
-    /// Update node's value (string from pairs)
-    ///
-    /// # Errors
-    /// - Target node is present in the arena.
-    pub fn update_value(&mut self, node: usize, value: Option<SmolStr>) -> Result<(), SbroadError> {
-        let node = self.arena.get_mut(node).ok_or_else(|| {
-            SbroadError::NotFound(
-                Entity::Node,
-                format_smolstr!("(mutable) from arena with index {node}"),
-            )
-        })?;
-        node.value = value;
-        Ok(())
-    }
 }
 
 /// A wrapper over the pair to keep its parent as well.
