@@ -108,7 +108,7 @@ asan-test-py:
     - tools/ensure_checkout.sh
     - |
       ci-log-section start "asan-test-py" ASan Python Tests
-      make asan-test-py PYTEST_FLAGS="--junitxml=junit_pytest.xml"
+      make asan-test-py PYTEST_FLAGS="--junitxml=junit_pytest.xml -n$KUBERNETES_CPU_REQUEST"
       ci-log-section end "asan-test-py"
   artifacts:
     when: always
