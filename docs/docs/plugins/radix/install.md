@@ -30,7 +30,7 @@ Picodata на нескольких узлах, в том числе, с подд
 ```yaml
 plugins:
   radix:                                                          # плагин
-    path: '../files/radix_1.2.0-centos_el8.tar.gz'                # путь до пакета с Radix
+    path: '../files/radix_1.3.0-centos_el8.tar.gz'                # путь до пакета с Radix
     config: '../files/radix-config.yml'                           # путь до файла с настройками Radix
     services:
       radix:
@@ -129,7 +129,7 @@ plugins:
 
         plugins:
           radix:                                                        # плагин
-            path: '../plugins/radix_1.2.0-1-ubuntu_noble.tar.gz'        # путь до пакета с Radix
+            path: '../plugins/radix_1.3.0-1-ubuntu_noble.tar.gz'        # путь до пакета с Radix
             config: '../plugins/radix-config.yml'                       # путь до файла с настройками Radix
             services:
               radix:
@@ -200,9 +200,9 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 
 Доступны два образа:
 
-- `<registry>/radix:1.2.0` — полноценный образ, готовый для
+- `<registry>/radix:1.3.0` — полноценный образ, готовый для
   [использования в Kubernetes](#radix_deploy_k8s). Не имеет преднастроек.
-- `<registry>/radix:1.2.0-standalone` — образ с одиночным инстансом
+- `<registry>/radix:1.3.0-standalone` — образ с одиночным инстансом
   Picodata и предустановленным плагином Radix для быстрого ознакомления.
   Не предназначен для использования в производственной среде.
 
@@ -212,8 +212,8 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 Запуск одиночного образа:
 
 ```shell
-docker pull <registry>/radix:1.2.0-standalone
-docker run --rm -p 7379:7379 -p 4327:4327 -p 5327:5327 <registry>/radix:1.2.0-standalone
+docker pull <registry>/radix:1.3.0-standalone
+docker run --rm -p 7379:7379 -p 4327:4327 -p 5327:5327 <registry>/radix:1.3.0-standalone
 ```
 
 После старта плагин готов к работе:
@@ -288,7 +288,7 @@ metadata:
 spec:
   image:
     repository: <registry>
-    tag: "radix:1.2.0"
+    tag: "radix:1.3.0"
     pullPolicy: IfNotPresent
   clusterName: radix
   adminPassword:
@@ -299,7 +299,7 @@ spec:
     shareDir: /usr/share/picodata
     plugins:
       - name: radix
-        version: "1.2.0"
+        version: "1.3.0"
         users:
           - name: default
             passwordSecretRef: radix-default-user
@@ -355,12 +355,12 @@ spec:
 
 Особенности параметров конфигурации:
 
-- `spec.image.repository` и `spec.image.tag` склеиваются через `/` в полное имя образа: `<registry>/radix:1.2.0`.
+- `spec.image.repository` и `spec.image.tag` склеиваются через `/` в полное имя образа: `<registry>/radix:1.3.0`.
 - `spec.clusterName` — имя кластера Picodata: значение попадает в параметр [`cluster.name`](../../reference/config.md#cluster_name) конфигурации Picodata. Имена подов и сервисов строятся из `metadata.name`.
 - `spec.adminPassword` — ссылка на секрет с паролем администратора, созданным на предыдущем шаге.
 - `spec.cluster.defaultBucketCount` — количество бакетов в тирах (параметр [default_bucket_count](../../reference/config.md#cluster_default_bucket_count)).
 - `spec.cluster.shareDir` — директория, в которой образ хранит файлы плагинов.
-- `spec.cluster.plugins[]` — плагин `radix` версии 1.2.0 и его [контекст миграций из 17 параметров](#plugin_enable_details).
+- `spec.cluster.plugins[]` — плагин `radix` версии 1.3.0 и его [контекст миграций из 17 параметров](#plugin_enable_details).
 - `spec.cluster.plugins[].users[]` — пользователь по умолчанию `default` с пустым паролем из секрета `radix-default-user` и ролями `radix_reader` и `radix_writer`. Оператор [создаёт пользователя](#radix_k8s_auth) и выдаёт роли после миграций плагина.
 - `spec.systemParameters` — параметры, которые оператор применяет через `ALTER SYSTEM SET` при каждой синхронизации. Здесь они ослабляют парольную политику: без этого пустой пароль пользователя `default` не пройдёт валидацию.
 - `spec.tiers[]` — один тир `default` с одним репликасетом и фактором репликации 3, то есть 3 инстанса: 1 мастер и 2 реплики. Поды получают имена `default-radix-1-0`, `default-radix-1-1` и `default-radix-1-2` (шаблон `<тир>-<metadata.name>-1-<N>`).
@@ -393,7 +393,7 @@ kubectl get picoclusterdb radix -n picodata -o jsonpath='{.status.tiers[*].plugi
 Ожидаемый статус плагина:
 
 ```json
-[{"enabled":true,"name":"radix","version":"1.2.0"}]
+[{"enabled":true,"name":"radix","version":"1.3.0"}]
 ```
 
 Готовность подов не означает готовности плагина. Поды принимают
@@ -451,7 +451,7 @@ picodata -w` и по журналам оператора. Если фаза `Rea
 
 ### Особенности авторизации {: #radix_k8s_auth }
 
-В Radix 1.2.0 `authorization_mode.state` по умолчанию равен `enabled`, а `authorization_mode.default_user_name` — `default`. Без этого пользователя листенер запускается, но каждый клиент получает ошибку `NOAUTH Authentication required`.
+В radix 1.3.0 `authorization_mode.state` по умолчанию равен `enabled`, а `authorization_mode.default_user_name` — `default`. Без этого пользователя листенер запускается, но каждый клиент получает ошибку `NOAUTH Authentication required`.
 
 Пользователя создаёт оператор по блоку `users` ресурса
 `radix-cluster.yaml`, отдельных действий не требуется. Для неявной
@@ -629,7 +629,7 @@ Radix поддерживает 16 баз данных, каждую из кот�
 в административной консоли Picodata:
 
 ```sql
-CREATE PLUGIN radix 1.2.0;
+CREATE PLUGIN radix 1.3.0;
 ```
 
 Выполните указанные ниже шаги для того, чтобы включить плагин.
@@ -645,59 +645,59 @@ CREATE PLUGIN radix 1.2.0;
 **Пример для одного тира (default)**
 
 ```sql
-ALTER PLUGIN radix 1.2.0 ADD SERVICE radix TO TIER default;
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_0='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_1='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_2='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_3='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_4='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_5='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_6='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_7='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_8='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_9='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_10='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_11='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_12='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_13='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_14='default';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_15='default';
+ALTER PLUGIN radix 1.3.0 ADD SERVICE radix TO TIER default;
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_0='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_1='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_2='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_3='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_4='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_5='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_6='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_7='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_8='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_9='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_10='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_11='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_12='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_13='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_14='default';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_15='default';
 ```
 
 **Пример для двух тиров (hot/cold)**
 
 
 ```sql
-ALTER PLUGIN radix 1.2.0 ADD SERVICE radix TO TIER hot;
-ALTER PLUGIN radix 1.2.0 ADD SERVICE radix TO TIER cold;
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_0='hot';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_1='hot';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_2='hot';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_3='hot';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_4='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_5='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_6='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_7='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_8='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_9='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_10='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_11='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_12='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_13='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_14='cold';
-ALTER PLUGIN radix 1.2.0 SET migration_context.tier_for_db_15='cold';
+ALTER PLUGIN radix 1.3.0 ADD SERVICE radix TO TIER hot;
+ALTER PLUGIN radix 1.3.0 ADD SERVICE radix TO TIER cold;
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_0='hot';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_1='hot';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_2='hot';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_3='hot';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_4='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_5='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_6='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_7='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_8='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_9='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_10='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_11='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_12='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_13='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_14='cold';
+ALTER PLUGIN radix 1.3.0 SET migration_context.tier_for_db_15='cold';
 ```
 
 Параметр `unlogged` может принимать только два значения: `''` (пустая строка) для включённого WAL (режим Radix до версии 1.0.0):
 
 ```sql
-ALTER PLUGIN radix 1.2.0 SET migration_context.unlogged='' OPTION(TIMEOUT=1200);
+ALTER PLUGIN radix 1.3.0 SET migration_context.unlogged='' OPTION(TIMEOUT=1200);
 ```
 
 или `UNLOGGED` для отключённого:
 
 ```sql
-ALTER PLUGIN radix 1.2.0 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOUT=1200);
+ALTER PLUGIN radix 1.3.0 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOUT=1200);
 ```
 
 !!! warning "Внимание!"
@@ -714,7 +714,7 @@ ALTER PLUGIN radix 1.2.0 SET migration_context.unlogged='UNLOGGED' OPTION(TIMEOU
 Для выполнения миграции выполните команду:
 
 ```sql
-ALTER PLUGIN radix MIGRATE TO 1.2.0 OPTION(TIMEOUT=300);
+ALTER PLUGIN radix MIGRATE TO 1.3.0 OPTION(TIMEOUT=300);
 ```
 
 <!--
@@ -756,7 +756,7 @@ GRANT radix_writer TO default;
 После этого включите плагин:
 
 ```sql
-ALTER PLUGIN radix 1.2.0 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.3.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:

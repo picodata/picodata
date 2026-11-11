@@ -26,6 +26,9 @@ radix:
   cluster_mode: true
   sentinel_enabled: false
   max_defer_actions_per_iteration: 100
+  vectorset: # блок настроек векторных множеств
+    initial_capacity: 1024
+    search_threads: 4
   authorization_mode: # авторизация
     state: enabled
     default_user_name: default
@@ -39,6 +42,11 @@ radix:
   latency_monitor_threshold_ms: 0 # порог мониторинга задержек (мс), 0 = выключено
   slowlog_log_slower_than_us: 10000 # порог slowlog (мкс), -1 = выключено
   slowlog_max_len: 128 # макс. записей в slowlog
+  slowlog_entry_max_argc: 32 # макс. аргументов команды в записи slowlog
+  slowlog_entry_max_string_len: 128 # макс. длина аргумента в записи slowlog (байт)
+  notify_keyspace_events: "" # keyspace-уведомления, "" = выключено
+  scan_cursor_max: 100000 # макс. курсоров SCAN на ноде, при переполнении вытесняется давно не использованный
+  scan_cursor_ttl_sec: 3600 # время жизни курсора SCAN после последнего использования (с), не меньше 1
   debug: # отладка
     pico_commands_enabled: true
 ```
@@ -52,7 +60,7 @@ radix:
 Пример команды, применяющей файл конфигурации:
 
 ```shell
-picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.2.0 radix/plugin_config.yaml
+picodata plugin configure --peer andy@127.0.0.1:3001 --service-password-file radix/secret.txt radix 1.3.0 radix/plugin_config.yaml
 ```
 
 ## Авторизация и управление доступом {: #auth_and_access_control}
@@ -313,7 +321,7 @@ GRANT radix_writer TO pubsub OPTION(TIMEOUT=1200);
 Включите в Radix авторизацию, указав путь к файлу с правами и имя пользователя по умолчанию:
 
 ```sql
-ALTER PLUGIN radix 1.2.0 SET radix.authorization_mode='{ "state": "enabled", "aclfile": "/tmp/users.acl", "default_user_name": "default" }';
+ALTER PLUGIN radix 1.3.0 SET radix.authorization_mode='{ "state": "enabled", "aclfile": "/tmp/users.acl", "default_user_name": "default" }';
 ```
 
 **Включение плагина**
@@ -321,7 +329,7 @@ ALTER PLUGIN radix 1.2.0 SET radix.authorization_mode='{ "state": "enabled", "ac
 Включите плагин Radix в Picodata:
 
 ```sql
-ALTER PLUGIN radix 1.2.0 ENABLE;
+ALTER PLUGIN radix 1.3.0 ENABLE;
 ```
 
 При первом запуске заданному по умолчанию пользователю выдается ACL на
@@ -510,7 +518,7 @@ OK
 #### Изменение конфигурации Radix через SQL-запросы в Picodata {: #setup_radix_with_sql }
 
 ```sql
-ALTER PLUGIN radix 1.2.0 SET radix.authorization_mode='{"state": "enabled", "default_user_name": "custom_user"}';
+ALTER PLUGIN radix 1.3.0 SET radix.authorization_mode='{"state": "enabled", "default_user_name": "custom_user"}';
 ```
 
 #### Использование LDAP {: #ldapuser }
@@ -519,7 +527,7 @@ ALTER PLUGIN radix 1.2.0 SET radix.authorization_mode='{"state": "enabled", "def
 CREATE USER custom_user USING ldap;
 GRANT radix_reader TO custom_user;
 GRANT radix_writer TO custom_user;
-ALTER PLUGIN radix 1.2.0 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "custom_user" }';
+ALTER PLUGIN radix 1.3.0 SET radix.authorization_mode = '{ "state": "enabled", "default_user_name": "custom_user" }';
 ```
 
 #### Использование Argus для синхронизации пользователей {: #argus }

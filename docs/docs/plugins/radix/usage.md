@@ -23,8 +23,8 @@ redis-cli -p 7301
 и лишь затем включить новую версию. Пример:
 
 ```sql
-ALTER PLUGIN radix 1.0.6 DISABLE OPTION(TIMEOUT=30);
-ALTER PLUGIN radix 1.1.2 ENABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.2.0 DISABLE OPTION(TIMEOUT=30);
+ALTER PLUGIN radix 1.3.0 ENABLE OPTION(TIMEOUT=30);
 ```
 
 ### Миграция с помощью radix-cli {: #migrate_with_radix-cli }

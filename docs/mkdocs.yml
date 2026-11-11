@@ -220,6 +220,7 @@ nav:
           - plugins/radix/install.md
           - plugins/radix/certified.md
           - plugins/radix/usage.md
+          - plugins/radix/vector_sets.md
           - plugins/radix/configuration.md
           - plugins/radix/radix_settings.md
           - plugins/radix/supported_commands.md

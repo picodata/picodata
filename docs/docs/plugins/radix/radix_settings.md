@@ -89,8 +89,8 @@ redis_git_sha1:78e076758e31fb7ddc2d62b09ae14435868b8f9f
 ... # остальные поля и секции
 
 # Radix
-radix_version:1.1.2
-picodata_version:26.1.6
+radix_version:1.3.0
+picodata_version:26.2.1
 picodata_cluster_name:radix-docker-standalone
 picodata_cluster_uuid:9f0005c4-b3f1-42b4-abf0-772299e563be
 picodata_instance_name:default_1_1
@@ -181,6 +181,17 @@ cold:
   и их права будут одинаковы на всем кластере).
 
 [instance-dir]: ../../reference/config.md#instance_instance_dir
+
+## vectorset
+
+Управляет поведением плагина при поиске и создании [векторных
+множеств](vector_sets.md#plugin_configure). Доступные поля и их значения:
+
+- **search_threads** — число потоков в пуле поиска `VSIM`. Допустимы
+  только значения не меньше `1`. Если параметр не задан или равен
+  `null`, пула нет: поиск выполняется в потоке транзакции, а остальные
+  команды ждут его завершения, как в Redis на главном потоке
+- **initial_capacity** — начальная ёмкость графа каждого векторного множества
 
 ## eviction
 
@@ -284,7 +295,7 @@ RESET`](supported_commands.md#latency_reset).
 Команда `LATENCY HISTOGRAM` строит гистограмму задержек по статистике каждой команды и работает независимо от этого порога.
 
 ```sql
-ALTER PLUGIN radix 1.1.2 SET radix.latency_monitor_threshold_ms = '1';
+ALTER PLUGIN radix 1.3.0 SET radix.latency_monitor_threshold_ms = '1';
 ```
 
 ## slowlog_log_slower_than_us
@@ -300,7 +311,7 @@ ALTER PLUGIN radix 1.1.2 SET radix.latency_monitor_threshold_ms = '1';
 По умолчанию — `10000` (10 миллисекунд).
 
 ```sql
-ALTER PLUGIN radix 1.1.2 SET radix.slowlog_log_slower_than_us = '0';
+ALTER PLUGIN radix 1.3.0 SET radix.slowlog_log_slower_than_us = '0';
 ```
 
 ## slowlog_max_len
@@ -310,7 +321,76 @@ ALTER PLUGIN radix 1.1.2 SET radix.slowlog_log_slower_than_us = '0';
 По умолчанию — `128`.
 
 ```sql
-ALTER PLUGIN radix 1.1.2 SET radix.slowlog_max_len = '256';
+ALTER PLUGIN radix 1.3.0 SET radix.slowlog_max_len = '256';
+```
+
+## slowlog_entry_max_argc
+
+Максимальное количество аргументов команды, сохраняемых в записи slowlog. При
+превышении сохраняются первые аргументы, а последний слот занимает строка вида
+`... (N more arguments)`, где N — число аргументов, не попавших в запись.
+Поведение и умолчание как у
+[`slowlog-entry-max-argc`](https://redis.io/docs/latest/develop/reference/config-params/)
+в Redis.
+
+По умолчанию — `32`.
+
+- Значения меньше `2` приводятся к `2`.
+
+```sql
+ALTER PLUGIN radix 1.3.0 SET radix.slowlog_entry_max_argc = '64';
+```
+
+## slowlog_entry_max_string_len
+
+Максимальная длина одного аргумента в записи slowlog, в байтах. Более длинные
+аргументы обрезаются, к концу добавляется суффикс вида `... (N more bytes)`.
+Аналог `slowlog-entry-max-string-len` в Redis.
+
+По умолчанию — `128`.
+
+- Значения меньше `1` приводятся к `1`.
+
+```sql
+ALTER PLUGIN radix 1.3.0 SET radix.slowlog_entry_max_string_len = '512';
+```
+
+## notify_keyspace_events
+
+Включает keyspace-уведомления — аналог директивы
+[`notify-keyspace-events`](https://redis.io/docs/latest/develop/pubsub/keyspace-notifications/)
+в Redis. Значение — строка из символов:
+
+| Символ | Что включает                                                                          |
+| ------ | ------------------------------------------------------------------------------------- |
+| `K`    | канал `__keyspace@<db>__:<ключ>`, в сообщении — имя события                           |
+| `E`    | канал `__keyevent@<db>__:<событие>`, в сообщении — ключ                               |
+| `g`    | общие события: `del`, `expire`, `persist`                                             |
+| `$`    | события строковых команд                                                              |
+| `l`    | события команд над списками                                                           |
+| `s`    | события команд над множествами                                                        |
+| `h`    | события команд над хешами                                                             |
+| `z`    | события команд над сортированными множествами                                         |
+| `x`    | `expired` — ключ удалён по истечении срока жизни                                      |
+| `e`    | `evicted` — ключ вытеснен                                                             |
+| `m`    | `keymiss` — чтение отсутствующего ключа командами `GET`, `STRLEN`, `GETRANGE`, `MGET` |
+| `n`    | `new` — создан новый ключ                                                             |
+| `o`    | `overwritten` — значение ключа перезаписано                                           |
+| `c`    | `type_changed` — у ключа сменился тип                                                 |
+| `t`    | события команд над стримами: `xadd`, `xtrim`, `xdel`, `xsetid`, `xgroup-*`            |
+| `d`    | события модулей, принимается для совместимости                                        |
+| `A`    | псевдоним `g$lshzxetd`, классы `m`, `n`, `o` и `c` в него не входят                   |
+
+Без `K` или `E` уведомления не отправляются. Строка с неизвестным символом
+отклоняется при применении конфигурации. Подписка на каналы уведомлений —
+обычные `SUBSCRIBE` и `PSUBSCRIBE`. Как и для `PUBLISH`, подписка действует в
+пределах базы: события базы `N` получают только клиенты, подписавшиеся после
+`SELECT N`, зато со всех узлов кластера.
+
+По умолчанию — `""` (выключено).
+
+```sql
+ALTER PLUGIN radix 1.3.0 SET radix.notify_keyspace_events = 'KEA';
 ```
 
 ## debug
