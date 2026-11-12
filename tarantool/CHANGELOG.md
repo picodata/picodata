@@ -86,6 +86,11 @@
 
 ### Fixed (picodata)
 
+- `space::Space::len` now uses `space_len()`, the same call as Lua
+  `space:len()`. For vinyl spaces it returns an estimate of live tuples
+  instead of the raw number of statements in the LSM tree, which overcounted
+  overwritten keys and tombstones. `index::Index::len` is unchanged. For a
+  space without a primary key `Space::len` now returns 0 instead of an error.
 - Dropping a `cbus::sync::tokio::Sender` no longer deadlocks the tokio runtime
   when another task of the same runtime is suspended in `Sender::send`. With
   tokio 1.54.0 and later this happened regularly with several producers.

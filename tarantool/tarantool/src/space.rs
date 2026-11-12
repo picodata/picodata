@@ -983,6 +983,40 @@ impl Space {
     ///
     /// Compared with [space.count()](#method.count), this method works faster because [space.len()](#method.len)
     /// does not scan the entire space to count the tuples.
+    ///
+    /// The result depends on the engine:
+    /// - memtx: the exact number of tuples;
+    /// - vinyl: an estimate of the number of live tuples. It becomes exact
+    ///   after a major compaction.
+    ///
+    /// For vinyl this differs from [`Index::len`] on the primary key, which
+    /// returns the number of all statements in the LSM tree, including
+    /// overwritten versions and tombstones.
+    ///
+    /// Returns 0 for a space without a primary key.
+    #[cfg(feature = "picodata")]
+    #[inline(always)]
+    pub fn len(&self) -> Result<usize, Error> {
+        // SAFETY: always safe
+        let space = unsafe { ffi::space_by_id(self.id) };
+        if space.is_null() {
+            return Err(crate::error::BoxError::new(
+                TarantoolErrorCode::NoSuchSpace,
+                format!("Space {} does not exist", self.id),
+            )
+            .into());
+        }
+        // SAFETY: safe because `space` is returned from `space_by_id`
+        // and the fiber didn't yield while holding that pointer
+        let len = unsafe { ffi::space_len(space) };
+        Ok(len.max(0) as usize)
+    }
+
+    /// Return the number of tuples in the space.
+    ///
+    /// Compared with [space.count()](#method.count), this method works faster because [space.len()](#method.len)
+    /// does not scan the entire space to count the tuples.
+    #[cfg(not(feature = "picodata"))]
     #[inline(always)]
     pub fn len(&self) -> Result<usize, Error> {
         self.primary_key().len()

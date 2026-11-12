@@ -234,6 +234,48 @@ pub fn len() {
     assert_eq!(space.len().unwrap(), 20_usize);
 }
 
+/// `Space::len` on vinyl must report live tuples (via `space_len`), while
+/// `Index::len` on the primary key keeps reporting raw LSM statements.
+#[cfg(feature = "picodata")]
+pub fn len_vinyl() {
+    const N: u32 = 10;
+
+    let opts = SpaceCreateOptions {
+        engine: SpaceEngineType::Vinyl,
+        ..Default::default()
+    };
+    let space = Space::create("test_len_vinyl", &opts).unwrap();
+
+    // Space without a primary key.
+    assert_eq!(space.len().unwrap(), 0);
+
+    space.create_index("pk", &IndexOptions::default()).unwrap();
+    assert_eq!(space.len().unwrap(), 0);
+
+    for i in 0..N {
+        space.insert(&(i, "first")).unwrap();
+    }
+    // Overwrite every key: each replace is a separate statement in the LSM.
+    for i in 0..N {
+        space.replace(&(i, "second")).unwrap();
+    }
+    assert_eq!(space.len().unwrap(), N as usize);
+    assert!(space.primary_key().len().unwrap() > N as usize);
+
+    for i in 0..3 {
+        space.delete(&(i,)).unwrap();
+    }
+    assert_eq!(space.len().unwrap(), (N - 3) as usize);
+
+    let id = space.id();
+    space.drop().unwrap();
+    let err = space.len().unwrap_err().to_string();
+    assert!(
+        err.contains(&format!("Space {id} does not exist")),
+        "unexpected error: {err}"
+    );
+}
+
 pub fn random() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.primary_key();

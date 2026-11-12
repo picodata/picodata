@@ -539,6 +539,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             {
                 tests.append(&mut tests![
                     tuple::key_def_sort_order,
+                    r#box::len_vinyl,
                     proc::return_port,
                     proc::dump_port_to_lua,
                     sql::prepared_source_query,

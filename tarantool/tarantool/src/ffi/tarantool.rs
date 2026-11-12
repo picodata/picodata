@@ -887,6 +887,20 @@ extern "C" {
 
     /// Returns number of bytes used in memory by tuples in the space.
     pub(crate) fn space_bsize(space: *mut space) -> usize;
+
+    /// Returns the number of tuples in the space.
+    ///
+    /// The result depends on the engine:
+    /// - memtx: the exact number of tuples in the primary index;
+    /// - vinyl: an estimate of live keys.
+    ///
+    /// For vinyl this differs from [`box_index_len`] on the primary index,
+    /// which returns the number of all statements across the LSM tree
+    /// levels, including overwritten versions and tombstones.
+    ///
+    /// Returns 0 for a space without a primary index.
+    #[cfg(feature = "picodata")]
+    pub(crate) fn space_len(space: *mut space) -> isize;
 }
 
 #[repr(C)]
