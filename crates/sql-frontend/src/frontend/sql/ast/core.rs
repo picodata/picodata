@@ -3199,6 +3199,7 @@ pub(in crate::frontend::sql) fn parse_domain_type(
             let node_id = node.first_child();
             let node = ast.nodes.get_node(node_id)?;
             match node.rule {
+                Rule::TypeAny => DomainType::Any,
                 Rule::TypeUnsigned => DomainType::Unsigned,
                 _ => {
                     panic!("Met unexpected rule under DomainType: {:?}.", node.rule);
@@ -3243,7 +3244,7 @@ pub(in crate::frontend::sql) fn parse_column_def_type(
     } else {
         parse_domain_type(data_type_node, ast)?
     };
-    data_type.try_into()
+    Ok(data_type.into())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -3587,6 +3588,14 @@ pub(in crate::frontend::sql) fn parse_create_table(
                     Entity::Column,
                     Some(format_smolstr!(
                         "ARRAY columns are not indexable: column {pk_key} cannot be part of a primary key"
+                    )),
+                ));
+            }
+            if matches!(column.data_type.as_domain_type(), DomainType::Any) {
+                return Err(SbroadError::Invalid(
+                    Entity::Column,
+                    Some(format_smolstr!(
+                        "ANY columns are not indexable: column {pk_key} cannot be part of a primary key"
                     )),
                 ));
             }

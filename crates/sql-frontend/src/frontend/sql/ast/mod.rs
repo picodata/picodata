@@ -1469,10 +1469,13 @@ where
     M: Metadata,
 {
     let col_type = col.r#type.get().expect("column type must be known");
-    let derived_type = match col_type {
-        // Desired type cannot be any, see comment to `Type::Any` in the type system.
-        UnrestrictedType::Any => DerivedType::unknown(),
-        t => DerivedType::new(t),
+    // A column of type `any` imposes no restriction on the expression:
+    // the analysis runs with no desired type, and `can_assign` below takes
+    // every value (`any` cannot be a desired type, see `Type::Any`).
+    let derived_type = if col_type.contains_any() {
+        DerivedType::unknown()
+    } else {
+        DerivedType::new(col_type)
     };
     let expr_pair = pairs_map.remove_pair(expr_ast_id);
     let expr_plan_node_id = parse_scalar_expr(
@@ -2737,6 +2740,7 @@ impl TryFrom<Rule> for NestedType {
 
     fn try_from(ast_type: Rule) -> Result<Self, Self::Error> {
         match ast_type {
+            Rule::TypeAny => Ok(NestedType::Any),
             Rule::TypeBool => Ok(NestedType::Boolean),
             Rule::TypeDatetime => Ok(NestedType::Datetime),
             Rule::TypeDecimal => Ok(NestedType::Numeric),

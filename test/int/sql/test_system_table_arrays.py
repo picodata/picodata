@@ -14,8 +14,6 @@ _DEFAULT_TIER = "default"
 _INDEX_WHERE = "table_id = (SELECT id FROM _pico_table WHERE name = 't1')"
 _SERVICE_WHERE = f"plugin_name = '{_PLUGIN}' AND name = 'testservice_1'"
 
-_ARRAY_WRITE_ERROR = r"unexpected expression of type array\(any\), explicit cast to the typed array is required"
-
 
 def _setup(cluster: Cluster) -> Instance:
     (i1,) = cluster.deploy(instance_count=1)
@@ -217,31 +215,42 @@ def test_any_element_operator_restrictions(cluster: Cluster):
     assert greeting == "testservice_1!"
 
 
-def test_write_errors(cluster: Cluster):
+def test_write_untyped_array(cluster: Cluster):
     i1 = _setup(cluster)
 
-    columns = "name, enabled, services, version, description, migration_list"
-    inserts = [
-        f"INSERT INTO _pico_plugin ({columns}) VALUES ('p', false, ARRAY['x'], '0.1.0', 'd', ARRAY[])",
-        f"INSERT INTO _pico_plugin ({columns}) VALUES ('p', false, ARRAY['x']::text[], '0.1.0', 'd', ARRAY[]::text[])",
+    # A column of type `any[]` takes a value of every type: INSERT and
+    # UPDATE assign to it outside the type system (`can_assign`), so an
+    # untyped array literal needs no explicit cast. Before, every array
+    # write into such a column failed with `unexpected expression of
+    # type array(any)`, see the release note of any-type-in-migrations.
+    columns = "name, enabled, services, version, description, migration_list, webui"
+    assert (
+        i1.sql(
+            f"INSERT INTO _pico_plugin ({columns}) VALUES ('p', false, ARRAY['x'], '0.1.0', 'd', ARRAY[], ARRAY[])",
+            sudo=True,
+        )["row_count"]
+        == 1
+    )
+    assert i1.sql("SELECT services, migration_list, webui FROM _pico_plugin WHERE name = 'p'", sudo=True) == [
+        [["x"], [], []]
     ]
-    for query in inserts:
-        with pytest.raises(TarantoolError, match=_ARRAY_WRITE_ERROR):
-            i1.sql(query)
+    assert i1.sql("DELETE FROM _pico_plugin WHERE name = 'p'", sudo=True)["row_count"] == 1
 
-    updates = [
-        "UPDATE _pico_table SET format = ARRAY[] WHERE name = 't1'",
-        "UPDATE _pico_table SET format = ARRAY[]::int[] WHERE name = 't1'",
-        f"UPDATE _pico_index SET parts = ARRAY[]::text[] WHERE {_INDEX_WHERE}",
-        "UPDATE _pico_user SET auth = ARRAY['x', 'y']::text[] WHERE name = 'postgres'",
-        "UPDATE _pico_routine SET params = ARRAY[]::text[] WHERE name = 'proc'",
-        f"UPDATE _pico_plugin SET services = ARRAY['x']::text[] WHERE name = '{_PLUGIN}'",
-        f"UPDATE _pico_service SET tiers = ARRAY['x']::text[] WHERE {_SERVICE_WHERE}",
-        "UPDATE _pico_instance SET current_state = ARRAY['Online', 1]::text[] WHERE raft_id = 1",
-    ]
-    for query in updates:
-        with pytest.raises(TarantoolError, match=_ARRAY_WRITE_ERROR):
-            i1.sql(query)
+    # An UPDATE writes the same way, with the cast or without it.
+    assert (
+        i1.sql(
+            f"UPDATE _pico_plugin SET services = ARRAY['{_PLUGIN_SERVICES[0]}'] WHERE name = '{_PLUGIN}'",
+            sudo=True,
+        )["row_count"]
+        == 1
+    )
+    assert (
+        i1.sql(
+            f"UPDATE _pico_plugin SET services = ARRAY['{_PLUGIN_SERVICES[0]}']::text[] WHERE name = '{_PLUGIN}'",
+            sudo=True,
+        )["row_count"]
+        == 1
+    )
 
 
 def test_scalar_element_into_user_column(cluster: Cluster):
@@ -280,3 +289,24 @@ def test_service_tiers_lifecycle(cluster: Cluster):
     i1.sql(f"ALTER PLUGIN {_PLUGIN} {_PLUGIN_VERSION} ADD SERVICE testservice_1 TO TIER {_DEFAULT_TIER}")
     [[tiers_after]] = i1.sql(f"SELECT tiers FROM _pico_service WHERE {_SERVICE_WHERE}")
     assert tiers_after == [_DEFAULT_TIER]
+
+
+def test_write_untyped_array_needs_admin(cluster: Cluster):
+    # `array(any)` columns of the catalog take an array of any content, so
+    # only a superuser may write them: table privileges are not sufficient.
+    i1 = _setup(cluster)
+    i1.sql("CREATE USER alice WITH PASSWORD 'T0psecret' USING chap-sha1", sudo=True)
+    i1.sql("GRANT WRITE TABLE TO alice", sudo=True)
+    i1.sql("GRANT READ TABLE TO alice", sudo=True)
+
+    for table, query in [
+        ("_pico_table", "UPDATE _pico_table SET format = ARRAY[] WHERE name = 't1'"),
+        ("_pico_plugin", f"UPDATE _pico_plugin SET services = ARRAY['x'] WHERE name = '{_PLUGIN}'"),
+        ("_pico_instance", "UPDATE _pico_instance SET current_state = ARRAY['Online'] WHERE raft_id = 1"),
+    ]:
+        with pytest.raises(TarantoolError, match=f"Write access to table '{table}' is denied for all users"):
+            i1.sql(query, user="alice", password="T0psecret")
+
+    # The tables that DDL owns refuse direct DML from a superuser also.
+    with pytest.raises(TarantoolError, match="table _pico_table cannot be modified by DML Raft Operation directly"):
+        i1.sql("UPDATE _pico_table SET format = ARRAY[] WHERE name = 't1'", sudo=True)

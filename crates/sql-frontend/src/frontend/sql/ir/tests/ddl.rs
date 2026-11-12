@@ -11,7 +11,7 @@ use sql_executor::executor::engine::mock::RouterConfigurationMock;
 use tarantool::index::SortOrder;
 
 fn column_def_type(data_type: DataType) -> ColumnDefType {
-    data_type.try_into().unwrap()
+    data_type.into()
 }
 
 #[test]
@@ -410,5 +410,63 @@ fn infer_alias_number_zero_parameters() {
         };
 
         assert_eq!(format, &vec![def_a]);
+    }
+}
+
+#[test]
+fn any_column_type() {
+    // ANY and ANY[] parse into the format of the table; picodata checks
+    // that only a migration uses them.
+    for (input, expected) in [
+        (
+            "create table t (id unsigned primary key, b any)",
+            DataType::Any,
+        ),
+        (
+            "create table t (id unsigned primary key, b any[])",
+            DataType::Array(NestedType::Any),
+        ),
+        (
+            "create table t (id unsigned primary key, b any array)",
+            DataType::Array(NestedType::Any),
+        ),
+    ] {
+        let plan = transform_into_plan(input, &[], &RouterConfigurationMock::new()).unwrap();
+        let top_node = plan.get_ddl_node(plan.get_top().unwrap()).unwrap();
+        let Ddl::CreateTable(CreateTable { format, .. }) = top_node else {
+            panic!("expected create table")
+        };
+        assert_eq!(
+            format,
+            &vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: column_def_type(DataType::Unsigned),
+                    is_nullable: false,
+                },
+                ColumnDef {
+                    name: "b".into(),
+                    data_type: column_def_type(expected),
+                    is_nullable: true,
+                },
+            ],
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn any_primary_key_is_rejected() {
+    // The statement must not reach DDL, which would fail with a raw
+    // tarantool message about the unsupported field type.
+    for input in [
+        "create table t (id any primary key, b int) distributed globally",
+        "create table t (a int, b any, primary key (b)) distributed globally",
+    ] {
+        let err = transform_into_plan(input, &[], &RouterConfigurationMock::new()).unwrap_err();
+        assert!(
+            err.to_string().contains("ANY columns are not indexable"),
+            "{input}: {err}"
+        );
     }
 }

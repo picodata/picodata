@@ -25,7 +25,7 @@ pub enum NestedType {
     Uuid,
     /// Element type for `json[]`.
     Map,
-    /// Forbidden for user tables.
+    /// The element type of `ANY[]`, allowed in migration DDL only.
     Any,
 }
 
@@ -123,12 +123,14 @@ pub enum DomainType {
     String,
     Uuid,
     Unsigned,
-    Any, // Not yet supported in grammar
+    /// `ANY` and `ANY[]`, allowed in migration DDL only: the type accepts
+    /// every value, so a column of it has no type safety.
+    Any,
 }
 
 /// Types allowed for user-defined table columns.
 #[derive(Serialize, Deserialize, PartialEq, Hash, Debug, Eq, Clone, Copy)]
-#[serde(try_from = "DomainType", into = "DomainType")]
+#[serde(from = "DomainType", into = "DomainType")]
 pub struct ColumnDefType(DomainType);
 
 impl ColumnDefType {
@@ -143,22 +145,11 @@ impl ColumnDefType {
     }
 }
 
-impl TryFrom<DomainType> for ColumnDefType {
-    type Error = SbroadError;
-
-    fn try_from(data_type: DomainType) -> Result<Self, Self::Error> {
-        if matches!(
-            data_type,
-            DomainType::Array(NestedType::Any) | DomainType::Any
-        ) {
-            return Err(SbroadError::Unsupported(
-                Entity::Type,
-                Some(format_smolstr!(
-                    "{data_type} is not allowed as a user column type"
-                )),
-            ));
-        }
-        Ok(Self(data_type))
+// Only a system migration may use `ANY` and `ANY[]`: the check is in
+// picodata (`check_column_types`), for the frontend knows no migration.
+impl From<DomainType> for ColumnDefType {
+    fn from(data_type: DomainType) -> Self {
+        Self(data_type)
     }
 }
 
@@ -342,8 +333,8 @@ impl TryFrom<&UnrestrictedType> for CastType {
 ///    - Note: `Unsigned` is handled via `Integer` in this enum
 ///
 /// 2. **Service types** - used internally by sbroad and picodata
-///    - Examples: `ANY`
-///    - Not exposed to end users
+///    - Examples: `ANY`, which reaches the columns of system tables and
+///      migrations, but neither a cast nor a parameter of a user
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum UnrestrictedType {
     // User-facing types
@@ -575,6 +566,17 @@ impl From<&UnrestrictedType> for SpaceFieldType {
 }
 
 impl UnrestrictedType {
+    /// Whether the type is `any` or contains it, as `array(any)` does:
+    /// such a type cannot be a desired type, see `Type::Any` in the type
+    /// system.
+    #[must_use]
+    pub fn contains_any(&self) -> bool {
+        matches!(
+            self,
+            UnrestrictedType::Any | UnrestrictedType::Array(NestedType::Any)
+        )
+    }
+
     /// The SQL name of the type when it is one static string; `None` for a
     /// typed array, whose name is composed from the element type.
     #[must_use]
@@ -836,18 +838,26 @@ mod tests {
     use super::{ColumnDefType, DomainType, NestedType};
 
     #[test]
-    fn column_def_type_rejects_internal_types() {
-        assert!(ColumnDefType::try_from(DomainType::Any).is_err());
-        assert!(ColumnDefType::try_from(DomainType::Array(NestedType::Any)).is_err());
+    fn column_def_type_accepts_any() {
+        // Migration DDL checks the types itself (`check_column_types` in
+        // picodata).
+        assert_eq!(
+            ColumnDefType::from(DomainType::Any).as_domain_type(),
+            &DomainType::Any
+        );
+        assert_eq!(
+            ColumnDefType::from(DomainType::Array(NestedType::Any)).as_domain_type(),
+            &DomainType::Array(NestedType::Any)
+        );
 
         let encoded = rmp_serde::to_vec(&DomainType::Any).unwrap();
-        assert!(rmp_serde::from_slice::<ColumnDefType>(&encoded).is_err());
+        assert!(rmp_serde::from_slice::<ColumnDefType>(&encoded).is_ok());
     }
 
     #[test]
     fn column_def_type_accepts_user_types() {
         let data_type = DomainType::Array(NestedType::Integer);
-        let column_type = ColumnDefType::try_from(data_type).unwrap();
+        let column_type = ColumnDefType::from(data_type);
 
         assert_eq!(column_type.as_domain_type(), &data_type);
     }

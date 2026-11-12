@@ -85,7 +85,9 @@ pub use type_system::{Function, TypeReport, TypeSystem};
 mod tests {
     use crate::{
         error::{Error, ErrorKind},
-        expr::{Expr as GenericExpr, ExprKind as GenericExprKind, NestedType, Type},
+        expr::{
+            ComparisonOperator, Expr as GenericExpr, ExprKind as GenericExprKind, NestedType, Type,
+        },
         type_system::{Function, FunctionKind, TypeAnalyzer as GenericTypeAnalyzer, TypeSystem},
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -974,6 +976,59 @@ mod tests {
         let mut analyzer = TypeAnalyzer::new(&type_system);
         analyzer.analyze(&e, Some(arr(NestedType::Text))).unwrap();
         assert_eq!(analyzer.get_report().get_type(&e.id), arr(NestedType::Text));
+    }
+
+    #[test]
+    fn any_supports_no_operations() {
+        // THE CONTRACT on `Type::Any` (see the comment to the variant): a
+        // value of type `any` (and `array(any)`) only passes around. No
+        // operation consumes it, in either direction: the user must cast
+        // the value to its actual type first.
+        let type_system = default_type_system();
+
+        // `any = any` is as invalid as `any = 5`: the comparison unifies
+        // the operands, and `any` cannot be a desired type.
+        for right in [reference(Any), lit(Integer)] {
+            let e = expr(ExprKind::Comparison(
+                ComparisonOperator::Eq,
+                reference(Any).into(),
+                right.into(),
+            ));
+            let mut analyzer = TypeAnalyzer::new(&type_system);
+            let err = analyzer.analyze(&e, None).unwrap_err();
+            assert_eq!(err.kind(), &ErrorKind::UnexpectedExpressionOfTypeAny);
+        }
+
+        // The same for `array(any)`, as the `format` column of `_pico_table`.
+        let e = expr(ExprKind::Comparison(
+            ComparisonOperator::Eq,
+            reference(arr(NestedType::Any)).into(),
+            reference(arr(NestedType::Any)).into(),
+        ));
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let err = analyzer.analyze(&e, None).unwrap_err();
+        assert_eq!(err.kind(), &ErrorKind::UnexpectedExpressionOfTypeArrayAny);
+
+        // No operator resolves over `any`: no overload takes it.
+        let e = binary("+", reference(Any), lit(Integer));
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        let err = analyzer.analyze(&e, None).unwrap_err();
+        assert!(matches!(
+            err.kind(),
+            ErrorKind::CouldNotResolveOverload { .. }
+        ));
+
+        // A value of type `any` only passes around: a bare reference is
+        // fine, and a cast names the actual type.
+        let e = reference(Any);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&e.id), Any);
+
+        let e = cast(reference(Any), Integer);
+        let mut analyzer = TypeAnalyzer::new(&type_system);
+        analyzer.analyze(&e, None).unwrap();
+        assert_eq!(analyzer.get_report().get_type(&e.id), Integer);
     }
 
     #[test]

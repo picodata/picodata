@@ -87,7 +87,7 @@ use sql::ir::node::{
 use sql::ir::node::{AlterSystemLocal, VinylOptions};
 use sql::ir::node::{NodeId, TruncateTable};
 use sql::ir::operator::ConflictStrategy;
-use sql::ir::types::{NestedType, UnrestrictedType};
+use sql::ir::types::{DomainType, NestedType, UnrestrictedType};
 use sql::ir::value::Value;
 use sql::ir::Plan as IrPlan;
 use sql::ExecutingQueryExt;
@@ -1710,6 +1710,34 @@ mod tests {
     }
 }
 
+fn check_column_types<'a>(
+    columns: impl Iterator<Item = &'a sql::ir::ddl::ColumnDef>,
+    governor_op_id: Option<u64>,
+) -> Result<(), Error> {
+    let allowed = governor_op_id.is_some()
+        // Otherwise we wouldn't be able to test it.
+        || crate::error_injection::is_enabled("ALLOW_USER_ANY_DDL");
+
+    for column in columns {
+        let name = &column.name;
+        match column.data_type.as_domain_type() {
+            DomainType::Any | DomainType::Array(NestedType::Any) if !allowed => {
+                return Err(Error::other(format!(
+                    "column {name}: the type ANY is available only to system migrations"
+                )));
+            }
+            DomainType::Any if !column.is_nullable => {
+                return Err(Error::other(format!(
+                    "column {name}: a column of type ANY cannot be NOT NULL"
+                )));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
 fn ddl_ir_node_to_op_or_result(
     ddl: &DdlOwned,
     current_user: UserId,
@@ -1740,6 +1768,7 @@ fn ddl_ir_node_to_op_or_result(
             vinyl_options,
             ..
         }) => {
+            check_column_types(format.iter(), governor_op_id)?;
             let format = format
                 .iter()
                 .map(|f| Field {
@@ -2118,6 +2147,7 @@ fn ddl_ir_node_to_op_or_result(
                                 ref column,
                                 if_not_exists,
                             } => {
+                                check_column_types(std::iter::once(column), governor_op_id)?;
                                 // do not add this column with the same name
                                 if column_name_set
                                     .insert(column.name.clone(), new_table_format.len())

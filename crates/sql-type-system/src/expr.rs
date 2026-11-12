@@ -91,6 +91,14 @@ pub enum Type {
     // the ambiguity. For instance, `any_col` is fine as no resolution is performed, but
     // `any_col + 1` requires cast of the column, because there is not enough context.
     //
+    // THE CONTRACT: `any` (and `Array(Any)`) is a storage type. A value of
+    // it only passes around: it is selected, assigned to a column that
+    // takes `any` (decided outside this crate by `can_assign`, never by a
+    // coercion) and tested for NULL. No operation consumes it: no function,
+    // operator, comparison or coercion (`TypeSystem::new` and `can_coerce`
+    // know nothing of it). The user must cast it to the actual type first,
+    // so `any = any` is as invalid as `any = 5`.
+    //
     // Internally, this restriction is implemented by prohibiting any to be a desired type.
     // The intuition behind it is that we don't want any to spread in expression, potentially
     // leading to parameters or coercions of type any. The only way type can be spread is via the

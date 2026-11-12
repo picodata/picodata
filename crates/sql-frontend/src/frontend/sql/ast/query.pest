@@ -597,11 +597,12 @@ Expr = ${ ExprAtomValue ~ ((ExprInfixOpo ~ ExprAtomValue) | (W ~ In ~ W ~ (Row |
                             ArraySizedBound = { "[" ~ WO ~ Unsigned ~ WO ~ "]" }
 
                 // Additional special types availiable only for DDL statements (CREATE TABLE, ALTER TABLE)
-                DomainType = { TypeUnsigned }
+                DomainType = { TypeUnsigned | TypeAny }
 
                 Type = { TypeBool | TypeDatetime | TypeDecimal | TypeDouble | TypeInt | TypeJSON
                                    | TypeString | TypeText | TypeVarchar | TypeUuid }
 
+                    TypeAny = { ^"any" }
                     TypeBool = { (^"boolean" | ^"bool") }
                     TypeDatetime = { ^"datetime" }
                     TypeDecimal = { ((^"decimal" | ^"number" | ^"numeric") ~ ("(" ~ WO ~ Unsigned ~ WO ~ ("," ~ WO ~ Integer ~ WO)? ~ ")")?) }

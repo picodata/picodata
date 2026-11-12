@@ -937,6 +937,7 @@ fn analyze_scalar_expr(
     subquery_map: &AHashMap<NodeId, NodeId>,
 ) -> Result<(), SbroadError> {
     let desired_type = desired_type.get().map(Type::from);
+    debug_assert!(!matches!(desired_type, Some(Type::Any)));
     let type_expr = to_type_expr(expr_id, plan, subquery_map)?;
     type_analyzer.analyze(&type_expr, desired_type)?;
     Ok(())
@@ -973,7 +974,13 @@ fn analyze_homogeneous_rows(
     }
 
     for (idx, column) in columns.iter().enumerate() {
-        let desired_type = desired_types.get(idx).cloned().map(Into::into);
+        let desired_type = desired_types
+            .get(idx)
+            // A column of type `any` imposes no restriction on the
+            // expression, and `any` cannot be a desired type.
+            .filter(|ty| !ty.contains_any())
+            .copied()
+            .map(Type::from);
         type_analyzer.analyze_homogeneous_exprs(ctx, column, desired_type)?;
     }
 
