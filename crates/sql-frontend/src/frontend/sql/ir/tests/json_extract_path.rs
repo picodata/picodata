@@ -60,7 +60,7 @@ fn json_extract_path_requires_index_argument() {
     let metadata = &RouterConfigurationMock::new();
     let err = transform_into_plan(input, &[], metadata).unwrap_err();
     assert_eq!(
-        "invalid query: json_extract_path expects at least two arguments",
+        "could not resolve function overload for json_extract_path(json)",
         err.to_string()
     );
 }

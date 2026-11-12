@@ -351,9 +351,174 @@ null
 
 -- TEST: json-extract-path-array-index
 -- SQL:
-SELECT JSON_EXTRACT_PATH(data, 'd', 0), JSON_EXTRACT_PATH(data, 'd', 1) FROM t_extract WHERE id = 1;
+SELECT
+  JSON_EXTRACT_PATH(data, 'd', '0'),
+  JSON_EXTRACT_PATH(data, 'd', '1'),
+  JSON_EXTRACT_PATH(data, 'd', '-1')
+FROM t_extract
+WHERE id = 1;
 -- EXPECTED:
-10, 20
+10, 20, 30
+
+-- TEST: json-extract-path-explicit-text-key-cast
+-- SQL:
+SELECT JSON_EXTRACT_PATH(data, 'd', 1::text) FROM t_extract WHERE id = 1;
+-- EXPECTED:
+20
+
+-- TEST: json-extract-path-raw-json
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(data, 'd', '1') FROM t_extract;
+-- EXPECTED:
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "t_extract"."data" [ 'd'::text ] [ '1'::text ] :: json as "col_1" FROM "t_extract"
+''
+plan:
+    [0] SCAN TABLE t_extract (~1048576 rows)
+
+-- TEST: json-extract-path-raw-map
+-- SQL:
+EXPLAIN (RAW)
+SELECT JSON_EXTRACT_PATH(distribution, 'ShardedImplicitly', '1')
+FROM _pico_table;
+-- EXPECTED:
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT "_pico_table"."distribution"::json [ 'ShardedImplicitly'::text ] [ '1'::text ] :: json as "col_1" FROM "_pico_table"
+''
+plan:
+    [0] SCAN TABLE _pico_table (~1048576 rows)
+
+-- TEST: json-extract-path-raw-path-parameters
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(data, $1, $2) FROM t_extract;
+-- PARAMS:
+'d', '1'
+-- EXPECTED:
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "t_extract"."data" [ 'd'::text ] [ '1'::text ] :: json as "col_1" FROM "t_extract"
+''
+plan:
+    [0] SCAN TABLE t_extract (~1048576 rows)
+
+-- TEST: json-extract-path-raw-untyped-document-parameter
+-- SKIP_FOR: iproto
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH($1, $2, $3);
+-- PARAMS:
+'{"d": [10, 20, 30]}', 'd', '1'
+-- EXPECTED:
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT {"d": [10, 20, 30]}::json [ 'd'::text ] [ '1'::text ] :: json as "col_1"
+''
+plan:
+    [0] TRIVIAL
+
+-- TEST: json-extract-path-raw-nested
+-- SQL:
+EXPLAIN (RAW)
+SELECT JSON_EXTRACT_PATH(JSON_EXTRACT_PATH(data, 'a'), 'b')
+FROM t_extract;
+-- EXPECTED:
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "t_extract"."data" [ 'a'::text ] :: json [ 'b'::text ] :: json as "col_1" FROM "t_extract"
+''
+plan:
+    [0] SCAN TABLE t_extract (~1048576 rows)
+
+-- TEST: json-extract-path-raw-group-by-alias
+-- SQL:
+EXPLAIN (RAW)
+SELECT JSON_EXTRACT_PATH(data, 'a') AS extracted
+FROM t_extract
+GROUP BY extracted
+ORDER BY extracted;
+-- EXPECTED:
+╭──────────────────────────╮
+│ 1. Query (WHOLE STORAGE) │
+╰──────────────────────────╯
+''
+SELECT "t_extract"."data" [ 'a'::text ] :: json as "gr_expr_1" FROM "t_extract" GROUP BY "t_extract"."data" [ 'a'::text ] :: json
+''
+plan:
+    [0] SCAN TABLE t_extract (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+''
+╭───────────────────╮
+│ 2. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT "extracted" FROM ( SELECT "COL_0" as "extracted" FROM "_tmp_4117842499118603289_0136" GROUP BY "COL_0" ) ORDER BY "extracted"
+''
+plan:
+    [0] SCAN TABLE _tmp_4117842499118603289_0136 (~1048576 rows)
+    [0] USE TEMP B-TREE FOR GROUP BY
+
+-- TEST: json-extract-path-requires-path
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(data) FROM t_extract;
+-- ERROR:
+could not resolve function overload for json_extract_path\(json\)
+
+-- TEST: json-extract-path-rejects-integer-source
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(id, 'a') FROM t_extract;
+-- ERROR:
+could not resolve function overload for json_extract_path\(int, text\)
+
+-- TEST: json-extract-path-rejects-text-source
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(data::text, 'a') FROM t_extract;
+-- ERROR:
+could not resolve function overload for json_extract_path\(text, text\)
+
+-- TEST: json-extract-path-rejects-boolean-key
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(data, 'd', true) FROM t_extract;
+-- ERROR:
+could not resolve function overload for json_extract_path\(json, text, bool\)
+
+-- TEST: json-extract-path-rejects-integer-key-json
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(data, 'd', 1) FROM t_extract;
+-- ERROR:
+could not resolve function overload for json_extract_path\(json, text, int\)
+
+-- TEST: json-extract-path-rejects-integer-key-map
+-- SQL:
+EXPLAIN (RAW)
+SELECT JSON_EXTRACT_PATH(distribution, 'ShardedImplicitly', 1)
+FROM _pico_table;
+-- ERROR:
+could not resolve function overload for json_extract_path\(map, text, int\)
+
+-- TEST: json-extract-path-rejects-integer-column-key
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(data, 'd', id) FROM t_extract;
+-- ERROR:
+could not resolve function overload for json_extract_path\(json, text, int\)
+
+-- TEST: json-extract-path-rejects-integer-parameter-key
+-- SQL:
+EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH(data, 'd', $1::int) FROM t_extract;
+-- PARAMS:
+1
+-- ERROR:
+could not resolve function overload for json_extract_path\(json, text, int\)
 
 -- TEST: init-array
 -- SQL:

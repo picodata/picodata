@@ -474,18 +474,6 @@ impl ParseExpression {
                 Entity::Query,
                 Some("DISTINCT modifier is allowed only for aggregate functions".into()),
             ))
-        } else if name == "json_extract_path" {
-            // Pure syntactic sugar, so it never reaches function resolution
-            // and needs no storage-side `_func` object: it is rewritten into
-            // an index chain here, as `json_extract_path(src, k1, k2, ...)`
-            // is `src[k1][k2]...`.
-            match plan_arg_ids.split_first() {
-                Some((source, keys)) if !keys.is_empty() => plan.add_index(*source, keys.to_vec()),
-                _ => Err(SbroadError::Invalid(
-                    Entity::Query,
-                    Some("json_extract_path expects at least two arguments".into()),
-                )),
-            }
         } else {
             // format takes values of any type and prints them as
             // text, so they get the same text as with `::text`.

@@ -2,6 +2,7 @@ from typing import Iterator
 
 import psycopg
 import pytest
+from psycopg import pq
 from psycopg.types.json import Json, Jsonb
 from psycopg.types.string import TextLoader
 from conftest import Cluster, TarantoolError, create_legacy_map_table
@@ -35,7 +36,8 @@ class TestJson:
     """Tests whose assertions the `.sql` runner cannot express: they inspect the
     raw json wire text (byte-level key order, a present json null), bind json
     through psycopg adapters, or reach a legacy map column through the internal
-    DDL path. The value-level cases live in `json.sql`.
+    DDL path, or inspect inferred parameter and result types. The value-level
+    cases live in `json.sql`.
 
     Every test runs against a single cluster of two replicasets at replication
     factor 2, deployed once for the whole class to avoid paying the startup and
@@ -125,6 +127,56 @@ class TestJson:
                 with pytest.raises(psycopg.errors.FeatureNotSupported, match=f"{name} parameters"):
                     cur.execute("SELECT %s", (value,))
 
+    @pytest.mark.parametrize(
+        "source",
+        ["$1", "COALESCE($1, NULL)", "CASE WHEN true THEN $1 ELSE NULL END"],
+        ids=["parameter", "coalesce", "case"],
+    )
+    def test_json_extract_path_parameter_types(self, conn_info: str, source: str):
+        # Parse without client-provided types or values, so inference must finish
+        # before the call is lowered to subscripts.
+        query = f"SELECT JSON_EXTRACT_PATH({source}, $2, $3)"
+        with psycopg.connect(conn_info, autocommit=True) as conn:
+            result = conn.pgconn.prepare(b"extract", query.encode())
+            assert result.status == pq.ExecStatus.COMMAND_OK, result.error_message
+
+            description = conn.pgconn.describe_prepared(b"extract")
+            assert description.status == pq.ExecStatus.COMMAND_OK, description.error_message
+            assert [description.param_type(i) for i in range(description.nparams)] == [
+                psycopg.adapters.types[name].oid for name in ("jsonb", "text", "text")
+            ]
+            assert description.ftype(0) == psycopg.adapters.types["jsonb"].oid
+
+            result = conn.pgconn.exec_prepared(b"extract", [b'{"b": [10, 20]}', b"b", b"1"])
+            assert result.status == pq.ExecStatus.TUPLES_OK, result.error_message
+            assert result.ntuples == 1
+            assert result.get_value(0, 0) == b"20"
+
+            # A client-declared TEXT document must keep its type and be rejected.
+            result = conn.pgconn.prepare(
+                b"typed_extract",
+                query.encode(),
+                [psycopg.adapters.types[name].oid for name in ("text", "text", "text")],
+            )
+            assert result.status == pq.ExecStatus.FATAL_ERROR
+            assert (
+                b"could not resolve function overload for json_extract_path(text, text, text)" in result.error_message
+            )
+
+            result = conn.pgconn.prepare(
+                b"integer_key",
+                query.encode(),
+                [psycopg.adapters.types[name].oid for name in ("jsonb", "text", "int8")],
+            )
+            assert result.status == pq.ExecStatus.FATAL_ERROR
+            assert b"could not resolve function overload for json_extract_path(json, text, int)" in result.error_message
+
+    def test_json_extract_path_map_result_type(self, conn_info: str):
+        with psycopg.connect(conn_info, autocommit=True) as conn, conn.cursor() as cur:
+            cur.execute("SELECT JSON_EXTRACT_PATH(distribution, 'Global') FROM _pico_table")
+            assert cur.description is not None
+            assert cur.description[0].type_code == psycopg.adapters.types["jsonb"].oid
+
     def test_json_extract_path_on_legacy_map_column(self, cluster: Cluster):
         """Acceptance criteria 12 and 16: JSON_EXTRACT_PATH works on a legacy
         map-backed column, which keeps behaving as object-only, and a json literal
@@ -132,11 +184,15 @@ class TestJson:
         i1 = cluster.leader()
         create_legacy_map_table(i1, name="legacy", space_id=901, column="m")
 
-        i1.eval("""box.space.legacy:insert{1, require('json').decode('{"a":{"b":"c"},"d":{"e":[1,2,3]},"f":42}')}""")
+        i1.eval("""
+            box.space.legacy:insert{
+                1, require('json').decode('{"a":{"b":"c"},"d":{"e":[1,2,3]},"f":42,"n":null}')
+            }
+        """)
         i1.eval("""box.space.legacy:insert{2, require('json').decode('{"a":2}')}""")
 
         assert i1.sql("SELECT id, m FROM legacy ORDER BY id") == [
-            [1, {"a": {"b": "c"}, "d": {"e": [1, 2, 3]}, "f": 42}],
+            [1, {"a": {"b": "c"}, "d": {"e": [1, 2, 3]}, "f": 42, "n": None}],
             [2, {"a": 2}],
         ]
 
@@ -150,6 +206,7 @@ class TestJson:
             [2, None],
         ]
         assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'missing') FROM legacy ORDER BY id") == [[1, None], [2, None]]
+        assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'n') IS NULL FROM legacy ORDER BY id") == [[1, False], [2, True]]
         assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'f')::int FROM legacy ORDER BY id") == [[1, 42], [2, None]]
         assert i1.sql("SELECT JSON_EXTRACT_PATH(m, 'a') FROM legacy WHERE id = 1") == [[{"b": "c"}]]
 
@@ -166,14 +223,15 @@ class TestJson:
 
         # The result composes like any other expression.
         assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'a', 'b')::text FROM legacy ORDER BY id") == [
-            [1, "c"],
+            [1, '"c"'],
             [2, None],
         ]
         assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'a', (SELECT 'b')) FROM legacy ORDER BY id") == [
             [1, "c"],
             [2, None],
         ]
-        assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'd', 'e')[1] FROM legacy ORDER BY id") == [[1, 1], [2, None]]
+        assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'd', 'e')[1] FROM legacy ORDER BY id") == [[1, 2], [2, None]]
+        assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'd', 'e', '1') FROM legacy ORDER BY id") == [[1, 2], [2, None]]
         assert i1.sql("SELECT id FROM legacy WHERE id = 2 AND id = JSON_EXTRACT_PATH(m, 'a')::int") == [[2]]
 
         # A NULL source or a NULL key gives NULL.
@@ -181,23 +239,30 @@ class TestJson:
         assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, NULL) FROM legacy ORDER BY id") == [[1, None], [2, None]]
         assert i1.sql("SELECT id, JSON_EXTRACT_PATH(NULL, NULL) FROM legacy ORDER BY id") == [[1, None], [2, None]]
 
-        with pytest.raises(TarantoolError, match="json_extract_path expects at least two arguments"):
+        with pytest.raises(TarantoolError, match=r"could not resolve function overload for json_extract_path\(map\)"):
             i1.sql("SELECT JSON_EXTRACT_PATH(m) FROM legacy")
-        with pytest.raises(TarantoolError, match="json_extract_path expects at least two arguments"):
+        with pytest.raises(TarantoolError, match=r"could not resolve function overload for json_extract_path\(\)"):
             i1.sql("SELECT JSON_EXTRACT_PATH() FROM legacy")
-        with pytest.raises(TarantoolError, match="cannot index expression of type int"):
+        with pytest.raises(
+            TarantoolError, match=r"could not resolve function overload for json_extract_path\(int, text\)"
+        ):
             i1.sql("SELECT JSON_EXTRACT_PATH(id, 'a') FROM legacy")
-        # JSON_EXTRACT_PATH desugars to the native [] subscript, which accepts both
-        # text and integer keys on a map (same as on an array); an integer key that
-        # matches no map key is a miss, not a type error.
-        assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 1) FROM legacy ORDER BY id") == [[1, None], [2, None]]
-        assert i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'a', 1, 'b') FROM legacy ORDER BY id") == [
-            [1, None],
-            [2, None],
-        ]
+        with pytest.raises(
+            TarantoolError, match=r"could not resolve function overload for json_extract_path\(map, int\)"
+        ):
+            i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 1) FROM legacy ORDER BY id")
+        with pytest.raises(
+            TarantoolError, match=r"could not resolve function overload for json_extract_path\(map, text, int, text\)"
+        ):
+            i1.sql("SELECT id, JSON_EXTRACT_PATH(m, 'a', 1, 'b') FROM legacy ORDER BY id")
 
         with pytest.raises(TarantoolError, match="of type map, but expression is of type json"):
             i1.sql("""INSERT INTO legacy VALUES (3, '{"a":1}'::json)""")
+
+        # Converting the source validates fields outside the requested path.
+        i1.eval("box.space.legacy:insert{3, {good=1, bad=require('uuid').new()}}")
+        with pytest.raises(TarantoolError, match="map value is not a valid json"):
+            i1.sql("SELECT JSON_EXTRACT_PATH(m, 'good') FROM legacy WHERE id = 3")
 
 
 def _owner_name(instances, bucket_id: int) -> str:

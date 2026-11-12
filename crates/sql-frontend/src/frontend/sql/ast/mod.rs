@@ -576,6 +576,10 @@ impl<'q> AbstractSyntaxTree<'q> {
         // so that cloned references already carry correct `col_type` values.
         plan.replace_group_by_ordinals_with_references()?;
 
+        // Keep json_extract_path as a function through type analysis and coercions,
+        // then lower it to subscripts using the checked result type.
+        plan.desugar_json_extract_path();
+
         Ok(plan)
     }
 }

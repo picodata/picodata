@@ -1,13 +1,14 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::aggregates::AggregateKind;
 use crate::ir::node::expression::{ExprChildren, Expression, EXPECTED_CHILDREN_CNT};
-use crate::ir::node::{Cast, NodeId, ScalarFunction};
+use crate::ir::node::{Cast, IndexExpr, NodeId, ScalarFunction};
 use crate::ir::node::{Node32, Node64};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql_type_system::expr::Type as TypeSystemType;
 use sql_type_system::type_system::TypeAnalyzer;
 
 use super::expression::{FunctionFeature, VolatilityType};
@@ -207,6 +208,25 @@ impl Plan {
         Ok(id)
     }
 
+    /// Lower checked calls after all type analysis and implicit casts are complete.
+    pub fn desugar_json_extract_path(&mut self) {
+        for node in self.nodes.iter64_mut() {
+            let Node64::ScalarFunction(func) = node else {
+                continue;
+            };
+            if func.name != "json_extract_path" {
+                continue;
+            }
+            let mut indexes = std::mem::take(&mut func.children);
+            let child = indexes.remove(0);
+            *node = Node64::Index(IndexExpr {
+                child,
+                indexes,
+                cast_to: func.func_type,
+            });
+        }
+    }
+
     /// Add explicit casts for some Expressions in IR plan.
     /// Exact expressions:
     ///   - ScalarFunction, Trim, Like
@@ -277,12 +297,20 @@ impl Plan {
                         (CastTarget::Fixed(cast_type), _) => Ok(Some(cast_type)),
                         // `GROUP BY` aliases can still appear here as placeholders. Type analysis
                         // records the type for the aliased child expression, not for the alias node.
-                        (CastTarget::FromReport, _) => DerivedType::from(
-                            type_report.get_type(&self.get_child_under_alias(*arg_id)?),
-                        )
-                        .get()
-                        .filter(|ty| ty.is_scalar())
-                        .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some)),
+                        (CastTarget::FromReport, _) => {
+                            let arg_id = self.get_child_under_alias(*arg_id)?;
+                            let target = type_report.get_type(&arg_id);
+                            // JSON_EXTRACT_PATH needs the document cast before subscripting.
+                            if target == TypeSystemType::Json
+                                && type_report.get_return_type(&arg_id) == TypeSystemType::Map
+                            {
+                                return Ok(Some(CastType::Json));
+                            }
+                            DerivedType::from(target)
+                                .get()
+                                .filter(|ty| ty.is_scalar())
+                                .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some))
+                        }
                     },
                 )
                 .collect::<Result<Vec<_>, SbroadError>>()?;

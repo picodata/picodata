@@ -298,6 +298,9 @@ pub enum ExprKind<Id> {
         partition_by: Vec<Expr<Id>>,
         frame: Option<Box<WindowFrame<Id>>>,
     },
+    /// JSON extraction, with a JSON document (or a legacy map) and path keys.
+    /// Untyped documents are inferred as JSON before the call is lowered to subscripts.
+    JsonExtractPath(Vec<Expr<Id>>),
     /// The `format` function: a text format string, then values of any
     /// type. The frontend casts the values to text.
     /// Examples: `format('%s = %L', a, b)`.
