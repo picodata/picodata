@@ -20,7 +20,7 @@ use crate::ir::transformation::redistribution::{MotionKey, MotionPolicy, Target}
 use crate::ir::transformation::BlockExecutionRestriction;
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::value::Value;
-use crate::ir::PlanKind;
+use crate::ir::{Plan, PlanKind};
 
 struct ExecutorBucketsResolver<'p, C: Router> {
     coordinator: &'p C,
@@ -235,9 +235,7 @@ where
         );
         for (node_id, rel) in tree.relational() {
             let references_buckets = match rel {
-                Relational::ScanRelation(ScanRelation { relation, .. }) => !ir_plan
-                    .get_relation_or_error(relation.as_str())?
-                    .is_global(),
+                Relational::ScanRelation(scan) => !scan_is_global(ir_plan, scan)?,
                 Relational::Insert(_) | Relational::Update(_) | Relational::Delete(_) => {
                     !ir_plan.dml_node_table(node_id)?.is_global()
                 }
@@ -332,11 +330,8 @@ where
             let mut children = stack.drain(base..);
 
             let buckets = match rel {
-                Relational::ScanRelation(ScanRelation { relation, .. }) => {
-                    if ir_plan
-                        .get_relation_or_error(relation.as_str())?
-                        .is_global()
-                    {
+                Relational::ScanRelation(scan) => {
+                    if scan_is_global(ir_plan, scan)? {
                         Buckets::Any
                     } else {
                         Buckets::All
@@ -530,6 +525,24 @@ fn walked_children(rel: &Relational) -> usize {
         Relational::Projection(_) => 1,
         _ => rel.children().len(),
     }
+}
+
+/// Whether a scan reads a global table. The planner gives a scan of a global
+/// table the `Global` distribution, and of a sharded one `Segment`. For any
+/// other distribution, the table is looked up by name.
+fn scan_is_global(plan: &Plan, scan: &ScanRelation) -> Result<bool, SbroadError> {
+    let is_global = match scan.distribution.as_deref() {
+        Some(Distribution::Global) => true,
+        Some(Distribution::Segment { .. }) => false,
+        _ => return Ok(plan.get_relation_or_error(&scan.relation)?.is_global()),
+    };
+    debug_assert_eq!(
+        is_global,
+        plan.get_relation_or_error(&scan.relation)?.is_global(),
+        "distribution of a scan of {}",
+        scan.relation
+    );
+    Ok(is_global)
 }
 
 /// Takes the buckets of the next relational child of a node.
