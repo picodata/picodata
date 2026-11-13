@@ -369,7 +369,15 @@ local function one_step_dispatch(uuid_to_args, opts, tier)
 end
 
 dispatch.bucket_into_rs = function(bucket_id, tier)
-    local router = get_router_for_tier(tier)
+    local router = _G.pico.router[tier] or get_router_for_tier(tier)
+    -- A cached route, as `router:route` returns it, without the wrappers of the
+    -- router API: of all their checks only these two apply to a call from here.
+    if router.is_configured and router.is_enabled then
+        local rs = router.route_map[bucket_id]
+        if rs ~= nil then
+            return rs.uuid, nil
+        end
+    end
     local rs, err = router:route(bucket_id)
     if err ~= nil then
         return nil, err
