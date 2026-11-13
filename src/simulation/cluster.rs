@@ -14,7 +14,7 @@ use crate::simulation::instance::PretendInstance;
 use crate::simulation::raft::PretendRaftLog;
 use crate::simulation::sharded_wal::ShardedWal;
 use crate::simulation::sharded_wal::WalOutcome;
-use crate::simulation::sharding::spawn_resharding_loop_fiber;
+use crate::simulation::sharding::spawn_resharder_fiber;
 use crate::storage::Catalog;
 use crate::tier::Tier;
 use crate::traft::RaftIndex;
@@ -124,7 +124,7 @@ impl PretendCluster {
     ///
     /// Initializes all needed [`PretendInstance`] instances with catalog and
     /// topology.
-    /// Spawns a `resharding_loop` fiber for each instance.
+    /// Spawns a `resharder_loop` fiber for each instance.
     ///
     /// All fibers in the returned cluster are parked.
     pub fn setup(
@@ -246,7 +246,7 @@ impl PretendCluster {
         ));
         let name = pretend_instance.name.clone();
 
-        spawn_resharding_loop_fiber(&pretend_instance);
+        spawn_resharder_fiber(&pretend_instance);
 
         let old = self
             .pretend_instances

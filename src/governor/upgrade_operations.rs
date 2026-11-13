@@ -176,9 +176,9 @@ pub const CATALOG_UPGRADE_LIST: &'static [(
             ("exec_script", InternalScript::DropPgprotoTestProcedures.as_str()),
             // to_char and to_date became tarantool SQL built-ins.
             ("exec_script", InternalScript::DropObsoleteProcedures.as_str()),
-            // Resharding loop internals
-            ("sql", "ALTER SYSTEM RESET resharding_bucket_count_max"),
-            ("sql", "ALTER SYSTEM RESET resharding_chunk_size_max"),
+            // Resharder internals
+            ("sql", "ALTER SYSTEM RESET resharder_bucket_count_max"),
+            ("sql", "ALTER SYSTEM RESET resharder_chunk_size_max"),
             ("sql", RevokedJwt::SQL_CREATE),
             ("sql", "ALTER INDEX \"535_pkey\" RENAME TO _pico_revoked_jwt_pkey"),
             ("sql", RevokedJwt::SQL_CREATE_INDEX),

@@ -3,8 +3,8 @@ use crate::catalog_cache::CatalogCache;
 use crate::config::AlterSystemParameters;
 use crate::config::AlterSystemParametersRef;
 use crate::instance::InstanceName;
-use crate::resharding_loop::ReshardingLoopState;
-use crate::resharding_loop::ReshardingStatus;
+use crate::resharder::ResharderLoopState;
+use crate::resharder::ReshardingStatus;
 #[allow(unused_imports)]
 use crate::simulation::cluster::PretendCluster;
 use crate::simulation::fiber::simulation_fiber_is_stopped;
@@ -127,14 +127,14 @@ pub struct PretendInstance {
     pub next_fiber_id: Cell<FiberId>,
 
     ////////////////////////////////////////////////////////////////////////////
-    // resharding_loop
+    // resharder_loop
     ////////////////////////////////////////////////////////////////////////////
     pub requested_status_tx: RefCell<watch::Sender<(ReshardingStatus, u64)>>,
     pub actual_status_rx: RefCell<watch::Receiver<(ReshardingStatus, u64)>>,
 
-    pub resharding_loop_fiber_id: Cell<Option<FiberId>>,
+    pub resharder_fiber_id: Cell<Option<FiberId>>,
 
-    pub loop_state: Rc<NoYieldsRefCell<ReshardingLoopState>>,
+    pub loop_state: Rc<NoYieldsRefCell<ResharderLoopState>>,
 
     ////////////////////////////////////////////////////////////////////////////
     // buckets
@@ -172,7 +172,7 @@ pub struct PretendInstance {
     /// This is a part of the storage/move ref mechanism, which helps serialize
     /// bucket moves during rebalancing with `vshard.router.map_call` calls.
     ///
-    /// A flag instead of a count, because this is how resharding_loop sees it.
+    /// A flag instead of a count, because this is how resharder_loop sees it.
     pub move_started: Cell<bool>,
 
     /// How many times this instance has taken [`Self::move_started`].
@@ -232,9 +232,9 @@ impl PretendInstance {
             actual_status_rx: RefCell::new(actual_status_rx),
             fibers: RefCell::new(BTreeMap::new()),
             current_fiber_id: Cell::new(None),
-            resharding_loop_fiber_id: Cell::new(None),
+            resharder_fiber_id: Cell::new(None),
             next_fiber_id: Cell::new(100),
-            loop_state: Rc::new(NoYieldsRefCell::new(ReshardingLoopState::default())),
+            loop_state: Rc::new(NoYieldsRefCell::new(ResharderLoopState::default())),
         }
     }
 
@@ -249,7 +249,7 @@ impl PretendInstance {
     }
 
     pub fn is_down(&self) -> bool {
-        self.resharding_loop_fiber_id.get().is_none()
+        self.resharder_fiber_id.get().is_none()
     }
 
     /// Return the cluster this instance belongs to.
@@ -365,24 +365,21 @@ impl PretendInstance {
             fiber.join();
         }
         self.fibers.borrow_mut().clear();
-        self.resharding_loop_fiber_id.set(None);
+        self.resharder_fiber_id.set(None);
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // resharding_loop
+    // resharder_loop
     ////////////////////////////////////////////////////////////////////////////
 
-    /// This instance's `resharding_loop` fiber.
-    pub fn resharding_loop_fiber(&self) -> Rc<PretendFiber> {
-        let Some(id) = self.resharding_loop_fiber_id.get() else {
-            panic!("[{}] has no resharding loop fiber", self.name);
+    /// This instance's `resharder_loop` fiber.
+    pub fn resharder_fiber(&self) -> Rc<PretendFiber> {
+        let Some(id) = self.resharder_fiber_id.get() else {
+            panic!("[{}] has no resharder fiber", self.name);
         };
         let fiber = self.fibers.borrow().get(&id).cloned();
         let Some(fiber) = fiber else {
-            panic!(
-                "[{}] resharding loop fiber {id} is not registered",
-                self.name
-            );
+            panic!("[{}] resharder fiber {id} is not registered", self.name);
         };
         fiber
     }
@@ -440,7 +437,7 @@ impl PretendInstance {
             move_started: self.move_started.get(),
             storage_refs: self.storage_refs.get(),
 
-            resharding_loop_requested_status: self.requested_status_tx.borrow().get(),
+            resharder_requested_status: self.requested_status_tx.borrow().get(),
 
             next_fiber_id: self.next_fiber_id.get(),
             fiber_states: self
@@ -475,7 +472,7 @@ impl Platform for PretendInstance {
         &self.parameters
     }
 
-    async fn resharding_loop_wait_action_requested(
+    async fn resharder_wait_action_requested(
         &self,
         _requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     ) -> Result<()> {
@@ -488,7 +485,7 @@ impl Platform for PretendInstance {
         wait_outcome.to_result()
     }
 
-    fn resharding_loop_request_action(&self, requested_status: ReshardingStatus) -> Result<()> {
+    fn resharder_request_action(&self, requested_status: ReshardingStatus) -> Result<()> {
         self.set_requested_resharding_status(requested_status);
         Ok(())
     }
@@ -661,7 +658,7 @@ impl Platform for PretendInstance {
             self.name,
         );
 
-        // Resharding loop ends moves in 2 scenarios:
+        // Resharder ends moves in 2 scenarios:
         // - on master when the bucket transfer is complete
         // - on non-master after another replica is promoted in it's place
         //
@@ -761,7 +758,7 @@ pub struct InstanceFingerprint {
     pub move_started: bool,
     pub storage_refs: u64,
 
-    pub resharding_loop_requested_status: (ReshardingStatus, u64),
+    pub resharder_requested_status: (ReshardingStatus, u64),
 
     pub next_fiber_id: FiberId,
     pub fiber_states: Vec<(PretendFiberId, std::mem::Discriminant<FiberState>)>,

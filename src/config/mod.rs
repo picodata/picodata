@@ -2632,7 +2632,7 @@ pub struct AlterSystemParameters {
     /// **NOT IMPLEMENTED YET**
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 16 * 1024 * 1024)]
-    pub resharding_chunk_size_max: u64,
+    pub resharder_chunk_size_max: u64,
 
     /// The number of buckets of sharded data which are allowed to be
     /// transferred at the same time during bucket rebalancing.
@@ -2640,7 +2640,7 @@ pub struct AlterSystemParameters {
     /// **NOT IMPLEMENTED YET**
     #[introspection(sbroad_type = SbroadType::Unsigned)]
     #[introspection(config_default = 100)]
-    pub resharding_bucket_count_max: u64,
+    pub resharder_bucket_count_max: u64,
 
     /// Number of seconds to wait before automatically changing an
     /// unresponsive instance's state to Offline.

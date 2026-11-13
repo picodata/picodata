@@ -1,8 +1,8 @@
 use crate::catalog::pico_bucket::BucketIdRange;
 use crate::catalog::pico_bucket::BUCKET_ID_MIN;
-use crate::resharding_loop::resharding_loop;
-use crate::resharding_loop::ReshardingLoopState;
-use crate::resharding_loop::ReshardingStatus;
+use crate::resharder::resharder_loop;
+use crate::resharder::ResharderLoopState;
+use crate::resharder::ReshardingStatus;
 use crate::simulation::fiber::is_wait_satisfiable;
 use crate::simulation::fiber::FiberState;
 use crate::simulation::fiber::PretendFiber;
@@ -15,25 +15,25 @@ use std::rc::Rc;
 use tarantool::error::IntoBoxError;
 
 ////////////////////////////////////////////////////////////////////////////////
-// spawn_resharding_loop_fiber
+// spawn_resharder_fiber
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Spawns the instance's [`resharding_loop`] fiber.
-pub fn spawn_resharding_loop_fiber(instance: &Rc<PretendInstance>) {
+/// Spawns the instance's [`resharder_loop`] fiber.
+pub fn spawn_resharder_fiber(instance: &Rc<PretendInstance>) {
     let (requested_status_tx, mut requested_status_rx) =
         watch::channel((ReshardingStatus::Idle, 0));
     let (mut actual_status_tx, actual_status_rx) = watch::channel((ReshardingStatus::Idle, 0));
 
     *instance.requested_status_tx.borrow_mut() = requested_status_tx;
     *instance.actual_status_rx.borrow_mut() = actual_status_rx;
-    *instance.loop_state.borrow_mut() = ReshardingLoopState::default();
+    *instance.loop_state.borrow_mut() = ResharderLoopState::default();
 
-    let fiber = Rc::new(PretendFiber::new(instance, "pretend_resharding_loop"));
+    let fiber = Rc::new(PretendFiber::new(instance, "pretend_resharder_loop"));
     instance.register_fiber(fiber.clone());
-    let old = instance.resharding_loop_fiber_id.replace(Some(fiber.id.id));
+    let old = instance.resharder_fiber_id.replace(Some(fiber.id.id));
     assert!(
         old.is_none(),
-        "[{}] already has a resharding loop fiber",
+        "[{}] already has a resharder fiber",
         instance.name
     );
 
@@ -43,14 +43,14 @@ pub fn spawn_resharding_loop_fiber(instance: &Rc<PretendInstance>) {
         .name(fiber.id.to_string())
         .func_async(async move {
             loop {
-                // The only check outside a park: `resharding_loop` can return
+                // The only check outside a park: `resharder_loop` can return
                 // without having parked at all, so teardown would otherwise
                 // only be noticed one full iteration later.
                 if fiber.is_stopped() {
                     break;
                 }
 
-                let res = resharding_loop(
+                let res = resharder_loop(
                     &*instance,
                     &instance.loop_state,
                     &mut requested_status_rx,
@@ -98,7 +98,7 @@ pub fn is_governor_poke_enabled(instance: &PretendInstance) -> bool {
         return false;
     }
 
-    let fiber = instance.resharding_loop_fiber();
+    let fiber = instance.resharder_fiber();
     if fiber.state() != FiberState::WaitIdle {
         return false;
     }

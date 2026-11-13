@@ -920,7 +920,7 @@ mod test {
     }
 
     /// Transfers random sub-ranges between random replicasets the way the
-    /// resharding loop does it (`Active` -> `Sending` -> `Sent` -> `Active` on
+    /// resharder does it (`Active` -> `Sending` -> `Sent` -> `Active` on
     /// the target) and checks after each step that the in-memory ranges, the
     /// table the DMLs are applied to and a per-bucket model all agree.
     fn do_change_range_state_random_transfers(seed: u64) {

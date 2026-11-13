@@ -2,7 +2,7 @@
 //! means of the [`define_ReshardingAction`] macro.
 //!
 //! Variants of enum [`ReshardingAction`] are structs which are also defined in
-//! here and describe actions to be performed in [`resharding_loop`] as part of
+//! here and describe actions to be performed in [`resharder_loop`] as part of
 //! the bucket rebalancing algorithm.
 //!
 //! For each variant of [`ReshardingAction`] there's an identically named variant
@@ -11,7 +11,7 @@
 //! It's basically something like rust's [`std::mem::Discriminant`], but with
 //! more functionality.
 //!
-//! [`resharding_loop`]: crate::resharding_loop::resharding_loop
+//! [`resharder_loop`]: crate::resharder::resharder_loop
 //! [`define_ReshardingAction`]: crate::define_ReshardingAction
 use crate::catalog::pico_bucket::BucketIdRange;
 use crate::traft::op::Dml;

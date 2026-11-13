@@ -1,5 +1,5 @@
 use crate::instance::InstanceName;
-use crate::resharding_loop::ReshardingStatus;
+use crate::resharder::ReshardingStatus;
 #[allow(unused_imports)]
 use crate::simulation::cluster::PretendCluster;
 use crate::simulation::fiber::FiberState;
@@ -23,7 +23,7 @@ use std::rc::Rc;
 /// [`do_action`]: crate::simulation::engine::do_action
 #[derive(Clone, PartialEq, Eq)]
 pub enum PretendAction {
-    /// Wakeup the resharding_loop on the given `instance` and set it's
+    /// Wakeup the resharder_loop on the given `instance` and set it's
     /// requested `status`.
     RequestReshardingStatus {
         instance: InstanceName,

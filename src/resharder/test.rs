@@ -5,8 +5,8 @@ use crate::catalog::pico_bucket::BucketIdRange;
 use crate::catalog::pico_bucket::BucketRecord;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
-use crate::resharding_loop::action::ReshardingActionKind;
-use crate::resharding_loop::ReshardingStatus;
+use crate::resharder::action::ReshardingActionKind;
+use crate::resharder::ReshardingStatus;
 use crate::simulation::action::PretendAction;
 use crate::simulation::action_helpers::assert_bucket_partition;
 use crate::simulation::action_helpers::catch_up_on_raft_log;
@@ -648,7 +648,7 @@ fn do_simulation_master_switchover(params: ReshardingTestParameters) {
     // then flip. The nudge to the new master must land *before*
     // `catch_up_on_raft_log` lets it
     // discover it's master, production reads `want_status` once at
-    // `resharding_loop()` entry, so if the flip is observed before a fresh
+    // `resharder_loop()` entry, so if the flip is observed before a fresh
     // request lands, the promoted replica would (re-)run the stale
     // `requested_status` instead.
     catch_up_on_sharded_wal(&cluster, new_master);

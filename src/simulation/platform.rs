@@ -4,9 +4,9 @@
 
 use crate::catalog_cache::CatalogCache;
 use crate::config::AlterSystemParametersRef;
-use crate::resharding_loop;
-use crate::resharding_loop::local_bucket;
-use crate::resharding_loop::ReshardingStatus;
+use crate::resharder;
+use crate::resharder::local_bucket;
+use crate::resharder::ReshardingStatus;
 use crate::storage::index_by_ids_unchecked;
 use crate::tarantool::box_schema_version;
 use crate::traft::node;
@@ -31,7 +31,7 @@ use tarantool::tuple::Tuple;
 // Platform
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Abstractions for all platform interactions in resharding_loop.
+/// Abstractions for all platform interactions in resharder_loop.
 ///
 /// See also module-level doc-comments.
 #[allow(async_fn_in_trait)]
@@ -57,17 +57,18 @@ pub trait Platform {
     // requested status
     //
     /// Real implementation simply blocks until `requested_status` is updated.
-    async fn resharding_loop_wait_action_requested(
+    async fn resharder_wait_action_requested(
         &self,
         requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     ) -> Result<()>;
 
-    /// Requests a resharding action from [`resharding_loop`].
+    /// Requests a resharding action from [`resharder_loop`].
     ///
-    /// Real implementation redirects to [`ReshardingLoop::request_action`].
+    /// Real implementation redirects to [`ResharderLoop::request_action`].
     ///
-    /// [`ReshardingLoop::request_action`]: resharding_loop::ReshardingLoop::request_action
-    fn resharding_loop_request_action(&self, requested_status: ReshardingStatus) -> Result<()>;
+    /// [`resharder_loop`]: resharder::resharder_loop
+    /// [`ResharderLoop::request_action`]: resharder::ResharderLoop::request_action
+    fn resharder_request_action(&self, requested_status: ReshardingStatus) -> Result<()>;
 
     //
     // raft / CAS
@@ -81,7 +82,7 @@ pub trait Platform {
     /// Sends a single CAS request for the provided `dmls` using the implicit
     /// CAS predicate. Waits for `timeout` for the raft entry to be applied for.
     ///
-    /// Real implementation redirects to [`resharding_loop::do_cas_requests`].
+    /// Real implementation redirects to [`resharder::do_cas_requests`].
     fn do_cas(&self, applied: RaftIndex, dmls: Vec<Dml>, timeout: Duration) -> Result<()>;
 
     /// Wait until current instance becomes the replicaset master.
@@ -237,7 +238,7 @@ impl Platform for node::Node {
         &self.alter_system_parameters
     }
 
-    async fn resharding_loop_wait_action_requested(
+    async fn resharder_wait_action_requested(
         &self,
         requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     ) -> Result<()> {
@@ -245,8 +246,8 @@ impl Platform for node::Node {
         Ok(())
     }
 
-    fn resharding_loop_request_action(&self, requested_status: ReshardingStatus) -> Result<()> {
-        self.resharding_loop.request_action(requested_status);
+    fn resharder_request_action(&self, requested_status: ReshardingStatus) -> Result<()> {
+        self.resharder_loop.request_action(requested_status);
         Ok(())
     }
 
@@ -255,7 +256,7 @@ impl Platform for node::Node {
     }
 
     fn do_cas(&self, applied: RaftIndex, dmls: Vec<Dml>, timeout: Duration) -> Result<()> {
-        resharding_loop::do_cas_requests(applied, dmls, timeout)
+        resharder::do_cas_requests(applied, dmls, timeout)
     }
 
     fn wait_until_master(&self, timeout: Duration) -> Result<RaftIndex> {

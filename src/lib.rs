@@ -105,7 +105,7 @@ pub mod plugin;
 pub mod preemption;
 pub mod reachability;
 pub mod replicaset;
-pub mod resharding_loop;
+pub mod resharder;
 pub mod rpc;
 mod sasl;
 pub mod schema;

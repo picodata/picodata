@@ -1,7 +1,7 @@
 use crate::catalog::pico_bucket::BucketRecord;
 use crate::error_or_panic;
 use crate::replicaset::Replicaset;
-use crate::resharding_loop::bucket_ranges::BucketRanges;
+use crate::resharder::bucket_ranges::BucketRanges;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 

@@ -1,8 +1,8 @@
 use crate::column_name;
 use crate::instance::InstanceName;
 use crate::replicaset::Replicaset;
-use crate::resharding_loop::action::ReshardingActionKind;
-use crate::resharding_loop::ReshardingStatus;
+use crate::resharder::action::ReshardingActionKind;
+use crate::resharder::ReshardingStatus;
 use crate::simulation::action::PretendAction;
 use crate::simulation::cluster::PretendCluster;
 use crate::simulation::engine::do_action;
@@ -167,7 +167,7 @@ pub fn drop_next_cas_request(cluster: &PretendCluster, instance_name: &str) {
 /// World action: times out the `instance`'s first CAS request in the queue.
 pub fn timeout_cas_wait(cluster: &PretendCluster, instance_name: &str) {
     let instance = cluster.instance(instance_name);
-    let fiber = instance.resharding_loop_fiber();
+    let fiber = instance.resharder_fiber();
     let state = fiber.state();
     assert!(
         matches!(state, FiberState::WaitCasOutcome { .. }),
@@ -233,7 +233,7 @@ pub fn catch_up_on_raft_log(cluster: &PretendCluster) {
 }
 
 /// World action: the harness playing governor.
-/// Mirrors `ReshardingLoop::request_action` + `fiber::wakeup`.
+/// Mirrors `ResharderLoop::request_action` + `fiber::wakeup`.
 pub fn request_resharding_status(
     cluster: &PretendCluster,
     instance_name: &str,

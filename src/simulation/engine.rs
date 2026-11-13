@@ -13,7 +13,7 @@ use crate::simulation::sharded_wal::commit_sharded_entry;
 use crate::simulation::sharded_wal::undo_sharded_statement;
 use crate::simulation::sharded_wal::WalOutcome;
 use crate::simulation::sharding::is_governor_poke_enabled;
-use crate::simulation::sharding::spawn_resharding_loop_fiber;
+use crate::simulation::sharding::spawn_resharder_fiber;
 use crate::tlog;
 use crate::vshard::VshardBucketState;
 use rand::RngExt;
@@ -168,7 +168,7 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
             instance.set_requested_resharding_status(*status);
 
             // A poke is `fiber::wakeup`, which only *resolves* the status watch.
-            let loop_fiber = instance.resharding_loop_fiber();
+            let loop_fiber = instance.resharder_fiber();
             if matches!(loop_fiber.state(), FiberState::WaitIdle) {
                 wake_fiber(cluster, &instance, &loop_fiber, WaitOutcome::Ok);
             }
@@ -194,7 +194,7 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
                 "[{}] restarted without having crashed",
                 instance.name
             );
-            spawn_resharding_loop_fiber(&instance);
+            spawn_resharder_fiber(&instance);
         }
 
         PretendAction::GovernorPoke { instance } => {
@@ -203,7 +203,7 @@ pub fn do_action(cluster: &PretendCluster, mut action: PretendAction) {
             wake_fiber(
                 cluster,
                 &instance,
-                &instance.resharding_loop_fiber(),
+                &instance.resharder_fiber(),
                 WaitOutcome::Ok,
             );
         }
@@ -517,10 +517,10 @@ pub fn assert_converged(instance: &PretendInstance) {
         .values()
         .map(|fiber| fiber.id.clone())
         .collect();
-    let resharding_loop_fiber = instance.resharding_loop_fiber().id.clone();
+    let resharder_fiber = instance.resharder_fiber().id.clone();
     assert_eq!(
         live_fibers,
-        [resharding_loop_fiber],
+        [resharder_fiber],
         "{}",
         panic_message(&format!(
             "converged with fibers other than its runner ({live_fibers:?})"
@@ -559,12 +559,12 @@ pub fn assert_converged(instance: &PretendInstance) {
     // doesn't exist yet and so unsatisfiable at convergence. A
     // never-driven non-master never left its initial `Idle` park,
     // which is equally at rest.
-    let fiber_state = instance.resharding_loop_fiber().state();
+    let fiber_state = instance.resharder_fiber().state();
     assert!(
         fiber_state.is_idle_wait(),
         "{}",
         panic_message(&format!(
-            "resharding_loop is not in idle state: {fiber_state:?}"
+            "resharder_loop is not in idle state: {fiber_state:?}"
         )),
     );
 

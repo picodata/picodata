@@ -1,6 +1,6 @@
 use crate::config::PicodataConfig;
 use crate::governor::plan::get_first_ready_replicaset_in_tier;
-use crate::resharding_loop::ReshardingStatus;
+use crate::resharder::ReshardingStatus;
 use crate::storage::space_by_name;
 use crate::storage::ToEntryIter;
 use crate::storage::TABLE_ID_BUCKET;
@@ -389,7 +389,7 @@ crate::define_rpc_request! {
             }
         };
 
-        fiber::block_on(node.resharding_loop.do_resharding(deadline, status))?;
+        fiber::block_on(node.resharder_loop.do_resharding(deadline, status))?;
 
         Ok(ReshardingResponse {})
     }

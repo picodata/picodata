@@ -1,5 +1,5 @@
 use crate::catalog_cache::CatalogCacheRef;
-use crate::resharding_loop::local_bucket::read_all_local_buckets;
+use crate::resharder::local_bucket::read_all_local_buckets;
 use crate::simulation::platform::Platform;
 use crate::tlog;
 use crate::vshard::VshardBucketRecord;

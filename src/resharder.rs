@@ -1,5 +1,5 @@
 use crate::cas;
-use crate::resharding_loop::action::ReshardingActionKind;
+use crate::resharder::action::ReshardingActionKind;
 use crate::schema::ADMIN_ID;
 use crate::simulation::platform::Platform;
 use crate::tlog;
@@ -33,59 +33,59 @@ pub mod test;
 mod walk_sharded_data;
 
 ////////////////////////////////////////////////////////////////////////////////
-// ReshardingLoop
+// ResharderLoop
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct ReshardingLoop {
-    /// Fiber id of the resharding_loop. Is used for waking up the fiber.
+pub struct ResharderLoop {
+    /// Fiber id of the resharder_loop. Is used for waking up the fiber.
     fiber_id: fiber::FiberId,
 
     /// When governor sends us a RPC with a request to do resharding
     /// [`Self::do_resharding`] method is called which updates value in this
     /// field.
-    /// Afterwards the value is checked in [`resharding_loop`] where the request is
+    /// Afterwards the value is checked in [`resharder_loop`] where the request is
     /// handled.
     /// Once the request is handled `actual_status` is updated.
     requested_status: watch::Sender<(ReshardingStatus, u64)>,
 
-    /// Is updated to the value from `requested_status` in [`resharding_loop`]
+    /// Is updated to the value from `requested_status` in [`resharder_loop`]
     /// once the request is handled.
     pub actual_status: watch::Receiver<(ReshardingStatus, u64)>,
 
-    /// Mutable long-living state of the resharding loop which is observable
+    /// Mutable long-living state of the resharder which is observable
     /// from other fibers.
-    pub state: Rc<NoYieldsRefCell<ReshardingLoopState>>,
+    pub state: Rc<NoYieldsRefCell<ResharderLoopState>>,
 }
 
-/// [`resharding_loop`] sleeps for this many seconds when it encounters an
+/// [`resharder_loop`] sleeps for this many seconds when it encounters an
 /// unhandled error before going on another loop iteration.
-const RESHARDING_LOOP_SHORT_RETRY: Duration = Duration::from_millis(300);
-pub const RESHARDING_LOOP_LONG_SLEEP: Duration = Duration::from_secs(10);
+const RESHARDER_SHORT_RETRY: Duration = Duration::from_millis(300);
+pub const RESHARDER_LONG_SLEEP: Duration = Duration::from_secs(10);
 
-impl ReshardingLoop {
+impl ResharderLoop {
     pub fn start() -> Self {
         let (requested_status_tx, requested_status_rx) =
             watch::channel((ReshardingStatus::Idle, 0));
         let (actual_status_tx, actual_status_rx) = watch::channel((ReshardingStatus::Idle, 0));
-        let state = ReshardingLoopState::default();
+        let state = ResharderLoopState::default();
         let state = Rc::new(NoYieldsRefCell::new(state));
         let state_tx = state.clone();
 
         let fiber_id = fiber::Builder::new()
-            .name("resharding_loop")
+            .name("resharder_loop")
             .func_async(async move {
                 let mut requested_status_rx = requested_status_rx;
                 let mut actual_status_tx = actual_status_tx;
 
                 // The fiber starts before the global node is initialized, but
-                // resharding_loop requires it, so we wait explicitly. Thankfully
+                // resharder_loop requires it, so we wait explicitly. Thankfully
                 // we only have to do this once at program start.
                 let node;
                 loop {
                     let Ok(n) = node::global() else {
                         _ = requested_status_rx
                             .changed()
-                            .timeout(RESHARDING_LOOP_SHORT_RETRY)
+                            .timeout(RESHARDER_SHORT_RETRY)
                             .await;
                         continue;
                     };
@@ -95,7 +95,7 @@ impl ReshardingLoop {
                 }
 
                 loop {
-                    let res = resharding_loop(
+                    let res = resharder_loop(
                         node,
                         &state_tx,
                         &mut requested_status_rx,
@@ -113,7 +113,7 @@ impl ReshardingLoop {
 
                             _ = requested_status_rx
                                 .changed()
-                                .timeout(RESHARDING_LOOP_SHORT_RETRY)
+                                .timeout(RESHARDER_SHORT_RETRY)
                                 .await;
                         }
                     }
@@ -136,7 +136,7 @@ impl ReshardingLoop {
         deadline: Instant,
         request_status: ReshardingStatus,
     ) -> Result<()> {
-        // Request is handled in `resharding_loop`.
+        // Request is handled in `resharder_loop`.
         let waiting_for_version = self.request_action(request_status);
 
         loop {
@@ -146,7 +146,7 @@ impl ReshardingLoop {
                 break;
             }
 
-            // Value is updated in `resharding_loop`
+            // Value is updated in `resharder_loop`
             _ = self
                 .actual_status
                 .clone()
@@ -180,7 +180,7 @@ impl ReshardingLoop {
         // The above call to `send` will awake the fiber if it's currently
         // blocked on the status channel. But it could also be blocked on a call
         // to `wait_index`, in which case this call will wake that fiber up.
-        tlog!(Debug, "wake resharding loop up");
+        tlog!(Debug, "wake resharder up");
         fiber::wakeup(self.fiber_id);
 
         waiting_for_version
@@ -201,7 +201,7 @@ impl ReshardingLoop {
     }
 }
 
-/// An enumeration of states the `resharding_loop` can be in.
+/// An enumeration of states the `resharder_loop` can be in.
 ///
 /// This is mainly internal implementation details, subject to change. Code in
 /// other modules in general should not rely on these states to determine if
@@ -209,7 +209,7 @@ impl ReshardingLoop {
 /// of truth should be consulted, i.e. `current_bucket_state_version` &
 /// `target_bucket_state_version` columns in `_pico_tier` & `_pico_replicaset`.
 ///
-/// See [`resharding_loop`] for illustrative usage examples.
+/// See [`resharder_loop`] for illustrative usage examples.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReshardingStatus {
     /// No resharding action is being performed at the moment.
@@ -236,18 +236,18 @@ impl ReshardingStatus {
 }
 
 #[derive(Default, Debug)]
-pub struct ReshardingLoopState {
+pub struct ResharderLoopState {
     /// A pair: kind of last action performed and the value of fiber::csw when
     /// that action was planned. CSW is used for debugging to avoid infinite loops.
     pub last_action: Option<(ReshardingActionKind, u64)>,
 
-    /// If resharding_loop's iteration resulted in an error, it's value is
+    /// If resharder_loop's iteration resulted in an error, it's value is
     /// stored here.
     pub last_error: Option<BoxError>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// resharding_loop
+// resharder_loop
 ////////////////////////////////////////////////////////////////////////////////
 
 /// The main loop for the resharding logic. It handles the requests which come
@@ -260,15 +260,15 @@ pub struct ReshardingLoopState {
 /// debugging purposes at this point.
 ///
 /// `state` is the mutable state with information about the inner goings on of
-/// the resharding loop mainly for debugging purposes.
-pub(crate) async fn resharding_loop(
+/// the resharder mainly for debugging purposes.
+pub(crate) async fn resharder_loop(
     platform: &impl Platform,
-    state: &Rc<NoYieldsRefCell<ReshardingLoopState>>,
+    state: &Rc<NoYieldsRefCell<ResharderLoopState>>,
     requested_status: &mut watch::Receiver<(ReshardingStatus, u64)>,
     actual_status: &mut watch::Sender<(ReshardingStatus, u64)>,
 ) -> Result<()> {
     let (_curr_status, _curr_version) = actual_status.get();
-    // Is updated in `ReshardingLoop::do_resharding`
+    // Is updated in `ResharderLoop::do_resharding`
     let (want_status, next_version) = requested_status.get();
     // This is needed so the next requested_status.changed().await call is only
     // awaken by changes happnening after this point

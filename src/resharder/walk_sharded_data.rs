@@ -1,7 +1,7 @@
 use crate::catalog::pico_bucket::BucketIdRange;
-use crate::resharding_loop::plan::ReshardingPlanContext;
-use crate::resharding_loop::sharded_tables::ShardedTableInfo;
-use crate::resharding_loop::sharded_tables::TableData;
+use crate::resharder::plan::ReshardingPlanContext;
+use crate::resharder::sharded_tables::ShardedTableInfo;
+use crate::resharder::sharded_tables::TableData;
 use crate::simulation::platform::Platform;
 use crate::storage::cached_key_def;
 use crate::tlog;
@@ -40,9 +40,9 @@ use tarantool::tuple::TupleBuffer;
 ///
 /// In all modes the resulting "chunk" of the data is limited in size in the
 /// following ways. The chunk's size in bytes is at most
-/// [`AlterSystemParameters::resharding_chunk_size_max`] unless it consists of a
+/// [`AlterSystemParameters::resharder_chunk_size_max`] unless it consists of a
 /// single tuple which exceeds that limit. The chunk contains data of at most
-/// [`AlterSystemParameters::resharding_bucket_count_max`] or `left_to_send`
+/// [`AlterSystemParameters::resharder_bucket_count_max`] or `left_to_send`
 /// buckets (depending on which one is smaller).
 ///
 /// The walk starts at `saved_offset` if it's provided, i.e. it continues
@@ -50,8 +50,8 @@ use tarantool::tuple::TupleBuffer;
 /// Note that the caller must make sure to call with the same `saved_offset` in
 /// case this function returned an error.
 ///
-/// [`AlterSystemParameters::resharding_chunk_size_max`]: crate::config::AlterSystemParameters::resharding_chunk_size_max
-/// [`AlterSystemParameters::resharding_bucket_count_max`]: crate::config::AlterSystemParameters::resharding_bucket_count_max
+/// [`AlterSystemParameters::resharder_chunk_size_max`]: crate::config::AlterSystemParameters::resharder_chunk_size_max
+/// [`AlterSystemParameters::resharder_bucket_count_max`]: crate::config::AlterSystemParameters::resharder_bucket_count_max
 pub fn walk_sharded_data_in_range(
     platform: &impl Platform,
     range: BucketIdRange,
@@ -65,8 +65,8 @@ pub fn walk_sharded_data_in_range(
         debug_assert_ne!(left_to_send, 0);
     }
 
-    let chunk_size_max = context.resharding_chunk_size_max as usize;
-    let bucket_count_max = context.resharding_bucket_count_max;
+    let chunk_size_max = context.resharder_chunk_size_max as usize;
+    let bucket_count_max = context.resharder_bucket_count_max;
 
     let mut bucket_id_first = *range.start();
 
@@ -469,7 +469,7 @@ fn chunking_failed(e: BoxError, mode: WalkShardedDataMode) -> Error {
 
 mod test {
     use super::*;
-    use crate::resharding_loop::test::setup_by_spec;
+    use crate::resharder::test::setup_by_spec;
     use crate::simulation::cluster::PretendCluster;
     use crate::simulation::instance::PretendInstance;
     use crate::storage::index_by_ids_unchecked;
@@ -738,8 +738,8 @@ mod test {
     ) -> Result<WalkShardedDataResult> {
         let context = ReshardingPlanContext {
             sharded_tables: &env.tables,
-            resharding_chunk_size_max: chunk_size_max,
-            resharding_bucket_count_max: bucket_count_max,
+            resharder_chunk_size_max: chunk_size_max,
+            resharder_bucket_count_max: bucket_count_max,
         };
 
         let mut res = walk_sharded_data_in_range(

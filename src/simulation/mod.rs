@@ -1,6 +1,6 @@
 //! Deterministic multi-instance simulation engine.
 //!
-//! Currently only [`crate::resharding_loop`] is supported.
+//! Currently only [`crate::resharder`] is supported.
 //!
 //! The simulation is deterministic. Scheduler picks actions (see
 //! [`action::PretendAction`]) to perform out of a set of possible actions
@@ -9,7 +9,7 @@
 //! Action are performed in [`engine::do_action`] and recorded
 //! into a [`cluster::PretendCluster::trace`] which can be tested for
 //! determinism (see test
-//! [`crate::resharding_loop::test::simulation_trace_is_deterministic`]).
+//! [`crate::resharder::test::simulation_trace_is_deterministic`]).
 //!
 //! The scheduler keeps track of multiple fibers allowing at most one to run
 //! at any moment. Every possible sequence of fiber interleavings is

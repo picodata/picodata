@@ -61,7 +61,7 @@ end
 
 local lsched = require('vshard.storage.sched')
 
--- Whether we are holding a place in vshard's move queue. resharding_loop is the
+-- Whether we are holding a place in vshard's move queue. resharder_loop is the
 -- only thing which moves buckets here and it wants at most one move at a time,
 -- so one flag says it, and it is what makes `pico._sched_move_enqueue`
 -- idempotent: the loop re-decides what to do on every iteration and asks for the

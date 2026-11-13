@@ -1,5 +1,5 @@
 use crate::instance::InstanceName;
-use crate::resharding_loop::ReshardingStatus;
+use crate::resharder::ReshardingStatus;
 #[allow(unused_imports)]
 use crate::simulation::action::PretendAction;
 use crate::simulation::cluster::PretendCluster;
@@ -274,7 +274,7 @@ pub enum FiberState {
     /// See also [`PretendCluster::run_to_next_park`].
     Running,
 
-    /// The resharding_loop fiber's resting park: either genuinely idle
+    /// The resharder_loop fiber's resting park: either genuinely idle
     /// (`requested_status` unchanged) or a "retry after backoff/error"
     /// recheck.
     WaitIdle,

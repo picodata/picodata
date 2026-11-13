@@ -1092,7 +1092,7 @@ pub mod stage {
             /// A batch of masters to send the `rpc` request to on this iteration.
             pub targets_batch: Vec<InstanceName>,
             /// Request to call `proc_resharding` on replicaset master which
-            /// will awaken the `resharding_loop` and wait until the resharding
+            /// will awaken the `resharder_loop` and wait until the resharding
             /// actions are performed on that replicaset master.
             pub rpc: rpc::sharding::ReshardingRequest,
         }

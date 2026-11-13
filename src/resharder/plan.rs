@@ -1,22 +1,22 @@
 use crate::debug_assert_action_kind;
-use crate::resharding_loop::action::ReshardingAction;
-use crate::resharding_loop::action::*;
-use crate::resharding_loop::initialize::initialize_sharded_states;
-use crate::resharding_loop::sharded_tables::ShardedTableInfo;
-use crate::resharding_loop::ReshardingLoopState;
-use crate::resharding_loop::ReshardingStatus;
-use crate::resharding_loop::RESHARDING_LOOP_LONG_SLEEP;
+use crate::resharder::action::ReshardingAction;
+use crate::resharder::action::*;
+use crate::resharder::initialize::initialize_sharded_states;
+use crate::resharder::sharded_tables::ShardedTableInfo;
+use crate::resharder::ResharderLoopState;
+use crate::resharder::ReshardingStatus;
+use crate::resharder::RESHARDER_LONG_SLEEP;
 use crate::simulation::platform::Platform;
 use crate::tlog;
 use crate::util::NoYieldsRefCell;
 use crate::Result;
 
 /// A helper struct which stores data necessary to plan a resharding action
-/// during a resharding_loop iteration.
+/// during a resharder_loop iteration.
 pub struct ReshardingPlanContext<'a> {
     pub sharded_tables: &'a [ShardedTableInfo],
-    pub resharding_chunk_size_max: u64,
-    pub resharding_bucket_count_max: u64,
+    pub resharder_chunk_size_max: u64,
+    pub resharder_bucket_count_max: u64,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,12 +25,12 @@ pub struct ReshardingPlanContext<'a> {
 
 pub fn plan_resharding_action(
     platform: &impl Platform,
-    _state: &NoYieldsRefCell<ReshardingLoopState>,
+    _state: &NoYieldsRefCell<ResharderLoopState>,
     want_status: ReshardingStatus,
 ) -> Result<ReshardingAction> {
     let _guard = tarantool::fiber::NoYieldsGuard::with_message("no yields allowed here!");
 
-    // resharding_loop is idle until governor wakes it up via RPC
+    // resharder_loop is idle until governor wakes it up via RPC
     if want_status == ReshardingStatus::Idle {
         return Ok(GoIdle {
             did_something: false,
@@ -50,10 +50,10 @@ pub fn plan_resharding_action(
             == Some(my_instance_name)
     });
 
-    // resharding_loop is only running on replicaset master
+    // resharder_loop is only running on replicaset master
     if !i_am_replicaset_master {
         return Ok(WaitUntilMaster {
-            timeout: RESHARDING_LOOP_LONG_SLEEP,
+            timeout: RESHARDER_LONG_SLEEP,
         }
         .into());
     }
