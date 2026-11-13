@@ -1457,15 +1457,23 @@ fn buckets_by_replicasets(
         }
     };
     let lua = sql_lua_state();
-    let mut map: AHashMap<String, Vec<u64>> = AHashMap::new();
     let deadline = Instant::now_fiber().saturating_add(timeout);
-    for id in iter {
-        let rs: String = bucket_into_rs(&lua, id, tier, deadline).map_err(|e| {
+    let route = |id: u64| {
+        bucket_into_rs(&lua, id, tier, deadline).map_err(|e| {
             SbroadError::DispatchError(format_smolstr!(
                 "Failed to get replicaset from bucket {id}: {e}"
             ))
-        })?;
-        map.entry(rs).or_default().push(id);
+        })
+    };
+    // One bucket, as for a single-row INSERT, needs no grouping.
+    if let Buckets::Filtered(BucketSet::Exact(list)) = buckets {
+        if let (1, Some(&id)) = (list.len(), list.iter().next()) {
+            return Ok(vec![(route(id)?, vec![id])]);
+        }
+    }
+    let mut map: AHashMap<String, Vec<u64>> = AHashMap::new();
+    for id in iter {
+        map.entry(route(id)?).or_default().push(id);
     }
     Ok(map.into_iter().collect())
 }
