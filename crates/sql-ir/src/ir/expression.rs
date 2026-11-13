@@ -7,10 +7,12 @@
 //! - distribution of the data in the tuple
 
 use ahash::RandomState;
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr};
 use std::borrow::{Borrow, Cow};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 
@@ -259,6 +261,10 @@ pub struct Comparator<'plan> {
     /// Two [`SubQueryReference`] are equal if the queries they point at are equal,
     /// and two [`Expression::Alias`] are equal if their names and children are.
     structural: bool,
+    /// The results for pairs of relational subtrees. A subtree has a path per scan of a
+    /// CTE, per reference to each column of a subquery, and per GROUP BY and HAVING of
+    /// the projection above it, so without them the comparison is exponential.
+    rel_pairs: RefCell<FxHashMap<(NodeId, NodeId), bool>>,
 }
 
 pub const EXPR_HASH_DEPTH: usize = 5;
@@ -270,6 +276,7 @@ impl<'plan> Comparator<'plan> {
             plan,
             state: None,
             structural: false,
+            rel_pairs: RefCell::default(),
         }
     }
 
@@ -279,6 +286,7 @@ impl<'plan> Comparator<'plan> {
             plan,
             state: None,
             structural: true,
+            rel_pairs: RefCell::default(),
         }
     }
 
@@ -809,7 +817,16 @@ impl<'plan> Comparator<'plan> {
         if lhs == rhs {
             return Ok(true);
         }
+        if let Some(equal) = self.rel_pairs.borrow().get(&(lhs, rhs)) {
+            return Ok(*equal);
+        }
+        let equal = self.are_rel_nodes_equal(lhs, rhs)?;
+        self.rel_pairs.borrow_mut().insert((lhs, rhs), equal);
+        Ok(equal)
+    }
 
+    /// [`Self::are_rel_subtrees_equal`] without the cache.
+    fn are_rel_nodes_equal(&self, lhs: NodeId, rhs: NodeId) -> Result<bool, SbroadError> {
         let l = self.plan.get_relation_node(lhs)?;
         let r = self.plan.get_relation_node(rhs)?;
 

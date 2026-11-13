@@ -745,3 +745,38 @@ fn reused_cte_chain_is_planned_by_shared_nodes() {
         );
     }
 }
+
+/// Matching the output to `GROUP BY` compares the two subqueries, and a subquery has a
+/// path per reference to each of its columns.
+#[test]
+fn nested_subqueries_with_several_columns_are_compared_once() {
+    let mut query = "SELECT 1, 2".to_string();
+    for _ in 0..40 {
+        query = format!("SELECT EXISTS ({query}), 2");
+    }
+    let sql = format!("SELECT EXISTS ({query}) FROM (SELECT 1) AS t GROUP BY EXISTS ({query})");
+    let _ = sql_to_optimized_ir(&sql, vec![]);
+}
+
+/// Matching the output to `GROUP BY` compares the two subqueries, and the bodies of
+/// their CTEs have a path per scan.
+#[test]
+fn reused_chains_of_different_ctes_are_compared_by_shared_nodes() {
+    let levels = 40;
+    let mut ctes = vec![];
+    for name in ["p", "q"] {
+        ctes.push(format!("{name}0 AS (SELECT a FROM t)"));
+        for level in 1..=levels {
+            let body = level - 1;
+            ctes.push(format!(
+                "{name}{level} AS (SELECT a FROM {name}{body} UNION ALL SELECT a FROM {name}{body})"
+            ));
+        }
+    }
+    let ctes = ctes.join(", ");
+    let sql = format!(
+        "WITH {ctes} SELECT a + (SELECT sum(a) FROM p{levels}) FROM t \
+         GROUP BY a + (SELECT sum(a) FROM q{levels})"
+    );
+    let _ = sql_to_optimized_ir(&sql, vec![]);
+}

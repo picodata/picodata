@@ -5314,6 +5314,22 @@ fn front_sql_check_in_statement() {
     }
 }
 
+/// The comparison of grouping expressions reaches the source of a projection
+/// through its child, its GROUP BY and its HAVING, so nested grouped derived
+/// tables in a grouping subquery took time exponential in their depth.
+#[test]
+fn nested_grouped_subqueries_are_compared_once() {
+    let mut query = String::from("SELECT a FROM t");
+    for level in 1..=30 {
+        query = format!("SELECT a FROM ({query}) AS s{level} GROUP BY a HAVING count(*) > 0");
+    }
+    let sql = format!(
+        "SELECT a + (SELECT max(a) FROM ({query}) AS q) FROM t \
+         GROUP BY a + (SELECT max(a) FROM ({query}) AS q)"
+    );
+    let _ = sql_to_optimized_ir(&sql, vec![]);
+}
+
 mod multi_queries {
     use super::*;
     use std::iter;
