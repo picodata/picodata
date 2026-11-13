@@ -223,7 +223,54 @@ nav:
           - plugins/radix/radix_settings.md
           - plugins/radix/supported_commands.md
           - plugins/radix/changelog.md
-      - plugins/s3r.md
+      - S3R:
+          - plugins/s3r/index.md
+          - Устройство:
+              - plugins/s3r/concepts/architecture.md
+              - plugins/s3r/concepts/redundancy.md
+              - plugins/s3r/concepts/disks.md
+              - plugins/s3r/concepts/storage_classes.md
+              - plugins/s3r/concepts/placement_groups.md
+              - plugins/s3r/concepts/site_replication.md
+              - plugins/s3r/concepts/tenants.md
+              - plugins/s3r/concepts/formation.md
+              - plugins/s3r/concepts/background.md
+          - Установка:
+              - plugins/s3r/install/requirements.md
+              - plugins/s3r/install/planning.md
+              - plugins/s3r/install/manual.md
+              - plugins/s3r/install/ansible.md
+              - plugins/s3r/install/troubleshooting.md
+              - plugins/s3r/install/upgrade_remove.md
+          - Работа с S3:
+              - plugins/s3r/usage/credentials.md
+              - plugins/s3r/usage/operations.md
+              - plugins/s3r/usage/objects.md
+              - plugins/s3r/usage/buckets.md
+              - plugins/s3r/usage/access.md
+              - plugins/s3r/usage/errors.md
+          - Эксплуатация:
+              - plugins/s3r/admin/monitoring.md
+              - plugins/s3r/admin/failures.md
+              - plugins/s3r/admin/disks.md
+              - plugins/s3r/admin/nodes.md
+              - plugins/s3r/admin/integrity.md
+              - plugins/s3r/admin/tenants.md
+              - plugins/s3r/admin/quotas.md
+              - plugins/s3r/admin/tls.md
+              - plugins/s3r/admin/load_balancing.md
+              - plugins/s3r/admin/console_login.md
+              - plugins/s3r/admin/console.md
+              - plugins/s3r/admin/troubleshooting.md
+          - Справочник:
+              - plugins/s3r/reference/configuration.md
+              - plugins/s3r/reference/management_api.md
+              - plugins/s3r/reference/tables.md
+              - plugins/s3r/reference/endpoints.md
+              - plugins/s3r/reference/admin_actions.md
+              - plugins/s3r/reference/errors.md
+              - plugins/s3r/reference/limits.md
+              - plugins/s3r/reference/glossary.md
       - plugins/silver.md
       - plugins/sirin.md
       - plugins/synapse.md
