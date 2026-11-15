@@ -48,9 +48,7 @@ impl<C: Router> BucketsResolver for ExecutorBucketsResolver<'_, C> {
             .coordinator
             .get_vshard_object_by_tier(tier)?
             .determine_bucket_id(values)?;
-        let bucket_set = [bucket].into_iter().collect();
-
-        Ok(Buckets::new_filtered(bucket_set))
+        Ok(Buckets::new_single(bucket))
     }
 
     fn buckets_from_bucket_id(
@@ -64,10 +62,7 @@ impl<C: Router> BucketsResolver for ExecutorBucketsResolver<'_, C> {
             .bucket_count();
 
         let buckets = match value_to_bucket_id(value) {
-            Some(id) if (1..=bucket_count).contains(&id) => {
-                let bucket_set = [id].into_iter().collect();
-                Buckets::new_filtered(bucket_set)
-            }
+            Some(id) if (1..=bucket_count).contains(&id) => Buckets::new_single(id),
             _ => Buckets::new_empty(),
         };
 

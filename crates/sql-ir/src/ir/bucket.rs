@@ -154,6 +154,15 @@ impl Buckets {
         Buckets::Filtered(BucketSet::Exact(buckets))
     }
 
+    /// Get one bucket. The set is built by an insert, as a collect from an
+    /// iterator runs more instructions for the same allocation.
+    #[must_use]
+    pub fn new_single(bucket: u64) -> Self {
+        let mut buckets = FxHashSet::with_capacity_and_hasher(1, Default::default());
+        buckets.insert(bucket);
+        Buckets::new_filtered(buckets)
+    }
+
     /// Get an unknown set of buckets.
     #[must_use]
     pub fn new_estimated(count: usize) -> Self {

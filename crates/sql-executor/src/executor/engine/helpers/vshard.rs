@@ -2,7 +2,7 @@ use super::filter_vtable;
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::Vshard;
 use crate::executor::ir::ExecutionPlan;
-use crate::ir::bucket::{BucketSet, Buckets};
+use crate::ir::bucket::Buckets;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{Motion, Node, NodeId};
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy};
@@ -244,8 +244,7 @@ pub fn disable_serialize_as_empty_for_subtree(
 
 pub fn get_random_bucket(runtime: &impl Vshard) -> Buckets {
     let bucket_id: u64 = rand::random_range(1..=runtime.bucket_count());
-    let bucket_set = [bucket_id].into_iter().collect();
-    Buckets::Filtered(BucketSet::Exact(bucket_set))
+    Buckets::new_single(bucket_id)
 }
 
 #[cfg(test)]
