@@ -1,4 +1,5 @@
 use rustc_hash::{FxHashMap, FxHashSet};
+use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::ops::Not;
 
@@ -294,8 +295,9 @@ where
             coordinator: self.coordinator,
             exec_plan: &self.exec_plan,
         };
-        // Few nodes wait for their parent at once, so the stack seldom grows.
-        let mut stack: Vec<Buckets> = Vec::with_capacity(8);
+        // Few nodes wait for their parent at once, so the stack seldom leaves
+        // the native stack.
+        let mut stack: SmallVec<[Buckets; 8]> = SmallVec::new();
 
         for (node_id, rel) in tree.relational() {
             if let Relational::ScanCte(ScanCte { child, .. }) = rel {
