@@ -6,3 +6,6 @@ license-file.workspace = true
 
 [dependencies]
 build-rs-helpers = { workspace = true }
+
+[lints]
+workspace = true

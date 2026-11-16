@@ -17,3 +17,6 @@ sql-ast-new-corpus = { path = "../sql-ast-new-corpus", features = ["mock"] }
 
 [features]
 mock = ["sql-executor/mock", "sql-ir/mock"]
+
+[lints]
+workspace = true

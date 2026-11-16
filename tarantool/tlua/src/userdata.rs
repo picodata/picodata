@@ -59,7 +59,6 @@ where
 extern "C-unwind" fn destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c_int {
     unsafe {
         let obj = ffi::lua_touserdata(lua, -1);
-        ptr::drop_in_place(obj as *mut TypeId);
         ptr::drop_in_place(obj.cast::<u8>().add(mem::size_of::<TypeId>()).cast::<T>());
         0
     }

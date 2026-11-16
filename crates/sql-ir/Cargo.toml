@@ -14,7 +14,6 @@ bitflags = { version = "2.9.1", features = ["serde"] }
 chrono = { workspace = true }
 itertools = "0.10"
 pgdatetime = { workspace = true }
-rand = { workspace = true }
 rmp = { workspace = true }
 rmp-serde = { workspace = true }
 rmpv = { workspace = true }
@@ -28,6 +27,7 @@ time = { workspace = true, features = ["macros"] }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+rand = { workspace = true }
 serde_yaml = "0.9.34"
 insta = { workspace = true, features = ["yaml"] }
 tarantool = { workspace = true, features = ["standalone_decimal", "extra_impls"] }
@@ -40,3 +40,6 @@ sql-ir = { path = ".", features = ["mock"] }
 mock = []
 # Derive what equality classes imply back onto plan
 enrich_restrictions = []
+
+[lints]
+workspace = true

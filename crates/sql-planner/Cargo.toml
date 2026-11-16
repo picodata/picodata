@@ -86,3 +86,6 @@ name = "build_ir_alloc"
 
 [[example]]
 name = "optimize_alloc"
+
+[lints]
+workspace = true

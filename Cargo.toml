@@ -72,6 +72,7 @@ rmp = { workspace = true }
 rmp-serde = { workspace = true }
 rmpv = { workspace = true, features = ["with-serde"] }
 rust_decimal = { version = "1.42", default-features = false, features = ["db-postgres"] }
+rustversion = { workspace = true }
 rustyline = "14.0"
 rustyline-derive = "0.10"
 scopeguard = "1.2"
@@ -128,7 +129,6 @@ git-version = { workspace = true }
 quote = { workspace = true }
 rustflags = { workspace = true }
 syn = { workspace = true, features = ["full", "extra-traits", "printing"] }
-serde = { workspace = true }
 serde_json = { workspace = true }
 
 build-rs-helpers = { workspace = true }
@@ -176,6 +176,7 @@ rmp-serde = "1.1"
 rmpv = "1.0"
 rustc-hash = "2.1"
 rustflags = "0.1"
+rustversion = "1.0"
 serde = "1.0"
 serde_bytes = "0.11"
 # `raw_value` lets us write a decimal into json as a number with every digit

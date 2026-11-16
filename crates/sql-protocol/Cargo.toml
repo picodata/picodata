@@ -9,3 +9,6 @@ license-file.workspace = true
 rmp = { workspace = true }
 rmp-serde.workspace = true
 thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -257,7 +257,10 @@ def test_unsigned(postgres: Postgres):
     # it will fail, because sql can't handle values that are bigger than i64::MAX anymore.
     with pytest.raises(
         psycopg.InternalError,
-        match="failed decoding i64: out of range integral type conversion attempted",
+        match=(
+            "failed decoding i64: "
+            "(?:out of range integral type conversion attempted|number too large to fit in target type)"
+        ),
     ):
         conn.execute(""" INSERT INTO T select %t::int; """, (u64_above_max,))
 

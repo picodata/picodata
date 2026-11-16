@@ -44,8 +44,19 @@ pub fn get_out_dir() -> PathBuf {
 ///
 /// Its usual path is `<target directory>/<cargo profile>/build`
 pub fn build_root_from_out_dir(out_dir: impl Into<PathBuf>) -> PathBuf {
+    // Cargo 1.100 changed `build/<package>-<hash>/out` to `build/<package>/<hash>/out`.
+    let build_root_depth = if rustversion::cfg!(since(1.100)) {
+        3
+    } else {
+        2
+    };
+
     let out_dir = out_dir.into();
-    out_dir.ancestors().nth(2).unwrap().to_path_buf()
+    out_dir
+        .ancestors()
+        .nth(build_root_depth)
+        .unwrap()
+        .to_path_buf()
 }
 
 /// Path to a directory containing all build artifacts
@@ -59,10 +70,9 @@ pub fn get_build_root() -> PathBuf {
 
 /// Infer target build profile name from `$OUT_DIR` (e.g. `debug`, `release`, `asan`).
 pub fn get_build_profile() -> String {
-    // The profile name is always the 3rd last part of the path (with 1 based indexing).
-    let out_dir = get_out_dir();
-    let ancestor_dir = out_dir.ancestors().nth(3).unwrap();
-    ancestor_dir
+    get_build_root()
+        .parent()
+        .expect("missing profile directory")
         .file_name()
         .expect("missing file name")
         .to_str()
@@ -87,3 +97,27 @@ macro_rules! __cargo_warning {
 /// Instruct cargo to display a warning after the build script has finished running.
 #[doc(inline)]
 pub use __cargo_warning as warning;
+
+#[cfg(test)]
+mod tests {
+    use super::build_root_from_out_dir;
+    use std::path::Path;
+
+    #[test]
+    fn build_root_for_cargo_output_layout() {
+        for root in [
+            "target/debug/build",
+            "/tmp/build/target/release/build",
+            "/tmp/target/aarch64-unknown-linux-gnu/asan/build",
+        ] {
+            let output = if rustversion::cfg!(since(1.100)) {
+                "picodata/0123456789abcdef/out"
+            } else {
+                "picodata-0123456789abcdef/out"
+            };
+
+            let root = Path::new(root);
+            assert_eq!(build_root_from_out_dir(root.join(output)), root);
+        }
+    }
+}

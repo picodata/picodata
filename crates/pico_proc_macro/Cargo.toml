@@ -13,3 +13,6 @@ proc-macro = true
 proc-macro2.workspace = true
 quote.workspace = true
 syn = { version = "1.0", features = ["full", "extra-traits"] }
+
+[lints]
+workspace = true

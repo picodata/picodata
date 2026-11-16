@@ -9,3 +9,6 @@ edition.workspace = true
 [dependencies]
 pest = "2.0"
 pest_derive = "2.0"
+
+[lints]
+workspace = true

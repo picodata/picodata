@@ -17,3 +17,6 @@ sql-type-system = { path = "../sql-type-system" }
 
 [dev-dependencies]
 insta = { workspace = true, features = ["yaml"] }
+
+[lints]
+workspace = true

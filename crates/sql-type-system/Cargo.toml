@@ -6,7 +6,6 @@ license-file.workspace = true
 
 [dependencies]
 rustc-hash = { workspace = true }
-smallvec = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
@@ -16,3 +15,6 @@ criterion = { workspace = true }
 name = "benchmark"
 harness = false
 test = false
+
+[lints]
+workspace = true

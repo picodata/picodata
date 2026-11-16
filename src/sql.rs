@@ -3247,7 +3247,7 @@ fn do_dml_on_global_tbl(
     // sometimes help. It should do any harm anyways
     backoff.randomize = true;
     // Golden ratio, because multiplying by 2 makes it grow too fast for this case
-    backoff.multiplier_coefficient = 1.6180339887;
+    backoff.multiplier_coefficient = std::f64::consts::GOLDEN_RATIO;
     loop {
         let res = do_dml_on_global_tbl_no_retry(&mut query, override_deadline, governor_op_id);
         let res = match res {

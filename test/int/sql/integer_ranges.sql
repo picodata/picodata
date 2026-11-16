@@ -41,13 +41,13 @@ invalid query: value doesn\'t fit into integer range
 -- SQL:
 INSERT INTO integer_table SELECT 3, 9223372036854775807 * 2;
 -- ERROR:
-failed decoding i64: out of range integral type conversion attempted
+failed decoding i64: (?:out of range integral type conversion attempted|number too large to fit in target type)
 
 -- TEST: test_insert_value_above_max_value_into_unsigned_table#2
 -- SQL:
 INSERT INTO unsigned_table SELECT 3, 9223372036854775807 * 2;
 -- ERROR:
-failed decoding i64: out of range integral type conversion attempted
+failed decoding i64: (?:out of range integral type conversion attempted|number too large to fit in target type)
 
 -- TEST: test_insert_value_above_max_value_into_int_table#3
 -- SQL:
@@ -65,13 +65,13 @@ invalid query: value doesn\'t fit into integer range
 -- SQL:
 INSERT INTO integer_table SELECT 3, '9223372036854775808'::int;
 -- ERROR:
-failed decoding i64: out of range integral type conversion attempted
+failed decoding i64: (?:out of range integral type conversion attempted|number too large to fit in target type)
 
 -- TEST: test_insert_value_above_max_value_into_unsigned_table#4
 -- SQL:
 INSERT INTO unsigned_table SELECT 3, '9223372036854775808'::int;
 -- ERROR:
-failed decoding i64: out of range integral type conversion attempted
+failed decoding i64: (?:out of range integral type conversion attempted|number too large to fit in target type)
 
 
 -- TEST: test_insert_value_above_max_value_into_int_table_via_values
@@ -90,13 +90,13 @@ invalid query: value doesn\'t fit into integer range
 -- SQL:
 INSERT INTO integer_table VALUES(3, 9223372036854775807 * 2);
 -- ERROR:
-failed decoding i64: out of range integral type conversion attempted
+failed decoding i64: (?:out of range integral type conversion attempted|number too large to fit in target type)
 
 -- TEST: test_insert_value_above_max_value_into_unsigned_table_via_values#2
 -- SQL:
 INSERT INTO unsigned_table VALUES(3, 9223372036854775807 * 2);
 -- ERROR:
-failed decoding i64: out of range integral type conversion attempted
+failed decoding i64: (?:out of range integral type conversion attempted|number too large to fit in target type)
 
 -- TEST: test_insert_value_above_max_value_into_int_table_via_values#3
 -- SQL:
@@ -114,13 +114,13 @@ invalid query: value doesn\'t fit into integer range
 -- SQL:
 INSERT INTO integer_table VALUES(3, '9223372036854775808'::int);
 -- ERROR:
-failed decoding i64: out of range integral type conversion attempted
+failed decoding i64: (?:out of range integral type conversion attempted|number too large to fit in target type)
 
 -- TEST: test_insert_value_above_max_value_into_unsigned_table_via_values#4
 -- SQL:
 INSERT INTO unsigned_table VALUES(3, '9223372036854775808'::int);
 -- ERROR:
-failed decoding i64: out of range integral type conversion attempted
+failed decoding i64: (?:out of range integral type conversion attempted|number too large to fit in target type)
 
 
 -- TEST: test_insertions_of_large_values_into_int_table_was_not_successfull

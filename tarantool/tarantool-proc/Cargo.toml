@@ -21,3 +21,6 @@ proc-macro-error3 = { version = "3", default-features = false }
 
 [features]
 stored_procs_slice = []
+
+[lints]
+workspace = true

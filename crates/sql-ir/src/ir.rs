@@ -48,8 +48,6 @@ use crate::ir::value::Value;
 
 use self::node::{Bound, BoundType, Like, Over, Window};
 
-// TODO: remove when rust version in bumped in module
-#[allow(elided_lifetimes_in_associated_constant)]
 pub mod acl;
 pub mod aggregates;
 pub mod aliases;

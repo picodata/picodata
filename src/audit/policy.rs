@@ -50,10 +50,7 @@ pub fn is_dml_audit_enabled_for_user(plan: &ir::Plan) -> Result<bool, SbroadErro
     with_su(schema::ADMIN_ID, || -> traft::Result<bool> {
         let node = traft::node::global()?;
         let space = &node.storage.users_audit_policies.space;
-        if space.get(&(current_user, DmlDefaultPolicy::ID))?.is_none() {
-            return Ok(false);
-        }
-        Ok(true)
+        Ok(space.get(&(current_user, DmlDefaultPolicy::ID))?.is_some())
     })?
     .map_err(|e| SbroadError::Other(e.to_smolstr()))
 }

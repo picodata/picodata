@@ -31,3 +31,6 @@ extra_impls = ["smol_str"]
 # doesn't have these symbols, so `LuaVarbinary` falls back to round-tripping
 # as a plain Lua string when this feature is disabled.
 picodata = []
+
+[lints]
+workspace = true

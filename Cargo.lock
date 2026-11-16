@@ -407,6 +407,7 @@ dependencies = [
  "jobserver",
  "pkg-config",
  "rustflags",
+ "rustversion",
 ]
 
 [[package]]
@@ -2745,6 +2746,7 @@ dependencies = [
  "rmpv",
  "rust_decimal",
  "rustflags",
+ "rustversion",
  "rustyline",
  "rustyline-derive",
  "scopeguard",
@@ -3935,7 +3937,6 @@ dependencies = [
  "bincode",
  "bitflags 2.11.1",
  "blake3",
- "comfy-table",
  "hash32",
  "insta",
  "itertools 0.10.5",
@@ -3955,7 +3956,6 @@ dependencies = [
  "sql-frontend",
  "sql-ir",
  "sql-protocol",
- "sqlformat",
  "tarantool",
  "thiserror 2.0.18",
  "twox-hash",
@@ -4075,7 +4075,6 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "rustc-hash 2.1.2",
- "smallvec",
  "thiserror 2.0.18",
 ]
 

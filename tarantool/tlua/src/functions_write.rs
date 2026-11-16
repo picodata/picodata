@@ -59,7 +59,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 ///
 /// In order to build an instance of this struct, you need to use one of the `functionN` functions.
 /// There is one function for each possible number of parameter. For example if you have a function
-/// with two parameters, you must use [`function2`](fn.function2.html).
+/// with two parameters, you must use [`function2`].
 /// Example:
 ///
 /// ```no_run

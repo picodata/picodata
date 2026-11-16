@@ -12,7 +12,6 @@ base64ct = { version = "1.5", features = ["alloc"] }
 bincode = "1.3"
 bitflags = { workspace = true }
 blake3 = "1.3"
-comfy-table = { workspace = true }
 hash32 = "0.2"
 itertools = "0.10"
 lru = "0.18.2"
@@ -27,7 +26,6 @@ smol_str = { workspace = true }
 sql-frontend = { path = "../sql-frontend", optional = true }
 sql-ir = { path = "../sql-ir" }
 sql-protocol = { workspace = true }
-sqlformat = { workspace = true }
 tarantool = { workspace = true, features = ["extra_impls"] }
 thiserror = { workspace = true }
 twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_64", "std"] }
@@ -51,3 +49,6 @@ sql-explain = { path = "../sql-explain", features = ["mock"] }
 mock = ["sql-ir/mock", "dep:sql-frontend", "sql-frontend?/mock"]
 # Derive predicates from equality facts for bucket pruning.
 enrich_restrictions = ["sql-ir/enrich_restrictions"]
+
+[lints]
+workspace = true

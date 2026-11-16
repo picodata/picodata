@@ -85,3 +85,6 @@ extra_impls = ["tlua/extra_impls", "smol_str"]
 [dev-dependencies]
 time-macros = "0.2.6"
 pretty_assertions = "1.4"
+
+[lints]
+workspace = true

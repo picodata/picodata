@@ -28,3 +28,6 @@ crate-type = ["lib", "cdylib"]
 # purpose is to be a comprehensive test suite for the plugin system;
 # But the tests are run via `Service::on_start` and other methods.
 test = false
+
+[lints]
+workspace = true

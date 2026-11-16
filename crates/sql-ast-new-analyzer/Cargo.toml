@@ -31,3 +31,6 @@ sql-frontend = { path = "../sql-frontend" }
 # `MockCatalog` — the catalog builder the corpus crate registers its own schema
 # on — is the `Metadata` implementation the snapshots are written against.
 sql-ast-new-corpus = { path = "../sql-ast-new-corpus", features = ["mock"] }
+
+[lints]
+workspace = true

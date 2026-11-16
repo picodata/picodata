@@ -8,3 +8,7 @@ license-file.workspace = true
 jobserver = "0.1.26"
 pkg-config = "0.3"
 rustflags = { workspace = true }
+rustversion = { workspace = true }
+
+[lints]
+workspace = true

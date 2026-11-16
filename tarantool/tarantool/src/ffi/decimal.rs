@@ -19,8 +19,8 @@ impl Hash for decNumber {
         self.digits.hash(state);
         self.exponent.hash(state);
         self.bits.hash(state);
-        for i in 0..self.digits as usize / DECDPUN {
-            self.lsu[i].hash(state);
+        for unit in &self.lsu[..self.digits as usize / DECDPUN] {
+            unit.hash(state);
         }
     }
 }

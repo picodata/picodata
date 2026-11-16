@@ -16,3 +16,6 @@ sql-ir = { path = "../sql-ir" }
 
 [dev-dependencies]
 insta = { workspace = true, features = ["yaml"] }
+
+[lints]
+workspace = true

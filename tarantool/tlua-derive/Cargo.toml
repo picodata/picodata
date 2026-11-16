@@ -16,3 +16,6 @@ proc-macro = true
 syn = { version = "1.0.98", features = ["full", "visit"] }
 quote = "^1.0"
 proc-macro2 = "1"
+
+[lints]
+workspace = true
