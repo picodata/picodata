@@ -324,3 +324,44 @@ INSERT INTO nan_t VALUES ($1, $2);
 nan, 1
 -- ERROR:
 expected double, got nil
+
+-- TEST: insert-values-reuse-cached-plan
+-- SQL:
+DROP TABLE IF EXISTS reuse_t;
+CREATE TABLE reuse_t (id INT PRIMARY KEY, v INT);
+
+-- TEST: insert-values-reuse-cached-plan-1
+-- SQL:
+INSERT INTO reuse_t VALUES ($1, $2), ($3, $4);
+-- PARAMS:
+1, 10, 2, 20
+
+-- TEST: insert-values-reuse-cached-plan-2
+-- SQL:
+INSERT INTO reuse_t VALUES ($1, $2), ($3, $4);
+-- PARAMS:
+3, 30, 4, 40
+
+-- TEST: insert-values-reuse-cached-plan-3
+-- SQL:
+SELECT * FROM reuse_t;
+-- UNORDERED:
+1, 10, 2, 20, 3, 30, 4, 40
+
+-- TEST: insert-values-subquery-reuse-cached-plan-1
+-- SQL:
+INSERT INTO reuse_t VALUES ($1, (SELECT max(v) FROM reuse_t));
+-- PARAMS:
+5
+
+-- TEST: insert-values-subquery-reuse-cached-plan-2
+-- SQL:
+INSERT INTO reuse_t VALUES ($1, (SELECT max(v) FROM reuse_t));
+-- PARAMS:
+6
+
+-- TEST: insert-values-subquery-reuse-cached-plan-3
+-- SQL:
+SELECT * FROM reuse_t WHERE id > 4;
+-- UNORDERED:
+5, 40, 6, 40

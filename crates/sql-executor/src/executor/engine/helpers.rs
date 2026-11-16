@@ -1561,7 +1561,13 @@ pub fn materialize_values(
     let unified_types = calculate_unified_types(vtable_types)?;
     vtable.cast_values(&unified_types)?;
 
-    let _ = exec_plan.get_mut_ir_plan().replace_with_stub(values_id);
+    // The caller unlinks the motion above VALUES, which hides this subtree from
+    // execution, but the raw serialize-as-empty traversals still walk into it.
+    // Only subqueries put motions there, and rows of constants have none: they
+    // skip the stub, which would copy the whole shared arena.
+    if !only_constants {
+        let _ = exec_plan.get_mut_ir_plan().replace_with_stub(values_id);
+    }
 
     Ok(vtable)
 }
