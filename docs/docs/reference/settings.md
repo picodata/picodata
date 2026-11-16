@@ -175,6 +175,18 @@ table.sortable tbody tr:nth-child(2n+1) td {
   overflow-x: auto;
 }
 
+/* Looks like h3, but is not a heading: the search index is cut into sections by
+   headings, and a heading here would take the settings table into the legend's
+   section, which is excluded from search. */
+.md-typeset p.legend-title {
+    font-family: Montserrat, sans-serif;
+    font-size: 1.25em;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.5;
+    margin: 0.8em 0;
+}
+
 table.legend {
     border-collapse:separate;
     border:solid #9e9e9e 1px;
@@ -186,9 +198,9 @@ table.legend {
 
 ## Настройки запуска Picodata {: #picodata_start_settings }
 
-### Легенда {: #legend_picodata data-search-exclude }
+<p class="legend-title" id="legend_picodata" data-search-exclude>Легенда</p>
 
-<table class="legend"><tr><td>
+<table class="legend" data-search-exclude><tr><td>
     <span class="instance legend-id">audit</span><span class="legend-dash">—</span>настройка применима к отдельному инстансу<br>
     <span class="cluster legend-id">cluster-name</span><span class="legend-dash">—</span>настройка применима ко всему кластеру<br>
 </td></tr></table>
@@ -734,9 +746,9 @@ table.legend {
 
 ## Настройки СУБД {: #sql_settings }
 
-### Легенда {: #legend_db data-search-exclude }
+<p class="legend-title" id="legend_db" data-search-exclude>Легенда</p>
 
-<table class="legend"><tr><td>
+<table class="legend" data-search-exclude><tr><td>
     <span class="sql-cluster legend-id">pg_portal_max</span><span class="legend-dash">—</span>настройка применима к кластеру<br>
     <span class="sql-tier legend-id">iproto_net_msg_max</span><span class="legend-dash">—</span>настройка применима к отдельному тиру<br>
 </td></tr></table>
