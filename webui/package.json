@@ -36,7 +36,7 @@
     "@mui/material": "^7.3.7",
     "@mui/system": "^7.3.8",
     "@picodata/ui-kit": "workspace:*",
-    "axios": "^1.15.0",
+    "axios": "^1.20.0",
     "classnames": "^2.3.2",
     "normalize.css": "^8.0.1",
     "notistack": "^3.0.2",
