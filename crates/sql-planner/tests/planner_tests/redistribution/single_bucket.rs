@@ -1597,3 +1597,30 @@ fn cte_over_union_used_twice_shares_one_motion() {
               scan t3_2
     ");
 }
+
+/// `bool_sharded` is sharded by `b`. `b IS TRUE` / `b IS FALSE` pin the key
+/// as `b = true` / `b = false` do: the aggregate needs no motion, as on the
+/// tree walk of master. `IS NOT TRUE` lets NULL through and keeps it.
+#[test]
+fn is_true_and_is_false_on_the_key_stay_single_node() {
+    for query in [
+        "SELECT count(*) FROM bool_sharded WHERE b IS TRUE",
+        "SELECT count(*) FROM bool_sharded WHERE b IS FALSE AND payload = 1",
+        // The shape SQLancer found: an ORDER BY over a LEFT JOIN on the key.
+        "SELECT r.a, l.b FROM bool_sharded l LEFT JOIN t5 r ON l.b WHERE l.b IS FALSE ORDER BY 2",
+    ] {
+        let explain = explain(query);
+        assert_eq!(
+            explain.matches("motion").count(),
+            usize::from(query.contains("JOIN")),
+            "{query}\n{explain}"
+        );
+    }
+    for query in [
+        "SELECT count(*) FROM bool_sharded WHERE b IS NOT TRUE",
+        "SELECT count(*) FROM bool_sharded WHERE b IS TRUE OR payload = 1",
+    ] {
+        let explain = explain(query);
+        assert!(explain.contains("motion"), "{query}\n{explain}");
+    }
+}

@@ -2517,6 +2517,46 @@ fn self_comparisons_are_never_replaced() {
 }
 
 #[test]
+fn an_equality_under_is_true_is_replaced_whole() {
+    // As a conjunct `x IS TRUE` is `x`: the source is the whole conjunct, so
+    // the complete class {a, b, 1} replaces `(a = b) IS TRUE` with its wrapper.
+    let plan = run_enrich(
+        r#"SELECT "a" FROM "t" WHERE ("a" = "b") IS TRUE AND (("b" = 1) IS TRUE) IS TRUE"#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection ((t.a::int = 1::int and t.b::int = 1::int))
+        scan t
+    ");
+
+    // An AND under IS TRUE pins the class too, but only the whole conjunct is
+    // in the tree: its inner equalities are no sources, so it stays beside the
+    // derived clauses.
+    let plan = run_enrich(
+        r#"SELECT "a" FROM "t" WHERE ("a" = "b" AND "b" = 1) IS TRUE"#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection (((t.a::int = t.b::int and t.b::int = 1::int) is true and t.a::int = 1::int and t.b::int = 1::int))
+        scan t
+    ");
+
+    // `a = a` under IS TRUE is still a self-comparison and stays; `IS FALSE`
+    // is not the comparison and is never a source.
+    let plan = run_enrich(
+        r#"SELECT "a" FROM "t" WHERE ("a" = "a") IS TRUE AND ("a" = "c") IS FALSE AND "a" = 1"#,
+        &[],
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t.a::int -> a)
+      selection ((t.a::int = t.a::int is true and t.a::int = t.c::int is false and t.a::int = 1::int))
+        scan t
+    ");
+}
+
+#[test]
 fn a_parameter_only_class_keeps_its_constraint() {
     // `$1 = $2 AND $2 = $3` has no column: the sources give way to the checks
     // against the pin, which still require all three to be equal.

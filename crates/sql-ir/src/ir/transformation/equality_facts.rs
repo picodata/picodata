@@ -139,7 +139,7 @@ use crate::ir::operator::{Bool, JoinKind, Unary};
 use crate::ir::transformation::equality_facts::DeriveOutcome::Facts;
 use crate::ir::transformation::restriction::Restrictions;
 use crate::ir::transformation::PlanningState;
-use crate::ir::types::DerivedType;
+use crate::ir::types::{DerivedType, UnrestrictedType};
 use crate::ir::value::{Trivalent, Value};
 use crate::ir::Plan;
 use ahash::{AHashMap, AHashSet, RandomState};
@@ -2042,6 +2042,23 @@ impl<'p> EqualityAnalysis<'p> {
         }
     }
 
+    /// As a conjunct, `x IS TRUE` holds exactly when `x` does: strip such
+    /// wrappers, as the bucket discovery walk does. `b IS TRUE` over a column
+    /// is kept: `derive_conjuncts` pins `b` by it.
+    fn peel_is_true(&self, mut id: NodeId) -> Result<NodeId, SbroadError> {
+        while let Expression::Unary(UnaryExpr {
+            op: Unary::IsTrue,
+            child,
+        }) = self.plan.get_expression_node(id)?
+        {
+            if self.plan.get_expression_node(*child)?.is_ref() {
+                break;
+            }
+            id = *child;
+        }
+        Ok(id)
+    }
+
     /// Processes one maximal `AND`-region: a flat list of conjuncts, each of which
     /// may itself be an `OR`. This is the old `collect_chain_facts`, generalized
     /// so an `OR` conjunct contributes the intersection of its arms' facts.
@@ -2062,8 +2079,9 @@ impl<'p> EqualityAnalysis<'p> {
         // `NULL = <anything>` is UNKNOWN — never TRUE. Splitting the scans lets
         // `IS NULL` and `=` appear in any order.
         let mut null_slots: NullSlots = nulls_in.iter().cloned().collect();
-        for node_id in conjuncts {
-            let child = match self.plan.get_expression_node(*node_id)? {
+        for &conjunct in conjuncts {
+            let node_id = self.peel_is_true(conjunct)?;
+            let child = match self.plan.get_expression_node(node_id)? {
                 Expression::Unary(UnaryExpr {
                     op: Unary::IsNull,
                     child,
@@ -2095,7 +2113,10 @@ impl<'p> EqualityAnalysis<'p> {
 
         let capacity = conjuncts.len().saturating_mul(2);
         let mut local = LocalFacts::with_capacity(capacity);
-        for node_id in conjuncts {
+        for &conjunct in conjuncts {
+            // The conjunct itself (`x IS TRUE` included) is the source: as a
+            // conjunct it is equivalent to `x`.
+            let node_id = &self.peel_is_true(conjunct)?;
             match self.plan.get_expression_node(*node_id)? {
                 Expression::Bool(BoolExpr {
                     op: Bool::Eq,
@@ -2148,16 +2169,21 @@ impl<'p> EqualityAnalysis<'p> {
                             // does not preserve that check: keep these sources.
                             let left_atom = self.builder.intern_atom(left_term.atom.clone());
                             if left_atom != self.builder.intern_atom(right_term.atom.clone()) {
-                                sources.push((*node_id, left_atom));
+                                sources.push((conjunct, left_atom));
                             }
                         }
                         local.union(left_term.atom, right_term.atom);
                     }
                 }
-                // A nested OR conjunct: derive its facts (with the region's NULLs
-                // in scope) and fold them back into the region's union-find. A
-                // dead OR makes the whole region unsatisfiable.
-                Expression::Bool(BoolExpr { op: Bool::Or, .. }) => {
+                // A nested OR conjunct, or an AND one unwrapped from `IS TRUE`:
+                // derive its facts (with the region's NULLs in scope) and fold
+                // them back into the region's union-find. A dead one makes the
+                // whole region unsatisfiable. Its own equalities are no sources:
+                // the tree holds only the whole conjunct.
+                Expression::Bool(BoolExpr {
+                    op: Bool::Or | Bool::And,
+                    ..
+                }) => {
                     let Facts(partition) = self.derive(*node_id, &null_slots, domain)? else {
                         return Ok(DeriveOutcome::Dead);
                     };
@@ -2166,6 +2192,34 @@ impl<'p> EqualityAnalysis<'p> {
                     for group in partition {
                         local.union_atoms(group);
                     }
+                }
+                // As a conjunct, `b IS TRUE` holds exactly when `b = true` does
+                // (both reject NULL), and `b IS FALSE` when `b = false`. Not a
+                // source: enrichment never replaces it.
+                Expression::Unary(UnaryExpr {
+                    op: op @ (Unary::IsTrue | Unary::IsFalse),
+                    child,
+                }) => {
+                    let Some(term) = self.extract_scalar_equality_term(*child, domain)? else {
+                        continue;
+                    };
+                    let FactAtom::Slot(slot) = &term.atom else {
+                        continue;
+                    };
+                    if term.ty != DerivedType::new(UnrestrictedType::Boolean) {
+                        continue;
+                    }
+                    if null_slots.contains(slot) {
+                        return Ok(DeriveOutcome::Dead);
+                    }
+                    let value = Value::Boolean(*op == Unary::IsTrue);
+                    local.union(
+                        term.atom,
+                        FactAtom::Const {
+                            domain_id: domain,
+                            value,
+                        },
+                    );
                 }
                 _ => {}
             }

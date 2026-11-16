@@ -1531,3 +1531,121 @@ fn or_slotless_const_param_gate_via_uf() {
         "OR of two arms each pinning $1 = 1 must yield the gate $1 = 1, got {gates:?}"
     );
 }
+
+/// The class of each of the two output columns of the top: `t5.a` is an
+/// integer, `dec_t.a` a decimal and `dec_t.c` a double, compared with literals.
+fn top_classes(
+    query: &str,
+) -> (
+    Plan,
+    EqualityFacts,
+    Vec<sql::ir::transformation::equality_facts::ClassId>,
+) {
+    let (plan, facts) = optimized_to_equality_facts(query, vec![]);
+    let top = plan.get_top().unwrap();
+    let classes = (0..2)
+        .map(|pos| facts.class_of_slot(top, pos).unwrap())
+        .collect();
+    (plan, facts, classes)
+}
+
+fn pin_of(
+    facts: &EqualityFacts,
+    class: sql::ir::transformation::equality_facts::ClassId,
+) -> Option<Value> {
+    facts.classes[class.index()].constant.clone()
+}
+
+/// As a conjunct `b IS TRUE` is `b = true` and `b IS FALSE` is `b = false`:
+/// both pin the column. `IS NOT TRUE` lets NULL through and pins nothing.
+#[test]
+fn is_true_and_is_false_pin_a_boolean_column() {
+    for (query, pin) in [
+        (
+            "SELECT b, payload FROM bool_sharded WHERE b IS TRUE",
+            Some(Value::Boolean(true)),
+        ),
+        (
+            "SELECT b, payload FROM bool_sharded WHERE b IS FALSE AND payload = 1",
+            Some(Value::Boolean(false)),
+        ),
+        (
+            "SELECT b, payload FROM bool_sharded WHERE b IS NOT TRUE",
+            None,
+        ),
+        (
+            "SELECT b, payload FROM bool_sharded WHERE b IS NOT FALSE",
+            None,
+        ),
+        // OR arms with different values leave no common pin.
+        (
+            "SELECT b, payload FROM bool_sharded WHERE b IS TRUE OR b IS FALSE",
+            None,
+        ),
+    ] {
+        let (_, facts, c) = top_classes(query);
+        assert_eq!(pin_of(&facts, c[0]), pin, "{query}");
+    }
+}
+
+/// `b IS TRUE` under `b IS FALSE` (or `b = false`) keeps no row: the class
+/// merges two different constants and is contradictory.
+#[test]
+fn is_true_under_is_false_is_a_contradiction() {
+    for query in [
+        "SELECT b FROM (SELECT b, payload FROM bool_sharded WHERE b IS TRUE) WHERE b IS FALSE",
+        "SELECT b FROM (SELECT b, payload FROM bool_sharded WHERE b IS TRUE) WHERE b = false",
+    ] {
+        let (plan, facts) = optimized_to_equality_facts(query, vec![]);
+        let top = plan.get_top().unwrap();
+        assert!(facts.is_contradictory(Slot::new(top, 0)), "{query}");
+    }
+}
+
+/// In one conjunction `b IS TRUE AND b IS FALSE` and `b IS NULL AND b IS TRUE`
+/// are unsatisfiable: the region is dead and yields no facts, so no pin.
+#[test]
+fn is_true_with_is_false_or_is_null_kills_the_region() {
+    for query in [
+        "SELECT b, payload FROM bool_sharded WHERE b IS TRUE AND b IS FALSE",
+        "SELECT b, payload FROM bool_sharded WHERE b IS NULL AND b IS TRUE",
+    ] {
+        let (_, facts, c) = top_classes(query);
+        assert_eq!(pin_of(&facts, c[0]), None, "{query}");
+    }
+}
+
+/// As a conjunct `x IS TRUE` is `x`: the pin under it holds. `x IS FALSE`
+/// over a comparison is its negation and pins nothing.
+#[test]
+fn is_true_over_a_comparison_keeps_its_pin() {
+    for (query, pin) in [
+        (
+            "SELECT b, payload FROM bool_sharded WHERE (b = false) IS TRUE",
+            Some(Value::Boolean(false)),
+        ),
+        (
+            "SELECT b, payload FROM bool_sharded WHERE b IS TRUE IS TRUE",
+            Some(Value::Boolean(true)),
+        ),
+        (
+            "SELECT b, payload FROM bool_sharded WHERE (b = true OR b = true) IS TRUE",
+            Some(Value::Boolean(true)),
+        ),
+        (
+            "SELECT b, payload FROM bool_sharded WHERE (b = false AND payload = 1) IS TRUE",
+            Some(Value::Boolean(false)),
+        ),
+        (
+            "SELECT b, payload FROM bool_sharded WHERE (b = false AND b = true) IS TRUE",
+            None,
+        ),
+        (
+            "SELECT b, payload FROM bool_sharded WHERE (b = false) IS FALSE",
+            None,
+        ),
+    ] {
+        let (_, facts, c) = top_classes(query);
+        assert_eq!(pin_of(&facts, c[0]), pin, "{query}");
+    }
+}
