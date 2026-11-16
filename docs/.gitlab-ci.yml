@@ -102,6 +102,9 @@ pack-doc:
     - |
       if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
         SITE_URL="https://docs.picodata.io/picodata/$PICODATA_DOC_VER"
+        # Поиск для docs.picodata.io — свой экземпляр Typesense. Остальные сборки — на
+        # тестовом из mkdocs.yml.
+        DOCS_SEARCH_URL="https://search.picodata.io"
       else
         SITE_URL="https://docs.binary.picodata.io/picodata/$PICODATA_DOC_VER"
       fi
@@ -111,6 +114,10 @@ pack-doc:
     - echo "Pack picodata doc..."
     - echo "PICODATA_DOC_VER=$PICODATA_DOC_VER" | tee .env
     - echo "SITE_URL=$SITE_URL" | tee -a .env
+    - |
+      if [ -n "$DOCS_SEARCH_URL" ]; then
+        echo "DOCS_SEARCH_URL=$DOCS_SEARCH_URL" | tee -a .env
+      fi
     - DATE=$(date +%Y%m%d%H%M%S)
     - FNAME="picodata-doc-${DATE}-${PICODATA_DOC_VER}-${CI_COMMIT_SHA}.tgz"
     - echo "FNAME=$FNAME" | tee -a .env

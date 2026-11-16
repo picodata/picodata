@@ -31,6 +31,28 @@
   </noscript>
 {% endblock %}
 
+{#
+  Поиск через Typesense: встроенный воркер Material подменяется своим (search-typesense.js),
+  который при недоступности Typesense сам переключается на встроенный lunr. Подмена — заменой
+  пути в готовом __config: если после обновления Material имя встроенного воркера сменится,
+  замена не сработает, и сайт останется на обычном поиске (hooks/search_typesense.py тогда не
+  урезает индекс). Без версии (mkdocs serve) Typesense не используется.
+#}
+{% block config %}
+  {%- set ts = config.extra.search_typesense -%}
+  {%- set lunr_worker = "search.f8cc74c7.min.js" -%}
+  {%- if ts and ts.url and config.env.PICODATA_DOC_VER -%}
+    {%- set worker = "assets/javascripts/workers/search-typesense.js"
+        ~ "?ts=" ~ (ts.url | urlencode)
+        ~ "&v=" ~ (config.env.PICODATA_DOC_VER | urlencode)
+        ~ "&lunr=" ~ lunr_worker
+        ~ "&index=../../../search/search_index.full.json" -%}
+    {{ super() | replace("assets/javascripts/workers/" ~ lunr_worker, worker) }}
+  {%- else -%}
+    {{ super() }}
+  {%- endif -%}
+{% endblock %}
+
 {% block header %}
   {% include "partials/header.html" %}
 {% endblock %}

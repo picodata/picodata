@@ -338,6 +338,11 @@ theme:
 ## Список селектора `md-version__list` формируется из файла `versions.json`
 ## https://github.com/squidfunk/mkdocs-material/blob/9.4.8/src/templates/assets/javascripts/bundle.ts#L156
 extra:
+  # Поиск через Typesense (overrides/main.html, assets/javascripts/workers/search-typesense.js).
+  # Ключа Typesense здесь нет: его подставляет прокси перед Typesense. С пустым
+  # DOCS_SEARCH_URL сайт собирается со встроенным поиском.
+  search_typesense:
+    url: !ENV [DOCS_SEARCH_URL, "https://search.binary.picodata.io"]
   analytics:
     provider: google
     property: G-K8YQK9PS0M
@@ -481,3 +486,4 @@ hooks:
   - ./hooks/validate_system_tables.py
   - ./hooks/inline_svg.py
   - ./hooks/export_to_pdf.py
+  - ./hooks/search_typesense.py
