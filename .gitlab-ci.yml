@@ -346,6 +346,13 @@ clone:
   uv sync --locked
   ci-log-section end "uv-sync"
 
+# Downloads only the versions missing from .rolling_binaries/.
+.install-rolling-binaries: &install-rolling-binaries |
+  ci-log-section start "install-rolling-binaries" Installing Picodata binaries needed for rolling upgrade tests ...
+  make collect-required-rolling-versions
+  uv run python tools/install_rolling_binaries.py
+  ci-log-section end "install-rolling-binaries"
+
 make-py-cache:
   stage: clone
   cache:
@@ -654,58 +661,18 @@ install-rolling-binaries:
     - <<: *py_cache
       policy: pull
     - <<: *rolling_binaries_cache
-      policy: $CACHE_POLICY
+      policy: push
   rules:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
-      changes:
-        paths:
-          - test/int/test_rolling.py
-      variables:
-        CACHE_POLICY: push
-    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
-      variables:
-        CACHE_POLICY: pull
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        compare_to: *main-branch
-        paths:
-          - test/int/test_rolling.py
-      variables:
-        CACHE_POLICY: push
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-        CACHE_POLICY: pull
-    - <<: *if-no-docs
-      variables:
-        CACHE_POLICY: pull
   script:
     - tools/ensure_checkout.sh
     - *uv-sync
-    - |
-      ci-log-section start "install-rolling-binaries" Installing Picodata binaries needed for rolling upgrade tests ...
-      make collect-required-rolling-versions
-      uv run python tools/install_rolling_binaries.py
-      ci-log-section end "install-rolling-binaries"
-  artifacts:
-    paths:
-      - .rolling_binaries/
+    - *install-rolling-binaries
 
 test-py-not-sql-linux:
   stage: test
   extends:
     - .test-py-linux_base
-  needs:
-    - job: build-linux
-      artifacts: true
-      parallel:
-        matrix:
-          - BUILD_PROFILE: $[[ matrix.BUILD_PROFILE ]]
-            TARGET: $[[ matrix.TARGET ]]
-    # Rolling binaries come only from this artifact, the
-    # rolling_binaries_cache would be overwritten by it anyway.
-    - job: install-rolling-binaries
-      artifacts: true
   before_script:
     - export PATH="${ROLLING_BINARIES_DIR}:$PATH"
   cache:
@@ -713,9 +680,12 @@ test-py-not-sql-linux:
       policy: pull
     - <<: *py_cache
       policy: pull
+    - <<: *rolling_binaries_cache
+      policy: pull
   script:
     - tools/ensure_checkout.sh
     - *uv-sync
+    - *install-rolling-binaries
     - |
       ci-log-section start "test" Test
       if [ "$BUILD_PROFILE" = "dev" ]; then

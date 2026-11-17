@@ -42,7 +42,7 @@ def extract_version(rpm: Path) -> Version:
 
 def download_rpm(version: Version, dest: Path) -> Path:
     def impl(version: Version, dest: Path) -> Path:
-        subprocess.check_call(["dnf", "download", f"picodata-{version}.*"], cwd=dest)
+        subprocess.check_call(["dnf", "download", "--repo", "picodata", f"picodata-{version}.*"], cwd=dest)
 
         rpms = list(dest.glob(f"picodata-{version}*.rpm"))
         if len(rpms) != 1:
@@ -128,6 +128,11 @@ def load_versions(file: Path) -> list[Version]:
 def main():
     INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     for version in load_versions(VERSIONS_FILE):
+        # Restored from the CI cache.
+        installed = INSTALL_DIR / f"picodata-{version}"
+        if installed.exists():
+            print(f"Found {installed.name!r} in {INSTALL_DIR.absolute()!r}, skipping")
+            continue
         install_binary(version)
 
 
