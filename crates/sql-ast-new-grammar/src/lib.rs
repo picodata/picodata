@@ -15,7 +15,7 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 
-use pest::error::ErrorVariant;
+use pest::error::{Error, ErrorVariant, LineColLocation};
 use pest::iterators::Pairs;
 use pest::{Parser, RuleType};
 use pest_derive::Parser;
@@ -162,9 +162,46 @@ fn parse_steps<P: Parser<R>, R: RuleType>(
     res.map_err(|e| match e.variant {
         // Our grammars raise no custom errors, only the step limit does.
         ErrorVariant::CustomError { .. } => None,
-        // `Error` prints the line of the query with the error position.
-        ErrorVariant::ParsingError { .. } => Some(e.to_string()),
+        ErrorVariant::ParsingError { .. } => Some(syntax_error(&e)),
     })
+}
+
+/// The most characters of the query line a syntax error shows on each side
+/// of the error position.
+const ERROR_CONTEXT: usize = 100;
+
+/// The pest message of a syntax error: the line of the query with the error
+/// position, cut to `ERROR_CONTEXT` characters on each side. pest shows the
+/// whole line, and a long query would get an error of its size.
+fn syntax_error<R: RuleType>(e: &Error<R>) -> String {
+    // pest reports a syntax error at a position, not at a span.
+    let LineColLocation::Pos((row, col)) = e.line_col else {
+        return e.to_string();
+    };
+    let chars = e.line().chars().count();
+    if chars <= 2 * ERROR_CONTEXT {
+        return e.to_string();
+    }
+    let skip = col.saturating_sub(1 + ERROR_CONTEXT);
+    let end = col + ERROR_CONTEXT;
+    let mut line = String::from(if skip > 0 { "..." } else { "" });
+    let caret = line.len() + col - 1 - skip;
+    line.extend(e.line().chars().skip(skip).take(end - skip));
+    if end < chars {
+        line.push_str("...");
+    }
+    // The spaces up to the error position keep the tabs, as in pest.
+    let underline: String = line
+        .chars()
+        .take(caret)
+        .map(|c| if c == '\t' { '\t' } else { ' ' })
+        .collect();
+    // The rest is the format of pest.
+    let s = " ".repeat(row.to_string().len());
+    format!(
+        "{s}--> {row}:{col}\n{s} |\n{row} | {line}\n{s} | {underline}^---\n{s} |\n{s} = {}",
+        e.variant.message()
+    )
 }
 
 /// The grammar source itself.
@@ -211,9 +248,36 @@ mod tests {
         assert!(err.contains("reduce its nesting"), "{err}");
     }
 
+    /// A long line of the query is cut around the error position.
     #[test]
-    fn syntax_error_is_pest_message() {
-        let err = parse_limited::<PairParser, Rule>(Rule::Command, "select 1 +").unwrap_err();
-        assert!(err.contains("expected"), "{err}");
+    fn long_line_cut() {
+        let parse = |query: &str| parse_limited::<PairParser, Rule>(Rule::Command, query).map(drop);
+        // A line of 188 characters is kept whole.
+        let short = format!("select {})", "x,".repeat(90));
+        // Under the lock, or the budget of another test could cut the parse.
+        let pest = {
+            let _lock = CALL_LIMIT_LOCK
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            PairParser::parse(Rule::Command, &short).unwrap_err()
+        };
+        assert_eq!(parse(&short).unwrap_err(), pest.to_string());
+
+        // The error at the end: 100 characters before it.
+        let err = parse(&format!("select {})", "x,".repeat(200))).unwrap_err();
+        let head = format!(
+            " --> 1:408\n  |\n1 | ...{})\n  | {}^---\n  |\n  = expected ",
+            "x,".repeat(50),
+            " ".repeat(103),
+        );
+        assert!(err.starts_with(&head), "{err}");
+
+        // The error at the start: 100 characters after it.
+        let err = parse(&format!("select ){}", " x".repeat(200))).unwrap_err();
+        let head = format!(
+            " --> 1:8\n  |\n1 | select ){}...\n  |        ^---\n",
+            " x".repeat(50),
+        );
+        assert!(err.starts_with(&head), "{err}");
     }
 }
