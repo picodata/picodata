@@ -497,6 +497,7 @@ impl UnrestrictedType {
             (self, to),
             (UnrestrictedType::Array(_), UnrestrictedType::Array(_))
                 | (UnrestrictedType::Boolean, UnrestrictedType::Boolean)
+                | (UnrestrictedType::Json, UnrestrictedType::Json)
                 | (
                     UnrestrictedType::Double
                         | UnrestrictedType::Integer

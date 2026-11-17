@@ -1,5 +1,6 @@
 from typing import Iterator
 
+import msgpack  # type: ignore
 import psycopg
 import pytest
 from psycopg import pq
@@ -263,6 +264,20 @@ class TestJson:
         i1.eval("box.space.legacy:insert{3, {good=1, bad=require('uuid').new()}}")
         with pytest.raises(TarantoolError, match="map value is not a valid json"):
             i1.sql("SELECT JSON_EXTRACT_PATH(m, 'good') FROM legacy WHERE id = 3")
+
+
+def test_json_procedure_argument(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+    i1.sql("CREATE TABLE t (id INT PRIMARY KEY, data JSON) DISTRIBUTED GLOBALLY")
+    i1.sql("""
+        CREATE PROCEDURE proc_json(JSON) LANGUAGE SQL
+        AS $$INSERT INTO t VALUES (1, $1::json)$$
+    """)
+
+    # MP_JSON (extension type 20) carries a native JSON argument.
+    argument = msgpack.ExtType(20, msgpack.packb({"a": 1}, use_bin_type=True))
+    assert i1.sql("CALL proc_json($1)", argument) == {"row_count": 1}
+    assert i1.sql("SELECT id, data FROM t") == [[1, {"a": 1}]]
 
 
 def _owner_name(instances, bucket_id: int) -> str:
