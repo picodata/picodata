@@ -90,6 +90,8 @@ ALTER SYSTEM SET sql_runtime_concurrency_max = 4;      -- ограничить �
 - [sql_runtime_concurrency_max](../db_config.md#sql_runtime_concurrency_max),
   ограничение на максимальное количество SQL-запросов, одновременно
   выполняющихся на инстансе.
+- [sql_parse_step_max](../db_config.md#sql_parse_step_max), ограничение
+  на количество шагов разбора текста запроса.
 
 Через `OPTION(...)` в запросах:
 

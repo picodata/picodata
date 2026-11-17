@@ -1082,6 +1082,16 @@ table.legend {
             </td>
         </tr>
         <tr>
+            <td><span class="sql-cluster">[sql_parse_step_max](db_config.md#sql_parse_step_max){.link}</span></td>
+            <td>Максимальное количество шагов разбора текста SQL-запроса</td>
+            <td>30000000</td>
+            <td>
+            ```sql
+            ALTER SYSTEM SET sql_parse_step_max = 60000000;
+            ```
+            </td>
+        </tr>
+        <tr>
             <td><span class="sql-cluster">[sql_runtime_concurrency_max](db_config.md#sql_runtime_concurrency_max){.link}</span></td>
             <td>Максимальное количество SQL-запросов, одновременно выполняющихся на одном инстансе</td>
             <td>50</td>
