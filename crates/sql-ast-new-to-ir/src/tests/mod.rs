@@ -719,7 +719,7 @@ fn aggregate_argument_is_cast() {
 /// An aggregate under a cast keeps its own type: the final stage reads it.
 #[test]
 fn aggregate_under_cast() {
-    use sql_ir::ir::node::{Node96, ScalarFunction};
+    use sql_ir::ir::node::{Node64, ScalarFunction};
 
     let meta = catalog();
     for query in [
@@ -732,9 +732,9 @@ fn aggregate_under_cast() {
             assert_same_as_old(query);
         }
         let mut ir = analyzed(query, &[], &meta).translate().unwrap();
-        assert!(ir.nodes.iter96_with_ids().all(|(_, node)| !matches!(
+        assert!(ir.nodes.iter64().all(|node| !matches!(
             node,
-            Node96::ScalarFunction(ScalarFunction { func_type, .. }) if func_type.get().is_none()
+            Node64::ScalarFunction(ScalarFunction { func_type, .. }) if func_type.get().is_none()
         )));
         ir.optimize().unwrap();
     }

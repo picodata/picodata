@@ -242,7 +242,7 @@ FROM
       sum ("COL_8"::double) / sum ("COL_5"::int)::int as "avg_disc",
       sum ("COL_7"::int)::int as "count_order"
     FROM
-      "_tmp_6285928362700344911_0136"
+      "_tmp_1551282635919645737_0136"
     GROUP BY
       "COL_0",
       "COL_1"
@@ -252,7 +252,7 @@ ORDER BY
   "l_linestatus"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6285928362700344911_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_1551282635919645737_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -451,8 +451,8 @@ SELECT
   ) as "sum_1"
 FROM
   "customer"
-  INNER JOIN "_tmp_7013448275579817113_0136" as "orders" ON true::bool
-  INNER JOIN "_tmp_7013448275579817113_1136" as "lineitem" ON true::bool
+  INNER JOIN "_tmp_4399482448013186379_0136" as "orders" ON true::bool
+  INNER JOIN "_tmp_4399482448013186379_1136" as "lineitem" ON true::bool
 WHERE
   "customer"."c_mktsegment" = 'BUILDING'::text
   and "customer"."c_custkey" = "orders"."COL_2"
@@ -465,9 +465,9 @@ GROUP BY
   "orders"."COL_8"
 ''
 plan:
-    [0] SCAN TABLE _tmp_7013448275579817113_0136 AS orders (~983040 rows)
+    [0] SCAN TABLE _tmp_4399482448013186379_0136 AS orders (~983040 rows)
         [0] SEARCH TABLE customer USING PRIMARY KEY (c_custkey=?) (~1 row)
-            [0] SCAN TABLE _tmp_7013448275579817113_1136 AS lineitem (~983040 rows)
+            [0] SCAN TABLE _tmp_4399482448013186379_1136 AS lineitem (~983040 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets <= [1-3000]
@@ -489,7 +489,7 @@ FROM
       "COL_1" as "o_orderdate",
       "COL_2" as "o_shippriority"
     FROM
-      "_tmp_4440982271814242372_2136"
+      "_tmp_6703376778828125457_2136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -502,7 +502,7 @@ LIMIT
   10
 ''
 plan:
-    [0] SCAN TABLE _tmp_4440982271814242372_2136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_6703376778828125457_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -774,11 +774,11 @@ SELECT
   ) as "sum_1"
 FROM
   "customer"
-  INNER JOIN "_tmp_17160401392793465912_0136" as "orders" ON true::bool
-  INNER JOIN "_tmp_17160401392793465912_1136" as "lineitem" ON true::bool
-  INNER JOIN "_tmp_17160401392793465912_2136" as "supplier" ON true::bool
-  INNER JOIN "_tmp_17160401392793465912_3136" as "nation" ON true::bool
-  INNER JOIN "_tmp_17160401392793465912_4136" as "region" ON true::bool
+  INNER JOIN "_tmp_17593941298800460739_0136" as "orders" ON true::bool
+  INNER JOIN "_tmp_17593941298800460739_1136" as "lineitem" ON true::bool
+  INNER JOIN "_tmp_17593941298800460739_2136" as "supplier" ON true::bool
+  INNER JOIN "_tmp_17593941298800460739_3136" as "nation" ON true::bool
+  INNER JOIN "_tmp_17593941298800460739_4136" as "region" ON true::bool
 WHERE
   "customer"."c_custkey" = "orders"."COL_2"
   and "lineitem"."COL_0" = "orders"."COL_0"
@@ -793,21 +793,21 @@ GROUP BY
   "nation"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_17160401392793465912_0136 AS orders (~917504 rows)
+    [0] SCAN TABLE _tmp_17593941298800460739_0136 AS orders (~917504 rows)
         [0] SEARCH TABLE customer USING PRIMARY KEY (c_custkey=?) (~1 row)
-            [0] SEARCH TABLE _tmp_17160401392793465912_1136 AS lineitem 
+            [0] SEARCH TABLE _tmp_17593941298800460739_1136 AS lineitem 
                  USING EPHEMERAL INDEX 
                  (COL_0=?) 
                  (~20 rows)
-                [0] SEARCH TABLE _tmp_17160401392793465912_2136 AS supplier 
+                [0] SEARCH TABLE _tmp_17593941298800460739_2136 AS supplier 
                      USING EPHEMERAL INDEX 
                      (COL_4=? AND COL_0=?) 
                      (~20 rows)
-                    [0] SEARCH TABLE _tmp_17160401392793465912_3136 AS nation 
+                    [0] SEARCH TABLE _tmp_17593941298800460739_3136 AS nation 
                          USING EPHEMERAL INDEX 
                          (COL_0=?) 
                          (~20 rows)
-                        [0] SEARCH TABLE _tmp_17160401392793465912_4136 AS region 
+                        [0] SEARCH TABLE _tmp_17593941298800460739_4136 AS region 
                              USING EPHEMERAL INDEX 
                              (COL_2=? AND COL_0=?) 
                              (~20 rows)
@@ -828,7 +828,7 @@ FROM
       "COL_0" as "n_name",
       sum ("COL_1"::double) as "revenue"
     FROM
-      "_tmp_12265433008157202855_5136"
+      "_tmp_2240569709786579315_5136"
     GROUP BY
       "COL_0"
   )
@@ -836,7 +836,7 @@ ORDER BY
   "revenue" DESC
 ''
 plan:
-    [0] SCAN TABLE _tmp_12265433008157202855_5136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_2240569709786579315_5136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -1165,11 +1165,11 @@ FROM
       "lineitem"."COL_6" * (1::int - "lineitem"."COL_7") as "volume"
     FROM
       "supplier"
-      INNER JOIN "_tmp_4654053795256124045_0136" as "lineitem" ON true::bool
-      INNER JOIN "_tmp_4654053795256124045_1136" as "orders" ON true::bool
-      INNER JOIN "_tmp_4654053795256124045_2136" as "customer" ON true::bool
-      INNER JOIN "_tmp_4654053795256124045_3136" as "n1" ON true::bool
-      INNER JOIN "_tmp_4654053795256124045_4136" as "n2" ON true::bool
+      INNER JOIN "_tmp_6893765991314743323_0136" as "lineitem" ON true::bool
+      INNER JOIN "_tmp_6893765991314743323_1136" as "orders" ON true::bool
+      INNER JOIN "_tmp_6893765991314743323_2136" as "customer" ON true::bool
+      INNER JOIN "_tmp_6893765991314743323_3136" as "n1" ON true::bool
+      INNER JOIN "_tmp_6893765991314743323_4136" as "n2" ON true::bool
     WHERE
       "supplier"."s_suppkey" = "lineitem"."COL_2"
       and "orders"."COL_0" = "lineitem"."COL_0"
@@ -1193,21 +1193,21 @@ GROUP BY
   "shipping"."l_year"
 ''
 plan:
-    [0] SCAN TABLE _tmp_4654053795256124045_0136 AS lineitem (~917504 rows)
+    [0] SCAN TABLE _tmp_6893765991314743323_0136 AS lineitem (~917504 rows)
         [0] SEARCH TABLE supplier USING PRIMARY KEY (s_suppkey=?) (~1 row)
-            [0] SEARCH TABLE _tmp_4654053795256124045_1136 AS orders 
+            [0] SEARCH TABLE _tmp_6893765991314743323_1136 AS orders 
                  USING EPHEMERAL INDEX 
                  (COL_0=?) 
                  (~20 rows)
-                [0] SEARCH TABLE _tmp_4654053795256124045_2136 AS customer 
+                [0] SEARCH TABLE _tmp_6893765991314743323_2136 AS customer 
                      USING EPHEMERAL INDEX 
                      (COL_0=?) 
                      (~20 rows)
-                    [0] SEARCH TABLE _tmp_4654053795256124045_3136 AS n1 
+                    [0] SEARCH TABLE _tmp_6893765991314743323_3136 AS n1 
                          USING EPHEMERAL INDEX 
                          (COL_0=?) 
                          (~20 rows)
-                        [0] SEARCH TABLE _tmp_4654053795256124045_4136 AS n2 
+                        [0] SEARCH TABLE _tmp_6893765991314743323_4136 AS n2 
                              USING EPHEMERAL INDEX 
                              (COL_0=?) 
                              (~20 rows)
@@ -1232,7 +1232,7 @@ FROM
       "COL_2" as "l_year",
       sum ("COL_3"::double) as "revenue"
     FROM
-      "_tmp_6283654946553734630_5136"
+      "_tmp_17820624837567559141_5136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -1244,7 +1244,7 @@ ORDER BY
   "l_year"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6283654946553734630_5136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_17820624837567559141_5136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -1612,13 +1612,13 @@ FROM
       "n2"."COL_2" as "nation"
     FROM
       "part"
-      INNER JOIN "_tmp_16607353950781144698_0136" as "supplier" ON true::bool
-      INNER JOIN "_tmp_16607353950781144698_1136" as "lineitem" ON true::bool
-      INNER JOIN "_tmp_16607353950781144698_2136" as "orders" ON true::bool
-      INNER JOIN "_tmp_16607353950781144698_3136" as "customer" ON true::bool
-      INNER JOIN "_tmp_16607353950781144698_4136" as "n1" ON true::bool
-      INNER JOIN "_tmp_16607353950781144698_5136" as "n2" ON true::bool
-      INNER JOIN "_tmp_16607353950781144698_6136" as "region" ON true::bool
+      INNER JOIN "_tmp_12773762003780900283_0136" as "supplier" ON true::bool
+      INNER JOIN "_tmp_12773762003780900283_1136" as "lineitem" ON true::bool
+      INNER JOIN "_tmp_12773762003780900283_2136" as "orders" ON true::bool
+      INNER JOIN "_tmp_12773762003780900283_3136" as "customer" ON true::bool
+      INNER JOIN "_tmp_12773762003780900283_4136" as "n1" ON true::bool
+      INNER JOIN "_tmp_12773762003780900283_5136" as "n2" ON true::bool
+      INNER JOIN "_tmp_12773762003780900283_6136" as "region" ON true::bool
     WHERE
       "part"."p_partkey" = "lineitem"."COL_1"
       and "supplier"."COL_0" = "lineitem"."COL_2"
@@ -1638,29 +1638,29 @@ GROUP BY
   "all_nations"."o_year"
 ''
 plan:
-    [0] SCAN TABLE _tmp_16607353950781144698_1136 AS lineitem (~1048576 rows)
+    [0] SCAN TABLE _tmp_12773762003780900283_1136 AS lineitem (~1048576 rows)
         [0] SEARCH TABLE part USING PRIMARY KEY (p_partkey=?) (~1 row)
-            [0] SEARCH TABLE _tmp_16607353950781144698_0136 AS supplier 
+            [0] SEARCH TABLE _tmp_12773762003780900283_0136 AS supplier 
                  USING EPHEMERAL INDEX 
                  (COL_0=?) 
                  (~20 rows)
-                [0] SEARCH TABLE _tmp_16607353950781144698_2136 AS orders 
+                [0] SEARCH TABLE _tmp_12773762003780900283_2136 AS orders 
                      USING EPHEMERAL INDEX 
                      (COL_0=?) 
                      (~20 rows)
-                    [0] SEARCH TABLE _tmp_16607353950781144698_3136 AS customer 
+                    [0] SEARCH TABLE _tmp_12773762003780900283_3136 AS customer 
                          USING EPHEMERAL INDEX 
                          (COL_0=?) 
                          (~20 rows)
-                        [0] SEARCH TABLE _tmp_16607353950781144698_4136 AS n1 
+                        [0] SEARCH TABLE _tmp_12773762003780900283_4136 AS n1 
                              USING EPHEMERAL INDEX 
                              (COL_0=?) 
                              (~20 rows)
-                            [0] SEARCH TABLE _tmp_16607353950781144698_5136 AS n2 
+                            [0] SEARCH TABLE _tmp_12773762003780900283_5136 AS n2 
                                  USING EPHEMERAL INDEX 
                                  (COL_0=?) 
                                  (~20 rows)
-                                [0] SEARCH TABLE _tmp_16607353950781144698_6136 AS region 
+                                [0] SEARCH TABLE _tmp_12773762003780900283_6136 AS region 
                                      USING EPHEMERAL INDEX 
                                      (COL_2=? AND COL_0=?) 
                                      (~20 rows)
@@ -1681,7 +1681,7 @@ FROM
       "COL_0" as "o_year",
       sum ("COL_1"::double) / sum ("COL_2"::double) as "mkt_share"
     FROM
-      "_tmp_4072621271469083715_7136"
+      "_tmp_4006141298156249757_7136"
     GROUP BY
       "COL_0"
   )
@@ -1689,7 +1689,7 @@ ORDER BY
   "o_year"
 ''
 plan:
-    [0] SCAN TABLE _tmp_4072621271469083715_7136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_4006141298156249757_7136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -1949,9 +1949,9 @@ SELECT
   ) as "sum_1"
 FROM
   "customer"
-  INNER JOIN "_tmp_12254042788234937569_0136" as "orders" ON true::bool
-  INNER JOIN "_tmp_12254042788234937569_1136" as "lineitem" ON true::bool
-  INNER JOIN "_tmp_12254042788234937569_2136" as "nation" ON true::bool
+  INNER JOIN "_tmp_3945614865918321280_0136" as "orders" ON true::bool
+  INNER JOIN "_tmp_3945614865918321280_1136" as "lineitem" ON true::bool
+  INNER JOIN "_tmp_3945614865918321280_2136" as "nation" ON true::bool
 WHERE
   "customer"."c_custkey" = "orders"."COL_2"
   and "lineitem"."COL_0" = "orders"."COL_0"
@@ -1970,12 +1970,12 @@ GROUP BY
 ''
 plan:
     [0] SCAN TABLE customer (~1048576 rows)
-        [0] SCAN TABLE _tmp_12254042788234937569_1136 AS lineitem (~262144 rows)
-            [0] SEARCH TABLE _tmp_12254042788234937569_0136 AS orders 
+        [0] SCAN TABLE _tmp_3945614865918321280_1136 AS lineitem (~262144 rows)
+            [0] SEARCH TABLE _tmp_3945614865918321280_0136 AS orders 
                  USING EPHEMERAL INDEX 
                  (COL_0=? AND COL_2=?) 
                  (~20 rows)
-                [0] SEARCH TABLE _tmp_12254042788234937569_2136 AS nation 
+                [0] SEARCH TABLE _tmp_3945614865918321280_2136 AS nation 
                      USING EPHEMERAL INDEX 
                      (COL_0=?) 
                      (~20 rows)
@@ -2008,7 +2008,7 @@ FROM
       "COL_3" as "c_phone",
       "COL_6" as "c_comment"
     FROM
-      "_tmp_10312780501558074733_3136"
+      "_tmp_17476333032106886121_3136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -2024,7 +2024,7 @@ LIMIT
   20
 ''
 plan:
-    [0] SCAN TABLE _tmp_10312780501558074733_3136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_17476333032106886121_3136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -2262,8 +2262,8 @@ SELECT
   ) as "sum_1"
 FROM
   "partsupp"
-  INNER JOIN "_tmp_5838834972184820982_0136" as "supplier" ON true::bool
-  INNER JOIN "_tmp_5838834972184820982_1136" as "nation" ON true::bool
+  INNER JOIN "_tmp_8765988480880343687_0136" as "supplier" ON true::bool
+  INNER JOIN "_tmp_8765988480880343687_1136" as "nation" ON true::bool
 WHERE
   "partsupp"."ps_suppkey" = "supplier"."COL_0"
   and "supplier"."COL_4" = "nation"."COL_0"
@@ -2273,8 +2273,8 @@ GROUP BY
 ''
 plan:
     [0] SCAN TABLE partsupp (~1048576 rows)
-        [0] SCAN TABLE _tmp_5838834972184820982_1136 AS nation (~262144 rows)
-            [0] SEARCH TABLE _tmp_5838834972184820982_0136 AS supplier 
+        [0] SCAN TABLE _tmp_8765988480880343687_1136 AS nation (~262144 rows)
+            [0] SEARCH TABLE _tmp_8765988480880343687_0136 AS supplier 
                  USING EPHEMERAL INDEX 
                  (COL_4=? AND COL_0=?) 
                  (~20 rows)
@@ -2293,17 +2293,17 @@ SELECT
   ) as "sum_1"
 FROM
   "partsupp"
-  INNER JOIN "_tmp_12931599021293729218_2136" as "supplier" ON true::bool
-  INNER JOIN "_tmp_12931599021293729218_3136" as "nation" ON true::bool
+  INNER JOIN "_tmp_16462116268452992900_2136" as "supplier" ON true::bool
+  INNER JOIN "_tmp_16462116268452992900_3136" as "nation" ON true::bool
 WHERE
   "partsupp"."ps_suppkey" = "supplier"."COL_0"
   and "supplier"."COL_4" = "nation"."COL_0"
   and "nation"."COL_2" = 'GERMANY'::text
 ''
 plan:
-    [0] SCAN TABLE _tmp_12931599021293729218_3136 AS nation (~262144 rows)
+    [0] SCAN TABLE _tmp_16462116268452992900_3136 AS nation (~262144 rows)
         [0] SCAN TABLE partsupp (~1048576 rows)
-            [0] SEARCH TABLE _tmp_12931599021293729218_2136 AS supplier 
+            [0] SEARCH TABLE _tmp_16462116268452992900_2136 AS supplier 
                  USING EPHEMERAL INDEX 
                  (COL_4=? AND COL_0=?) 
                  (~20 rows)
@@ -2317,10 +2317,10 @@ buckets <= [1-3000]
 SELECT
   sum ("COL_0"::double) * 0.0001::decimal as "col_1"
 FROM
-  "_tmp_10305140153159277659_4136"
+  "_tmp_5654002659270506402_4136"
 ''
 plan:
-    [0] SCAN TABLE _tmp_10305140153159277659_4136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_5654002659270506402_4136 (~1048576 rows)
 ''
 buckets = any
 ''
@@ -2337,7 +2337,7 @@ FROM
       "COL_0" as "ps_partkey",
       sum ("COL_1"::double) as "value"
     FROM
-      "_tmp_18258482061528327028_5136"
+      "_tmp_13397700852754851706_5136"
     GROUP BY
       "COL_0"
     HAVING
@@ -2345,17 +2345,17 @@ FROM
         SELECT
           "COL_0"
         FROM
-          "_tmp_18258482061528327028_6136"
+          "_tmp_13397700852754851706_6136"
       )
   )
 ORDER BY
   "value" DESC
 ''
 plan:
-    [0] SCAN TABLE _tmp_18258482061528327028_5136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13397700852754851706_5136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] EXECUTE SCALAR SUBQUERY 1
-    [1] SCAN TABLE _tmp_18258482061528327028_6136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_13397700852754851706_6136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
 buckets = any
@@ -2514,7 +2514,7 @@ SELECT
   ) as "sum_2"
 FROM
   "lineitem"
-  INNER JOIN "_tmp_14273657495568677679_0136" as "orders" ON "lineitem"."l_orderkey" = "orders"."COL_0"
+  INNER JOIN "_tmp_8164411650618198894_0136" as "orders" ON "lineitem"."l_orderkey" = "orders"."COL_0"
 WHERE
   "lineitem"."l_shipmode" in ('MAIL'::text, 'SHIP'::text)
   and "lineitem"."l_commitdate" < "lineitem"."l_receiptdate"
@@ -2525,7 +2525,7 @@ GROUP BY
   "lineitem"."l_shipmode"
 ''
 plan:
-    [0] SCAN TABLE _tmp_14273657495568677679_0136 AS orders (~1048576 rows)
+    [0] SCAN TABLE _tmp_8164411650618198894_0136 AS orders (~1048576 rows)
         [0] SEARCH TABLE lineitem USING PRIMARY KEY (l_orderkey=?) (~7 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
@@ -2546,7 +2546,7 @@ FROM
       sum ("COL_1"::decimal) as "high_line_count",
       sum ("COL_2"::decimal) as "low_line_count"
     FROM
-      "_tmp_6071138086975015707_1136"
+      "_tmp_9958199179898938396_1136"
     GROUP BY
       "COL_0"
   )
@@ -2554,7 +2554,7 @@ ORDER BY
   "l_shipmode"
 ''
 plan:
-    [0] SCAN TABLE _tmp_6071138086975015707_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_9958199179898938396_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -2671,14 +2671,14 @@ SELECT
   count ("orders"."COL_0"::int) as "count_1"
 FROM
   "customer"
-  LEFT JOIN "_tmp_1732155247784519396_0136" as "orders" ON "customer"."c_custkey" = "orders"."COL_2"
+  LEFT JOIN "_tmp_12313528763262513991_0136" as "orders" ON "customer"."c_custkey" = "orders"."COL_2"
   and not "orders"."COL_9"::text LIKE '%special%requests%'::text ESCAPE '\'::text
 GROUP BY
   "customer"."c_custkey"
 ''
 plan:
     [0] SCAN TABLE customer (~1048576 rows)
-        [0] SCAN TABLE _tmp_1732155247784519396_0136 AS orders (~262144 rows)
+        [0] SCAN TABLE _tmp_12313528763262513991_0136 AS orders (~262144 rows)
 ''
 buckets <= [1-3000]
 ''
@@ -2700,7 +2700,7 @@ FROM
           "COL_0" as "c_custkey",
           sum ("COL_1"::int)::int as "c_count"
         FROM
-          "_tmp_6241211180816021634_1136"
+          "_tmp_12530204706873329698_1136"
         GROUP BY
           "COL_0"
       ) as "c_orders"
@@ -2712,7 +2712,7 @@ ORDER BY
   "c_count" DESC
 ''
 plan:
-    [1] SCAN TABLE _tmp_6241211180816021634_1136 (~1048576 rows)
+    [1] SCAN TABLE _tmp_12530204706873329698_1136 (~1048576 rows)
     [1] USE TEMP B-TREE FOR GROUP BY
     [0] SCAN SUBQUERY 1 AS c_orders (~1 row)
     [0] USE TEMP B-TREE FOR GROUP BY
@@ -2835,7 +2835,7 @@ SELECT
   ) as "sum_1"
 FROM
   "lineitem"
-  INNER JOIN "_tmp_15889585285716543333_0136" as "part" ON true::bool
+  INNER JOIN "_tmp_1621280085938523740_0136" as "part" ON true::bool
 WHERE
   "lineitem"."l_partkey" = "part"."COL_0"
   and "lineitem"."l_shipdate" >= '1995-09-01 0:00:00.0 +00:00:00'::datetime
@@ -2843,7 +2843,7 @@ WHERE
 ''
 plan:
     [0] SCAN TABLE lineitem (~917504 rows)
-        [0] SCAN TABLE _tmp_15889585285716543333_0136 AS part (~1048576 rows)
+        [0] SCAN TABLE _tmp_1621280085938523740_0136 AS part (~1048576 rows)
 ''
 buckets <= [1-3000]
 ''
@@ -2854,10 +2854,10 @@ buckets <= [1-3000]
 SELECT
   (100.00::decimal * sum ("COL_1"::double)) / sum ("COL_0"::double) as "promo_revenue"
 FROM
-  "_tmp_12731488821819863187_1136"
+  "_tmp_3853190594030260859_1136"
 ''
 plan:
-    [0] SCAN TABLE _tmp_12731488821819863187_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_3853190594030260859_1136 (~1048576 rows)
 ''
 buckets = any
 ''
@@ -3093,7 +3093,7 @@ FROM
       "COL_2" as "p_size",
       count (DISTINCT "COL_3") as "supplier_cnt"
     FROM
-      "_tmp_14008567519581365243_2136"
+      "_tmp_16416759849063454325_2136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -3106,7 +3106,7 @@ ORDER BY
   "p_size"
 ''
 plan:
-    [0] SCAN TABLE _tmp_14008567519581365243_2136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_16416759849063454325_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -3344,14 +3344,14 @@ buckets <= [1-3000]
 SELECT
   "COL_0" as "l_orderkey"
 FROM
-  "_tmp_10494548360569675155_2136"
+  "_tmp_15108368380501431275_2136"
 GROUP BY
   "COL_0"
 HAVING
   sum ("COL_1"::double) > 300::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_10494548360569675155_2136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_15108368380501431275_2136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any
@@ -3369,14 +3369,14 @@ SELECT
   sum ("lineitem"."COL_5"::double) as "sum_1"
 FROM
   "customer"
-  INNER JOIN "_tmp_9350689219564506422_0136" as "orders" ON true::bool
-  INNER JOIN "_tmp_9350689219564506422_1136" as "lineitem" ON true::bool
+  INNER JOIN "_tmp_14808243938195241585_0136" as "orders" ON true::bool
+  INNER JOIN "_tmp_14808243938195241585_1136" as "lineitem" ON true::bool
 WHERE
   "orders"."COL_0" in (
     SELECT
       "COL_0"
     FROM
-      "_tmp_9350689219564506422_3136"
+      "_tmp_14808243938195241585_3136"
   )
   and "customer"."c_custkey" = "orders"."COL_2"
   and "orders"."COL_0" = "lineitem"."COL_0"
@@ -3388,10 +3388,10 @@ GROUP BY
   "orders"."COL_4"
 ''
 plan:
-    [0] SCAN TABLE _tmp_9350689219564506422_0136 AS orders (~983040 rows)
+    [0] SCAN TABLE _tmp_14808243938195241585_0136 AS orders (~983040 rows)
     [0] EXECUTE LIST SUBQUERY 1
-    [1] SCAN TABLE _tmp_9350689219564506422_3136 (~1048576 rows)
-        [0] SCAN TABLE _tmp_9350689219564506422_1136 AS lineitem (~1048576 rows)
+    [1] SCAN TABLE _tmp_14808243938195241585_3136 (~1048576 rows)
+        [0] SCAN TABLE _tmp_14808243938195241585_1136 AS lineitem (~1048576 rows)
             [0] SEARCH TABLE customer USING PRIMARY KEY (c_custkey=?) (~1 row)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
@@ -3418,7 +3418,7 @@ FROM
       "COL_4" as "o_totalprice",
       sum ("COL_5"::double) as "col_1"
     FROM
-      "_tmp_3006863676977928112_4136"
+      "_tmp_2412712827236803926_4136"
     GROUP BY
       "COL_0",
       "COL_1",
@@ -3433,7 +3433,7 @@ LIMIT
   100
 ''
 plan:
-    [0] SCAN TABLE _tmp_3006863676977928112_4136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_2412712827236803926_4136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 ''
@@ -3598,7 +3598,7 @@ SELECT
   ) as "sum_1"
 FROM
   "lineitem"
-  INNER JOIN "_tmp_4438792381005719057_0136" as "part" ON true::bool
+  INNER JOIN "_tmp_2966994350104906398_0136" as "part" ON true::bool
 WHERE
   "part"."COL_0" = "lineitem"."l_partkey"
   and "part"."COL_4" = 'Brand#12'::text
@@ -3636,7 +3636,7 @@ WHERE
 ''
 plan:
     [0] SCAN TABLE lineitem (~1048576 rows)
-        [0] SCAN TABLE _tmp_4438792381005719057_0136 AS part (~1048576 rows)
+        [0] SCAN TABLE _tmp_2966994350104906398_0136 AS part (~1048576 rows)
     [0] EXECUTE LIST SUBQUERY 1
     [0] EXECUTE LIST SUBQUERY 1
     [0] EXECUTE LIST SUBQUERY 1
@@ -3647,10 +3647,10 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT sum ("COL_0"::double) as "revenue" FROM "_tmp_8067056639077876413_1136"
+SELECT sum ("COL_0"::double) as "revenue" FROM "_tmp_7220471319575709567_1136"
 ''
 plan:
-    [0] SCAN TABLE _tmp_8067056639077876413_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_7220471319575709567_1136 (~1048576 rows)
 ''
 buckets = any
 ''

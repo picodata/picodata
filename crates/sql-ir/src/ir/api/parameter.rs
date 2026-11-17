@@ -1,7 +1,7 @@
 use crate::errors::{Entity, SbroadError};
 use crate::ir::expression::{FunctionFeature, Substring};
 use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::{Constant, MutNode, Node96, NodeId, Parameter, ScalarFunction, Timestamp};
+use crate::ir::node::{Constant, MutNode, Node64, NodeId, Parameter, ScalarFunction, Timestamp};
 use crate::ir::node::{Node32, TimeParameters};
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::types::{DerivedType, UnrestrictedType};
@@ -256,8 +256,8 @@ impl Plan {
         // Change new_names to store an owned SmolStr instead of a reference.
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
-        for (node_id, node) in self.nodes.iter96_with_ids() {
-            let Node96::ScalarFunction(_) = node else {
+        for (node_id, node) in self.nodes.iter64_with_ids() {
+            let Node64::ScalarFunction(_) = node else {
                 continue;
             };
 
@@ -318,8 +318,8 @@ impl Plan {
     fn check_parameter_types(&mut self) -> Result<&mut Self, SbroadError> {
         let mut new_names: Vec<(NodeId, SmolStr)> = Vec::new();
 
-        for (node_id, node) in self.nodes.iter96_with_ids() {
-            let Node96::ScalarFunction(_) = node else {
+        for (node_id, node) in self.nodes.iter64_with_ids() {
+            let Node64::ScalarFunction(_) = node else {
                 continue;
             };
 

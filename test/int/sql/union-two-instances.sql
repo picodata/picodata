@@ -393,10 +393,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT min ("COL_0") as "col_1" FROM "_tmp_13737569284422530290_0136"
+SELECT min ("COL_0") as "col_1" FROM "_tmp_3568056541852340519_0136"
 ''
 plan:
-    [0] SEARCH TABLE _tmp_13737569284422530290_0136 USING PRIMARY KEY (~1048576 rows)
+    [0] SEARCH TABLE _tmp_3568056541852340519_0136 USING PRIMARY KEY (~1048576 rows)
 ''
 buckets = any
 ''
@@ -460,10 +460,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT min ("COL_0") as "col_1" FROM "_tmp_13737569284422530290_0136"
+SELECT min ("COL_0") as "col_1" FROM "_tmp_3568056541852340519_0136"
 ''
 plan:
-    [0] SEARCH TABLE _tmp_13737569284422530290_0136 USING PRIMARY KEY (~1048576 rows)
+    [0] SEARCH TABLE _tmp_3568056541852340519_0136 USING PRIMARY KEY (~1048576 rows)
 ''
 buckets = any
 ''

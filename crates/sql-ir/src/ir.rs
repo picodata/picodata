@@ -299,6 +299,9 @@ impl Nodes {
                 .map(|node| match node {
                     Node64::Over(over) => Node::Expression(Expression::Over(over)),
                     Node64::Index(index) => Node::Expression(Expression::Index(index)),
+                    Node64::ScalarFunction(stable_func) => {
+                        Node::Expression(Expression::ScalarFunction(stable_func))
+                    }
                     Node64::Case(case) => Node::Expression(Expression::Case(case)),
                     Node64::Invalid(invalid) => Node::Invalid(invalid),
                     Node64::CreateRole(create_role) => Node::Acl(Acl::CreateRole(create_role)),
@@ -340,9 +343,6 @@ impl Nodes {
                     Node96::DropProc(drop_proc) => Node::Ddl(Ddl::DropProc(drop_proc)),
                     Node96::Insert(insert) => Node::Relational(Relational::Insert(insert)),
                     Node96::Invalid(inv) => Node::Invalid(inv),
-                    Node96::ScalarFunction(stable_func) => {
-                        Node::Expression(Expression::ScalarFunction(stable_func))
-                    }
                     Node96::CreatePlugin(create) => Node::Plugin(Plugin::Create(create)),
                     Node96::EnablePlugin(enable) => Node::Plugin(Plugin::Enable(enable)),
                     Node96::DisablePlugin(disable) => Node::Plugin(Plugin::Disable(disable)),
@@ -471,6 +471,9 @@ impl Nodes {
                 .map(|node| match node {
                     Node64::Over(over) => MutNode::Expression(MutExpression::Over(over)),
                     Node64::Index(index) => MutNode::Expression(MutExpression::Index(index)),
+                    Node64::ScalarFunction(scalar_func) => {
+                        MutNode::Expression(MutExpression::ScalarFunction(scalar_func))
+                    }
                     Node64::Case(case) => MutNode::Expression(MutExpression::Case(case)),
                     Node64::Invalid(invalid) => MutNode::Invalid(invalid),
                     Node64::CreateRole(create_role) => {
@@ -523,9 +526,6 @@ impl Nodes {
                     Node96::DropProc(drop_proc) => MutNode::Ddl(MutDdl::DropProc(drop_proc)),
                     Node96::Insert(insert) => MutNode::Relational(MutRelational::Insert(insert)),
                     Node96::Invalid(inv) => MutNode::Invalid(inv),
-                    Node96::ScalarFunction(scalar_func) => {
-                        MutNode::Expression(MutExpression::ScalarFunction(scalar_func))
-                    }
                     Node96::CreatePlugin(create) => MutNode::Plugin(MutPlugin::Create(create)),
                     Node96::EnablePlugin(enable) => MutNode::Plugin(MutPlugin::Enable(enable)),
                     Node96::DisablePlugin(disable) => MutNode::Plugin(MutPlugin::Disable(disable)),
@@ -659,6 +659,11 @@ impl Nodes {
 
     pub fn iter64(&self) -> Iter<'_, Node64> {
         self.arena64.iter()
+    }
+
+    pub fn iter64_mut(&mut self) -> IterMut<'_, Node64> {
+        self.columns_len_memo.clear();
+        Rc::make_mut(&mut self.arena64).iter_mut()
     }
 
     pub fn iter96(&self) -> Iter<'_, Node96> {

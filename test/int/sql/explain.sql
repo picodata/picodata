@@ -597,10 +597,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM "_tmp_11085693794112818350_0136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
+SELECT "COL_0" as "id" FROM "_tmp_13181397168688099534_0136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_11085693794112818350_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_13181397168688099534_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭─────────────────────────────────╮
@@ -646,10 +646,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "id" FROM "_tmp_16896569105585089344_1136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
+SELECT "COL_0" as "id" FROM "_tmp_11119686101918634176_1136" GROUP BY "COL_0" HAVING sum ("COL_1"::decimal) = 0::int
 ''
 plan:
-    [0] SCAN TABLE _tmp_16896569105585089344_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_11119686101918634176_1136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 ╭─────────────────────────────────╮
@@ -803,10 +803,10 @@ plan:
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1"::int)::int as "global_rows", sum ("COL_3"::decimal) as "global_units", sum ("COL_2"::decimal) as "local_units" FROM "_tmp_10120127183721758651_0136" GROUP BY "COL_0" HAVING sum ("COL_2"::decimal) > sum ("COL_3"::decimal) ) ORDER BY "global_units" DESC LIMIT 10
+SELECT "name", "global_rows", "global_units", "local_units" FROM ( SELECT "COL_0" as "name", sum ("COL_1"::int)::int as "global_rows", sum ("COL_3"::decimal) as "global_units", sum ("COL_2"::decimal) as "local_units" FROM "_tmp_10290602765674755766_0136" GROUP BY "COL_0" HAVING sum ("COL_2"::decimal) > sum ("COL_3"::decimal) ) ORDER BY "global_units" DESC LIMIT 10
 ''
 plan:
-    [0] SCAN TABLE _tmp_10120127183721758651_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_10290602765674755766_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
     [0] USE TEMP B-TREE FOR ORDER BY
 

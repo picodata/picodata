@@ -1010,10 +1010,10 @@ buckets <= [1-3000]
 │ 2. Query (DYN-FILTERED STORAGE) │
 ╰─────────────────────────────────╯
 ''
-SELECT sum ("x"."a"::int) as "sum_1" FROM "gt" as "x" INNER JOIN "_tmp_14326985166595190994_0136" as "y" ON "x"."a" = "y"."COL_2"
+SELECT sum ("x"."a"::int) as "sum_1" FROM "gt" as "x" INNER JOIN "_tmp_17476589764363081630_0136" as "y" ON "x"."a" = "y"."COL_2"
 ''
 plan:
-    [0] SCAN TABLE _tmp_14326985166595190994_0136 AS y (~1048576 rows)
+    [0] SCAN TABLE _tmp_17476589764363081630_0136 AS y (~1048576 rows)
         [0] SEARCH TABLE gt AS x USING PRIMARY KEY (a=?) (~1 row)
 ''
 buckets <= [1-3000]
@@ -1022,10 +1022,10 @@ buckets <= [1-3000]
 │ 3. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT sum ("COL_0"::decimal)::int as "col_1" FROM "_tmp_17621510721798107379_1136"
+SELECT sum ("COL_0"::decimal)::int as "col_1" FROM "_tmp_16055439168673435710_1136"
 ''
 plan:
-    [0] SCAN TABLE _tmp_17621510721798107379_1136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_16055439168673435710_1136 (~1048576 rows)
 ''
 buckets = any
 ''
@@ -1200,10 +1200,10 @@ buckets <= [1-3000]
 │ 2. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT "COL_0" as "name", sum ("COL_1"::decimal)::int as "col_1" FROM "_tmp_14291144193367633936_0136" GROUP BY "COL_0"
+SELECT "COL_0" as "name", sum ("COL_1"::decimal)::int as "col_1" FROM "_tmp_6898082223177361238_0136" GROUP BY "COL_0"
 ''
 plan:
-    [0] SCAN TABLE _tmp_14291144193367633936_0136 (~1048576 rows)
+    [0] SCAN TABLE _tmp_6898082223177361238_0136 (~1048576 rows)
     [0] USE TEMP B-TREE FOR GROUP BY
 ''
 buckets = any

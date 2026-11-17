@@ -562,7 +562,7 @@ pub struct ScalarFunction {
 
 impl From<ScalarFunction> for NodeAligned {
     fn from(value: ScalarFunction) -> Self {
-        Self::Node96(Node96::ScalarFunction(value))
+        Self::Node64(Node64::ScalarFunction(value))
     }
 }
 
@@ -2116,6 +2116,7 @@ pub enum Node64 {
     Over(Over),
     TruncateTable(TruncateTable),
     Index(IndexExpr),
+    ScalarFunction(ScalarFunction),
     AlterSystemLocal(AlterSystemLocal),
 }
 
@@ -2125,6 +2126,9 @@ impl Node64 {
         match self {
             Node64::Over(over) => NodeOwned::Expression(ExprOwned::Over(over)),
             Node64::Index(index) => NodeOwned::Expression(ExprOwned::Index(index)),
+            Node64::ScalarFunction(scalar_func) => {
+                NodeOwned::Expression(ExprOwned::ScalarFunction(scalar_func))
+            }
             Node64::Case(case) => NodeOwned::Expression(ExprOwned::Case(case)),
             Node64::Invalid(invalid) => NodeOwned::Invalid(invalid),
             Node64::CreateRole(create_role) => NodeOwned::Acl(AclOwned::CreateRole(create_role)),
@@ -2166,7 +2170,6 @@ pub enum Node96 {
     OrderBy(OrderBy),
     Reference(Reference),
     Invalid(Invalid),
-    ScalarFunction(ScalarFunction),
     ScanRelation(ScanRelation),
     ScanFunction(ScanFunction),
     DropProc(DropProc),
@@ -2192,9 +2195,6 @@ impl Node96 {
             Node96::DropProc(drop_proc) => NodeOwned::Ddl(DdlOwned::DropProc(drop_proc)),
             Node96::Insert(insert) => NodeOwned::Relational(RelOwned::Insert(insert)),
             Node96::Invalid(inv) => NodeOwned::Invalid(inv),
-            Node96::ScalarFunction(scalar_func) => {
-                NodeOwned::Expression(ExprOwned::ScalarFunction(scalar_func))
-            }
             Node96::DropPlugin(drop_plugin) => NodeOwned::Plugin(PluginOwned::Drop(drop_plugin)),
             Node96::CreatePlugin(create) => NodeOwned::Plugin(PluginOwned::Create(create)),
             Node96::EnablePlugin(enable) => NodeOwned::Plugin(PluginOwned::Enable(enable)),

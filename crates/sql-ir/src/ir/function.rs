@@ -2,7 +2,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::aggregates::AggregateKind;
 use crate::ir::node::expression::{ExprChildren, Expression, EXPECTED_CHILDREN_CNT};
 use crate::ir::node::{Cast, NodeId, ScalarFunction};
-use crate::ir::node::{Node32, Node96};
+use crate::ir::node::{Node32, Node64};
 use crate::ir::types::CastType;
 use crate::ir::Plan;
 use serde::{Deserialize, Serialize};
@@ -239,9 +239,9 @@ impl Plan {
 
         let func_args = self
             .nodes
-            .iter96_with_ids()
+            .iter64_with_ids()
             .filter_map(|(id, node)| {
-                if let Node96::ScalarFunction(scalar_fn) = node {
+                if let Node64::ScalarFunction(scalar_fn) = node {
                     Some((
                         id,
                         scalar_fn.children.clone().into(),
