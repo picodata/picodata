@@ -1,13 +1,15 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use std::cell::RefCell;
 use std::ops::Not;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::executor::engine::{Router, Vshard};
 use crate::executor::ir::ExecutionPlan;
 use crate::executor::ExecutingQuery;
-use crate::ir::bucket::{value_to_bucket_id, Buckets, BucketsResolver};
+use crate::ir::bucket::facts_route::SameChecked;
+use crate::ir::bucket::{value_to_bucket_id, Buckets, BucketsResolver, HashedKeys};
 use crate::ir::distribution::Distribution;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::Relational;
@@ -298,6 +300,12 @@ where
         // Few nodes wait for their parent at once, so the stack seldom leaves
         // the native stack.
         let mut stack: SmallVec<[Buckets; 8]> = SmallVec::new();
+        // Keys hashed by this walk, by the conditions and the facts alike.
+        let hashed_keys = RefCell::new(HashedKeys::new());
+        // Without facts routes no key repeats often enough to pay for a copy.
+        let walk_keys = (!ir_plan.facts_proof.routes.is_empty()).then_some(&hashed_keys);
+        // The `Same` lists of the routes checked so far: the hosts of a class share one.
+        let same_checked = RefCell::new(SameChecked::default());
 
         for (node_id, rel) in tree.relational() {
             if let Relational::ScanCte(ScanCte { child, .. }) = rel {
@@ -380,11 +388,21 @@ where
                     memo.insert(*child, buckets.clone());
                     buckets
                 }
+                // A scalar aggregate yields a row even on empty input: it runs
+                // once on any node instead of nowhere.
+                Relational::Projection(_) => match next_child(&mut children)? {
+                    Buckets::Filtered(set)
+                        if set.is_empty()
+                            && ir_plan.shard_scalar_aggregate_of_node(node_id)? == Some(true) =>
+                    {
+                        Buckets::Any
+                    }
+                    buckets => buckets,
+                },
                 // `Except` takes the left child only: the motion moves the rows
                 // of the right child to the buckets of the left one, or they
                 // are there already.
-                Relational::Projection(_)
-                | Relational::GroupBy(_)
+                Relational::GroupBy(_)
                 | Relational::Having(_)
                 | Relational::OrderBy(_)
                 | Relational::ScanSubQuery(_)
@@ -404,11 +422,23 @@ where
                     // We need to get the buckets of the child node for the case
                     // when the filter returns no buckets to reduce.
                     let child_buckets = next_child(&mut children)?;
-                    let filter_buckets = ir_plan.get_expression_tree_buckets(
+                    let walk = ir_plan.get_expression_tree_buckets_cached(
                         *filter,
                         &[*child],
                         subqueries,
                         &resolver,
+                        walk_keys,
+                    )?;
+                    // Both bound the rows: the facts witness to 0–1 bucket,
+                    // the walk as without it. Take the narrower of the two.
+                    let hash_keys = !walk_reads_no_bucket(&walk);
+                    let filter_buckets = ir_plan.facts_route_buckets(
+                        node_id,
+                        &resolver,
+                        hash_keys,
+                        &hashed_keys,
+                        &same_checked,
+                        walk,
                     )?;
                     child_buckets.conjunct_owned(filter_buckets)
                 }
@@ -424,15 +454,50 @@ where
                     let outer_buckets = next_child(&mut children)?;
                     match kind {
                         JoinKind::Inner => {
-                            let filter_buckets = ir_plan.get_expression_tree_buckets(
+                            let walk = ir_plan.get_expression_tree_buckets_cached(
                                 *condition,
                                 &[*left, *right],
                                 subqueries,
                                 &resolver,
+                                walk_keys,
                             )?;
-                            inner_buckets
-                                .disjunct(&outer_buckets)
-                                .conjunct_owned(filter_buckets)
+                            let hash_keys = !walk_reads_no_bucket(&walk);
+                            let filter_buckets = ir_plan.facts_route_buckets(
+                                node_id,
+                                &resolver,
+                                hash_keys,
+                                &hashed_keys,
+                                &same_checked,
+                                walk,
+                            )?;
+                            // A global input runs wherever the other one does, an
+                            // empty one included. A scalar aggregate there has
+                            // already turned empty into Any.
+                            let global =
+                                |id| matches!(ir_plan.rel_distr_ref(id), Ok(Distribution::Global));
+                            // A global input reads Any or no bucket, and only then
+                            // does it differ from the union of the inputs.
+                            let any_or_none = |buckets: &Buckets| match buckets {
+                                Buckets::Any => true,
+                                Buckets::Filtered(set) => set.is_empty(),
+                                Buckets::All => false,
+                            };
+                            let input =
+                                if !any_or_none(&inner_buckets) && !any_or_none(&outer_buckets) {
+                                    debug_assert!(
+                                        !global(*left) && !global(*right),
+                                        "global input of {node_id:?} reads {inner_buckets} \
+                                     or {outer_buckets}"
+                                    );
+                                    inner_buckets.disjunct(&outer_buckets)
+                                } else if global(*right) {
+                                    inner_buckets
+                                } else if global(*left) {
+                                    outer_buckets
+                                } else {
+                                    inner_buckets.disjunct(&outer_buckets)
+                                };
+                            input.conjunct_owned(filter_buckets)
                         }
                         // Preserve the left input's buckets, including rows that do
                         // not match ON: neither the right input nor ON may prune them.
@@ -473,6 +538,17 @@ where
             };
             // The children that no arm reads go with the drain.
             drop(children);
+            // AddMotions dropped the motions above this node: a wider route
+            // (a lost witness, an unsupported rewrite) must fail, not run.
+            if !buckets.is_single_node() && ir_plan.facts_proof.single_node.contains(&node_id) {
+                return Err(SbroadError::Invalid(
+                    Entity::Buckets,
+                    Some(format_smolstr!(
+                        "{} proven single-node by the planner reads {buckets}",
+                        rel.name()
+                    )),
+                ));
+            }
             stack.push(buckets);
         }
 
@@ -534,6 +610,15 @@ fn scan_is_global(plan: &Plan, scan: &ScanRelation) -> Result<bool, SbroadError>
         scan.relation
     );
     Ok(is_global)
+}
+
+/// Whether the walk alone reads no bucket: the keys of the facts witness
+/// need no hashing, as nothing is left for them to narrow. A walk of one
+/// bucket still meets the witness: that bucket may be another than the one
+/// of the key the planner proved the node by (`bucket_id = $2` beside the
+/// key `id = $1`).
+fn walk_reads_no_bucket(buckets: &Buckets) -> bool {
+    matches!(buckets, Buckets::Filtered(set) if set.is_empty())
 }
 
 /// Takes the buckets of the next relational child of a node.

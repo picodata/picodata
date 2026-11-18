@@ -687,7 +687,7 @@ projection (count(*)::int -> col_1)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = []
+buckets = any
 
 -- TEST: parameter-above-resharding-motion
 -- SQL:

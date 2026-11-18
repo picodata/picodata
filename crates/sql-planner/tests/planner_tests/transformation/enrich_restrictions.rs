@@ -2575,7 +2575,8 @@ fn a_parameter_only_class_keeps_its_constraint() {
 fn unsupported_equalities_stay_untouched() {
     // The class {a, b, 1} is complete, so `a = b` and `b = 1` go. The OR, the
     // cast, the comparison across types and the LEFT JOIN ON stay, even though
-    // they mention class members.
+    // they mention class members. `d = 1.5` compares across types, so it is
+    // in no class and is not copied below the join.
     let plan = run_enrich(
         r#"SELECT t.a FROM t LEFT JOIN t2 ON t.a = t2.e
            WHERE t.a = t.b AND t.b = 1 AND (t.a = 1 OR t.c = 2)

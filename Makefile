@@ -195,8 +195,12 @@ test-rs-sql:
 		-E 'package(sql-planner) & test(/redistribution::scalar_aggregate_(on_single_shard_join|over_false)_under_union_all/)' \
 		-E 'package(sql-planner) & test(/transformation::(enrich|push_down)_restrictions/)' \
 		-E 'package(sql-planner) & test(/prepared_sharding_key_pushed_below_global_join_stays_single_node/)' \
+		-E 'package(sql-planner) & test(/redistribution::conjunct_proof/)' \
 		-E 'package(sql-planner) & test(/redistribution::value_forms/)' \
+		-E 'package(sql-planner) & test(/redistribution::single_bucket::colocated_subquery_in_update_and_delete/)' \
+		-E 'package(sql-planner) & test(/redistribution::sharding_key_decimal_parameter_is_not_a_pin/)' \
 		-E 'package(sql-executor) & test(/executor::bucket_discovery/)' \
+		-E 'package(sql-executor) & test(/executor::tests::facts_proof/)' \
 		-E 'package(sql-executor) & test(/executor::tests::exec_plan::exec_plan_motion_input/)' \
 		-E 'package(sql-executor) & test(/selection_long_in_list_survives_rebuilt_condition/)' \
 		-E 'package(sql-executor) & test(/selection_tuple_inequality_survives_rebuilt_condition/)'

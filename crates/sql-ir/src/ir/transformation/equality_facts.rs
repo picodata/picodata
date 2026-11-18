@@ -128,6 +128,7 @@
 //! redistribution and by execution-time key-filter materialization.
 
 use crate::errors::{Entity, SbroadError};
+use crate::ir::bucket::value_to_bucket_id;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
@@ -343,7 +344,9 @@ enum EqualityFactAtom {
     Constant(DomainId, Value),
     // Same domain-tagging rationale as `Constant`: a parameter `$1` in an
     // isolated subquery must not bridge slots with `$1` in the outer query.
-    Param(DomainId, u16),
+    Param(DomainId, BindValue),
+    // The bucket a parameter rounds to, see `FactAtom::BucketOf`.
+    BucketOf(DomainId, u16),
 }
 
 /// Public (with its fields below) for the whitebox tests in
@@ -401,12 +404,17 @@ pub struct SourceEquality {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EquivalenceClass {
     pub members: Box<[Slot]>,
-    // The params that are members of the class: sorted, deduped 1-based indices
-    // (`a = $1 AND a = $2` keeps both). They are ordinary members, equal to the
-    // pin like any slot; the pin is the `constant` if the class has one, else the
-    // first (lowest) param.
-    pub params: Box<[u16]>,
+    // The bind values that are members of the class: sorted and deduped
+    // (`a = $1 AND a = $2` keeps both, `CURRENT_USER` comes first). They are
+    // ordinary members, equal to the pin like any slot; the pin is the
+    // `constant` if the class has one, else the first of them.
+    pub params: Box<[BindValue]>,
     pub constant: Option<Value>,
+    // Parameters of another numeric type than the INT `bucket_id` of the
+    // class, compared with it: the class's value is the bucket each rounds
+    // to (`value_to_bucket_id`), not the parameter itself. Not members, so
+    // enrichment and the conflict checks never see them; sorted and deduped.
+    pub bucket_params: Box<[u16]>,
     contradictory: bool,
     pub anchor: NodeId,
 }
@@ -415,22 +423,34 @@ pub struct EquivalenceClass {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ClassPin<'a> {
     Const(&'a Value),
-    Param(u16),
+    Param(BindValue),
 }
 
 /// An owned [`ClassPin`] with the type a synthesized parameter needs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pin {
     Const(Value),
-    Param(u16, DerivedType),
+    Param(BindValue, DerivedType),
+}
+
+/// A value fixed once per execution and known only then: equal for every
+/// row, like a constant, but not at planning time.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum BindValue {
+    /// `CURRENT_USER`, replaced with the user name before routing. Never
+    /// NULL, so it orders first and outranks a parameter as a pin.
+    CurrentUser,
+    /// A query parameter by its 1-based index. May bind to NULL.
+    Param(u16),
 }
 
 /// What a [`DomainCheck`] states.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DomainCheckKind {
-    /// `$param = pin`, derived from an equality class.
+    /// `param = pin`, a bind value (`$n` or `CURRENT_USER`) of an equality
+    /// class compared with its pin.
     ParamEq {
-        param: u16,
+        param: BindValue,
         param_type: DerivedType,
         pin: Pin,
     },
@@ -472,7 +492,8 @@ impl EquivalenceClass {
             // under SQL three-valued logic, so nothing may be derived from it.
             Some(Value::Null) => None,
             Some(value) => Some(ClassPin::Const(value)),
-            // `params` is sorted, so the lowest index is a deterministic pick.
+            // `params` is sorted: `CURRENT_USER`, never NULL, outranks a
+            // parameter, and the lowest index is a deterministic pick.
             None => self.params.first().copied().map(ClassPin::Param),
         }
     }
@@ -908,15 +929,19 @@ impl EqualityFacts {
         )
     }
 
-    /// The declared type of query parameter `index` (1-based), or unknown when
-    /// the parameter never reached the analysis.
+    /// The type of a bind value: the declared type of a query parameter, or
+    /// unknown when the parameter never reached the analysis.
     #[must_use]
     #[cfg_attr(not(feature = "enrich_restrictions"), allow(dead_code))]
-    pub(super) fn param_type(&self, index: u16) -> DerivedType {
-        self.param_types
-            .get(&index)
-            .copied()
-            .unwrap_or_else(DerivedType::unknown)
+    pub(super) fn param_type(&self, param: BindValue) -> DerivedType {
+        match param {
+            BindValue::CurrentUser => DerivedType::new(UnrestrictedType::String),
+            BindValue::Param(index) => self
+                .param_types
+                .get(&index)
+                .copied()
+                .unwrap_or_else(DerivedType::unknown),
+        }
     }
 
     /// The pin of `class` that may route a key or be derived as `col = pin`:
@@ -1180,10 +1205,8 @@ impl EqualityFactsBuilder {
         match atom {
             FactAtom::Slot(key) => EqualityFactAtom::Slot(self.origin(&key)),
             FactAtom::Const { domain_id, value } => EqualityFactAtom::Constant(domain_id, value),
-            FactAtom::Param {
-                domain_id,
-                param_index,
-            } => EqualityFactAtom::Param(domain_id, param_index),
+            FactAtom::Param { domain_id, param } => EqualityFactAtom::Param(domain_id, param),
+            FactAtom::BucketOf { domain_id, index } => EqualityFactAtom::BucketOf(domain_id, index),
             FactAtom::Other => unreachable!("FactAtom::Other should not reach the global builder"),
         }
     }
@@ -1211,7 +1234,7 @@ impl EqualityFactsBuilder {
         mut self,
         param_types: AHashMap<u16, DerivedType>,
         mut dead_rels: Vec<NodeId>,
-    ) -> EqualityFacts {
+    ) -> Result<EqualityFacts, SbroadError> {
         // Keep a stable order and remove duplicate visits.
         dead_rels.sort_unstable_by_key(|rel| (rel.arena_type(), rel.offset()));
         dead_rels.dedup();
@@ -1239,7 +1262,8 @@ impl EqualityFactsBuilder {
         // the walk is complete.
         let mut class_const: Vec<Option<Value>> = Vec::with_capacity(classes);
         let mut const_conflict: Vec<bool> = Vec::with_capacity(classes);
-        let mut class_params: Vec<Vec<u16>> = Vec::with_capacity(classes);
+        let mut class_params: Vec<Vec<BindValue>> = Vec::with_capacity(classes);
+        let mut class_bucket_params: Vec<Vec<u16>> = Vec::with_capacity(classes);
         let mut class_members: Vec<Vec<Slot>> = Vec::with_capacity(classes);
         // The domain every atom of the class agreed on. One per class by
         // construction: constants and params are domain-tagged, slots inherit
@@ -1265,6 +1289,7 @@ impl EqualityFactsBuilder {
                 class_const.push(None);
                 const_conflict.push(false);
                 class_params.push(Vec::new());
+                class_bucket_params.push(Vec::new());
                 class_members.push(Vec::new());
                 class_domain.push(None);
                 id
@@ -1301,12 +1326,19 @@ impl EqualityFactsBuilder {
 
                     class_const[i] = Some(value);
                 }
-                EqualityFactAtom::Param(domain, param_index) => {
+                EqualityFactAtom::Param(domain, param) => {
                     note_domain(&mut class_domain, class_id, domain);
                     // Keep every distinct param as a class member.
                     let params = &mut class_params[class_id.0 as usize];
-                    if !params.contains(&param_index) {
-                        params.push(param_index);
+                    if !params.contains(&param) {
+                        params.push(param);
+                    }
+                }
+                EqualityFactAtom::BucketOf(domain, index) => {
+                    note_domain(&mut class_domain, class_id, domain);
+                    let params = &mut class_bucket_params[class_id.0 as usize];
+                    if !params.contains(&index) {
+                        params.push(index);
                     }
                 }
                 EqualityFactAtom::Slot(SlotKey { rel_id, output_idx }) => {
@@ -1361,6 +1393,7 @@ impl EqualityFactsBuilder {
                 class_const.push(None);
                 const_conflict.push(false);
                 class_params.push(Vec::new());
+                class_bucket_params.push(Vec::new());
                 class_members.push(vec![Slot::new(origin.rel_id, origin.output_idx)]);
                 class_domain.push(Some(domain));
 
@@ -1400,12 +1433,17 @@ impl EqualityFactsBuilder {
             .into_iter()
             .zip(const_conflict)
             .zip(class_params)
+            .zip(class_bucket_params)
             .zip(class_members)
             .zip(class_domain)
             .map(
-                |((((constant, contradictory), mut params), mut members), domain)| {
+                |(
+                    ((((constant, contradictory), mut params), mut bucket_params), mut members),
+                    domain,
+                )| {
                     members.sort();
                     params.sort_unstable();
+                    bucket_params.sort_unstable();
                     // A class exists only because an atom created it, and every atom
                     // carries a domain, so both lookups are total.
                     let domain = domain.expect("class built without an atom");
@@ -1414,6 +1452,7 @@ impl EqualityFactsBuilder {
                         members: members.into_boxed_slice(),
                         params: params.into_boxed_slice(),
                         constant,
+                        bucket_params: bucket_params.into_boxed_slice(),
                         contradictory,
                         anchor,
                     }
@@ -1440,7 +1479,7 @@ impl EqualityFactsBuilder {
             frozen_slot_classes.insert(rel_id, slots.into_boxed_slice());
         }
 
-        EqualityFacts {
+        Ok(EqualityFacts {
             slot_classes: frozen_slot_classes,
             classes,
             domains: self.domains,
@@ -1451,7 +1490,7 @@ impl EqualityFactsBuilder {
             dead_rels: dead_rels.into_boxed_slice(),
             source_equalities,
             domain_checks: AHashMap::new(),
-        }
+        })
     }
 }
 
@@ -1495,9 +1534,9 @@ impl<'p> EqualityAnalysis<'p> {
         let top_domain = analyzer.open_domain(top_id);
         analyzer.analyze(top_id, top_domain)?;
 
-        Ok(analyzer
+        analyzer
             .builder
-            .freeze(analyzer.param_types, analyzer.dead_rels))
+            .freeze(analyzer.param_types, analyzer.dead_rels)
     }
 
     fn alias_passthrough_output(
@@ -1953,7 +1992,7 @@ impl<'p> EqualityAnalysis<'p> {
                     match atom {
                         FactAtom::Slot(_) => slots += 1,
                         FactAtom::Const { .. } => has_constant = true,
-                        FactAtom::Param { .. } | FactAtom::Other => {}
+                        FactAtom::Param { .. } | FactAtom::BucketOf { .. } | FactAtom::Other => {}
                     }
                 }
                 slots.saturating_sub(1) + usize::from(slots > 0 && has_constant)
@@ -1976,7 +2015,7 @@ impl<'p> EqualityAnalysis<'p> {
                         }
                     }
                     FactAtom::Const { value, .. } => constant = Some(value),
-                    FactAtom::Param { .. } | FactAtom::Other => {}
+                    FactAtom::Param { .. } | FactAtom::BucketOf { .. } | FactAtom::Other => {}
                 }
             }
             if let (Some(rep), Some(value)) = (rep, constant) {
@@ -2153,29 +2192,40 @@ impl<'p> EqualityAnalysis<'p> {
                         if left_term.atom == FactAtom::Other || right_term.atom == FactAtom::Other {
                             continue;
                         }
-                        // A class holds values of one type: equal values of
-                        // two types may hash to different buckets.
-                        if left_term.ty != right_term.ty {
-                            continue;
-                        }
-
                         for term in [&left_term, &right_term] {
-                            if let FactAtom::Param { param_index, .. } = term.atom {
-                                let ty = self.param_types.entry(param_index).or_insert(term.ty);
+                            if let FactAtom::Param {
+                                param: BindValue::Param(index),
+                                ..
+                            } = term.atom
+                            {
+                                let ty = self.param_types.entry(index).or_insert(term.ty);
                                 debug_assert_eq!(*ty, term.ty, "Param types must be consistent");
                             }
                         }
 
-                        if let (true, Some(sources)) = (scalar, sources.as_deref_mut()) {
+                        let (left_atom, right_atom, source) =
+                            match self.bucket_number(&left_term, &right_term)? {
+                                // Not a source: enrichment would replace
+                                // `bucket_id = 42.5` with `bucket_id = 42`.
+                                BucketNumber::Atoms(column, number) => (column, number, false),
+                                BucketNumber::NoBucket => return Ok(DeriveOutcome::Dead),
+                                // A class holds values of one type: equal
+                                // values of two types may hash to different
+                                // buckets.
+                                BucketNumber::No if left_term.ty != right_term.ty => continue,
+                                BucketNumber::No => (left_term.atom, right_term.atom, scalar),
+                            };
+
+                        if let (true, Some(sources)) = (source, sources.as_deref_mut()) {
                             // `a = a` (also through aliases of one column) and
                             // `$1 = $1` reject NULLs. Class connectivity alone
                             // does not preserve that check: keep these sources.
-                            let left_atom = self.builder.intern_atom(left_term.atom.clone());
-                            if left_atom != self.builder.intern_atom(right_term.atom.clone()) {
-                                sources.push((conjunct, left_atom));
+                            let left_interned = self.builder.intern_atom(left_atom.clone());
+                            if left_interned != self.builder.intern_atom(right_atom.clone()) {
+                                sources.push((conjunct, left_interned));
                             }
                         }
-                        local.union(left_term.atom, right_term.atom);
+                        local.union(left_atom, right_atom);
                     }
                 }
                 // A nested OR conjunct, or an AND one unwrapped from `IS TRUE`:
@@ -2229,6 +2279,56 @@ impl<'p> EqualityAnalysis<'p> {
         }
 
         Ok(local.into_partition())
+    }
+
+    /// `bucket_id` compared with a number of another type. `bucket_id` is
+    /// the bucket number itself, not a hash, so the number pins it to the
+    /// bucket it rounds to by `value_to_bucket_id`, as the condition walk
+    /// does on master: `42.5` and `42e0` to bucket 42, a parameter at bind.
+    fn bucket_number(
+        &self,
+        left: &FactTerm,
+        right: &FactTerm,
+    ) -> Result<BucketNumber, SbroadError> {
+        use UnrestrictedType::{Decimal, Double, Integer};
+        let (column, number) = match (left.ty.get(), right.ty.get()) {
+            (Some(Integer), Some(Decimal | Double)) => (left, right),
+            (Some(Decimal | Double), Some(Integer)) => (right, left),
+            _ => return Ok(BucketNumber::No),
+        };
+        let FactAtom::Slot(slot) = &column.atom else {
+            return Ok(BucketNumber::No);
+        };
+        let Some(positions) = self.plan.shard_column_positions(slot.rel_id)? else {
+            return Ok(BucketNumber::No);
+        };
+        if !positions.contains(&Some(slot.output_idx)) {
+            return Ok(BucketNumber::No);
+        }
+        let number = match &number.atom {
+            FactAtom::Const { domain_id, value } => {
+                // No such bucket: master routes the node nowhere.
+                let Some(id) = value_to_bucket_id(value)
+                    .filter(|id| *id >= 1)
+                    .and_then(|id| i64::try_from(id).ok())
+                else {
+                    return Ok(BucketNumber::NoBucket);
+                };
+                FactAtom::Const {
+                    domain_id: *domain_id,
+                    value: Value::Integer(id),
+                }
+            }
+            FactAtom::Param {
+                domain_id,
+                param: BindValue::Param(index),
+            } => FactAtom::BucketOf {
+                domain_id: *domain_id,
+                index: *index,
+            },
+            _ => return Ok(BucketNumber::No),
+        };
+        Ok(BucketNumber::Atoms(column.atom.clone(), number))
     }
 
     fn extract_equality_terms(
@@ -2304,9 +2404,16 @@ impl<'p> EqualityAnalysis<'p> {
             Expression::Parameter(parameter) => FactTerm {
                 atom: FactAtom::Param {
                     domain_id,
-                    param_index: parameter.index,
+                    param: BindValue::Param(parameter.index),
                 },
                 ty: parameter.param_type,
+            },
+            Expression::CurrentUser(_) => FactTerm {
+                atom: FactAtom::Param {
+                    domain_id,
+                    param: BindValue::CurrentUser,
+                },
+                ty: DerivedType::new(UnrestrictedType::String),
             },
             // TODO: casts and computed expressions fall here and are treated
             // as opaque.  PostgreSQL recognises cast-preserving equivalences
@@ -2342,7 +2449,14 @@ enum FactAtom {
     },
     Param {
         domain_id: DomainId,
-        param_index: u16,
+        param: BindValue,
+    },
+    /// The bucket the parameter `$index` of another numeric type rounds to,
+    /// where it is compared with `bucket_id`; not the parameter itself, so
+    /// its own classes stay apart.
+    BucketOf {
+        domain_id: DomainId,
+        index: u16,
     },
     Other,
 }
@@ -2355,6 +2469,17 @@ enum FactAtom {
 struct FactTerm {
     atom: FactAtom,
     ty: DerivedType,
+}
+
+/// What `bucket_id = <number of another type>` adds to the facts, see
+/// `EqualityAnalysis::bucket_number`.
+enum BucketNumber {
+    /// Not such an equality.
+    No,
+    /// `bucket_id` and the bucket of the number, to union.
+    Atoms(FactAtom, FactAtom),
+    /// The number rounds to no bucket: no row matches.
+    NoBucket,
 }
 
 /// Equality is scalar in the common case. Keep that one term inline and only

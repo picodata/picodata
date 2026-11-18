@@ -1511,7 +1511,7 @@ fn or_slotless_const_param_gate_via_uf() {
         WHERE ("a" = 1 AND "a" = $1) OR ("b" = 1 AND "b" = $1)"#;
     let (_plan, facts) = optimized_to_equality_facts(input, vec![Value::Integer(1)]);
 
-    let gates: Vec<(Vec<Slot>, Vec<u16>, &Option<Value>)> = facts
+    let gates: Vec<(Vec<Slot>, Vec<_>, &Option<Value>)> = facts
         .classes
         .iter()
         .map(|class| {
@@ -1554,6 +1554,109 @@ fn pin_of(
     class: sql::ir::transformation::equality_facts::ClassId,
 ) -> Option<Value> {
     facts.classes[class.index()].constant.clone()
+}
+
+// A class holds columns and values of one type: a value of another type
+// neither links columns nor pins them. A class of a type stored in several
+// forms links its columns, but its pin routes no key.
+
+/// An integer literal on two integer columns: one class, pinned to it.
+#[test]
+fn integer_literal_on_integer_columns_is_one_class() {
+    let (_, facts, c) =
+        top_classes("SELECT x.a, y.a FROM t5 x JOIN t5 y ON true WHERE x.a = 1 AND y.a = 1");
+    assert_eq!(c[0], c[1]);
+    assert_eq!(pin_of(&facts, c[0]), Some(Value::from(1)));
+}
+
+/// An integer literal on two decimal columns, a value of another type:
+/// it neither bridges nor pins them.
+#[test]
+fn integer_literal_on_decimal_columns_links_nothing() {
+    let (_, facts, c) =
+        top_classes("SELECT x.a, y.a FROM dec_t x JOIN dec_t y ON true WHERE x.a = 1 AND y.a = 1");
+    assert_ne!(c[0], c[1]);
+    assert_eq!(pin_of(&facts, c[0]), None);
+    assert_eq!(facts.classes[c[0].index()].constant, None);
+}
+
+/// The integer `1` on an integer column and on a decimal column is not one
+/// value: the columns are not linked.
+#[test]
+fn integer_literal_of_another_type_does_not_merge_with_its_own_type() {
+    let (_, _, c) =
+        top_classes("SELECT x.a, y.a FROM t5 x JOIN dec_t y ON true WHERE x.a = 1 AND y.a = 1");
+    assert_ne!(c[0], c[1]);
+}
+
+/// The integer `1` on a decimal and on a double column: values of another
+/// type bridge only columns of one type.
+#[test]
+fn integer_literal_does_not_link_columns_of_different_types() {
+    let (_, _, c) =
+        top_classes("SELECT x.a, y.c FROM dec_t x JOIN dec_t y ON true WHERE x.a = 1 AND y.c = 1");
+    assert_ne!(c[0], c[1]);
+}
+
+/// Decimals `1.0` and `1.00` are one value in two forms: decimal columns
+/// equal to each other and to decimals make one class, as on master, whose
+/// pin routes no key.
+#[test]
+fn decimal_columns_make_a_class_without_a_routing_pin() {
+    let (_, facts, c) = top_classes(
+        "SELECT x.a, y.a FROM dec_t x JOIN dec_t y ON true WHERE x.a = 1.0 AND y.a = 1.00 AND x.a = y.a",
+    );
+    assert_eq!(c[0], c[1]);
+    assert!(pin_of(&facts, c[0]).is_some());
+    assert!(facts.routing_pin(&facts.classes[c[0].index()]).is_none());
+    let (_, facts, c) =
+        top_classes("SELECT x.a, y.a FROM t5 x JOIN t5 y ON true WHERE x.a = 1 AND y.a = 1");
+    assert!(facts.routing_pin(&facts.classes[c[0].index()]).is_some());
+}
+
+/// Two different integers on one decimal column: no pin, and no
+/// contradiction, which is not proven across types.
+#[test]
+fn two_literals_of_another_type_make_no_pin() {
+    let (plan, facts) =
+        optimized_to_equality_facts("SELECT a, b FROM dec_t WHERE a = 1 AND a = 2", vec![]);
+    let top = plan.get_top().unwrap();
+    let class = facts.class_of_slot(top, 0).unwrap();
+    assert_eq!(pin_of(&facts, class), None);
+    assert!(!facts.is_contradictory(sql::ir::transformation::equality_facts::Slot::new(top, 0)));
+}
+
+/// `bucket_id = $1` with a decimal `$1` puts the bucket of `$1` in the class
+/// of `bucket_id`, not `$1` itself: the decimal column equal to `$1` stays in
+/// another class.
+#[test]
+fn bucket_of_a_parameter_does_not_link_its_other_uses() {
+    let (plan, facts) = optimized_to_equality_facts(
+        "SELECT bucket_id, a FROM dec_t WHERE bucket_id = $1 AND a = $1",
+        vec![Value::Decimal(Box::new("42".parse().unwrap()))],
+    );
+    let top = plan.get_top().unwrap();
+    let bucket = facts.class_of_slot(top, 0).unwrap();
+    let column = facts.class_of_slot(top, 1).unwrap();
+    assert_ne!(bucket, column);
+    let bucket = &facts.classes[bucket.index()];
+    assert_eq!(*bucket.bucket_params, [1]);
+    assert!(bucket.params.is_empty());
+    assert!(facts.classes[column.index()].bucket_params.is_empty());
+}
+
+/// A number pins `bucket_id` only compared with it directly: through another
+/// column it pins nothing, whatever the column's type.
+#[test]
+fn bucket_id_is_not_pinned_by_a_number_through_a_column() {
+    let (_, facts, c) =
+        top_classes("SELECT bucket_id, a FROM t5 WHERE bucket_id = a AND a = 42.0001");
+    assert_eq!(c[0], c[1]);
+    assert_eq!(pin_of(&facts, c[0]), None);
+    let (_, facts, c) =
+        top_classes("SELECT bucket_id, a FROM dec_t WHERE bucket_id = a AND a = 42.0001");
+    assert_ne!(c[0], c[1]);
+    assert_eq!(pin_of(&facts, c[0]), None);
 }
 
 /// As a conjunct `b IS TRUE` is `b = true` and `b IS FALSE` is `b = false`:

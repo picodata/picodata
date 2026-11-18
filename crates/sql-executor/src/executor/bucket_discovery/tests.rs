@@ -1,6 +1,7 @@
 use crate::test_helpers::ExecutingQueryExt;
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use crate::collection;
 use crate::executor::engine::mock::RouterRuntimeMock;
@@ -8,6 +9,116 @@ use crate::executor::engine::Vshard;
 use crate::executor::ExecutingQuery;
 use crate::ir::bucket::{BucketSet, Buckets};
 use crate::ir::value::Value;
+
+/// A global INNER JOIN preserves empty routing, so the following LEFT JOIN
+/// and scalar aggregate can run in one stage for every parameter binding.
+#[test]
+fn prepared_left_join_over_global_join_preserves_empty_routing() {
+    use crate::ir::node::relational::Relational;
+    use crate::ir::operator::JoinKind;
+
+    let sql = r#"SELECT count(*) FROM (
+        SELECT s.a FROM (SELECT a FROM t5 WHERE a = $1) AS s
+        JOIN global_t ON true
+    ) AS l LEFT JOIN t5 AS r ON l.a = r.a"#;
+    let coordinator = RouterRuntimeMock::new();
+    let bucket = coordinator.determine_bucket_id(&[&Value::from(7)]).unwrap();
+    for (param, expected) in [
+        (Value::Null, Buckets::new_empty()),
+        (
+            Value::from(7),
+            Buckets::new_filtered([bucket].into_iter().collect()),
+        ),
+    ] {
+        let mut query =
+            ExecutingQuery::from_text_and_params(&coordinator, sql, vec![param]).unwrap();
+        let plan = query.get_exec_plan().get_ir_plan();
+        assert!(plan.slices().slices().is_empty());
+        let join = single_rel(
+            plan,
+            plan.get_top().unwrap(),
+            |rel| matches!(rel, Relational::Join(join) if join.kind == JoinKind::LeftOuter),
+        );
+        assert_eq!(expected, query.bucket_discovery(join).unwrap());
+    }
+}
+
+#[test]
+fn global_inner_join_preserves_empty_input_but_not_scalar_aggregate() {
+    for from in [
+        "(SELECT a FROM t5 WHERE a = $1) AS s JOIN global_t ON true",
+        "global_t JOIN (SELECT a FROM t5 WHERE a = $1) AS s ON true",
+    ] {
+        assert_eq!(
+            Buckets::new_empty(),
+            discover(&format!("SELECT * FROM {from}"), vec![Value::Null]),
+        );
+    }
+    // Empty at planning time: no facts route on the join hides the global
+    // input's Any, so only the choice of the input keeps it empty.
+    for sql in [
+        "SELECT * FROM global_t JOIN (SELECT a FROM t5 WHERE false) AS s ON true",
+        "SELECT * FROM global_t JOIN (SELECT a FROM t5 WHERE a = 1 AND a = 2) AS s ON true",
+        "SELECT s.a FROM global_t JOIN (SELECT a FROM t5 WHERE a = 1 AND a = 2) AS s ON true \
+         LEFT JOIN t5 ON s.a = t5.a",
+    ] {
+        assert_eq!(Buckets::new_empty(), discover(sql, vec![]), "{sql}");
+    }
+    let sql = "SELECT * FROM global_t JOIN (SELECT count(*) AS c FROM t5 WHERE false) AS s ON true";
+    assert_eq!(Buckets::Any, discover(sql, vec![]));
+    for from in [
+        "(SELECT count(*) AS c FROM t5 WHERE a = $1) AS s JOIN global_t ON true",
+        "global_t JOIN (SELECT count(*) AS c FROM t5 WHERE a = $1) AS s ON true",
+    ] {
+        assert_eq!(
+            Buckets::Any,
+            discover(&format!("SELECT * FROM {from}"), vec![Value::Null]),
+        );
+    }
+}
+
+/// A chain of global INNER JOINs keeps the empty input, unless a scalar
+/// aggregate under it yields a row on any node.
+#[test]
+fn global_join_chain_preserves_empty_input_but_not_scalar_aggregate() {
+    let chain = |input: &str| {
+        format!(
+            "SELECT * FROM {input} AS s JOIN global_t AS g1 ON true \
+             JOIN global_t AS g2 ON true JOIN global_t AS g3 ON true"
+        )
+    };
+    let empty = chain("(SELECT a FROM t5 WHERE a = $1)");
+    assert_eq!(Buckets::new_empty(), discover(&empty, vec![Value::Null]));
+    let aggregate = chain("(SELECT count(*) AS c FROM t5 WHERE a = $1)");
+    assert_eq!(Buckets::Any, discover(&aggregate, vec![Value::Null]));
+}
+
+/// Empty routing does not require a second aggregate stage: the scalar
+/// aggregate runs on any node, still marked emits_row_from_empty_input.
+#[test]
+fn single_stage_count_with_empty_buckets_keeps_dispatch_flag() {
+    let coordinator = RouterRuntimeMock::new();
+    for (sql, params) in [
+        ("SELECT count(*) FROM t5 WHERE a = $1", vec![Value::Null]),
+        (
+            "SELECT count(*) FROM test_space WHERE bucket_id = 0 AND id = 1",
+            vec![],
+        ),
+    ] {
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, params).unwrap();
+        let plan = query.get_exec_plan().get_ir_plan();
+        assert!(plan.slices().slices().is_empty());
+        let top = plan.get_top().unwrap();
+        assert_eq!(Buckets::Any, query.bucket_discovery(top).unwrap());
+        assert!(
+            query
+                .get_exec_plan()
+                .subtree_dispatch_flags_at(top)
+                .unwrap()
+                .emits_row_from_empty_input
+        );
+    }
+}
 
 #[test]
 fn typed_literal_in_sharding_key_filter() {
@@ -1475,8 +1586,9 @@ mod param_checks_on_motion_inputs {
         );
     }
 
-    /// The input check prunes buckets for the local count stage, but not
-    /// for the final aggregate's Motion.
+    /// The input check prunes the buckets of the local count stage, which
+    /// then runs once on any node, but not those of the final aggregate's
+    /// Motion.
     #[test]
     fn check_below_count_does_not_prune_the_aggregate_result() {
         let sql = r#"SELECT t."id" FROM "test_space" AS t
@@ -1485,7 +1597,7 @@ mod param_checks_on_motion_inputs {
         let buckets = motion_input_buckets(sql, vec![Value::from(2)]);
         // The final stage consumes the local aggregate's result.
         assert_eq!(2, buckets.len(), "{buckets:?}");
-        assert_eq!(Buckets::new_empty(), buckets[0]);
+        assert_eq!(Buckets::Any, buckets[0]);
         assert_ne!(Buckets::new_empty(), buckets[1]);
     }
 
@@ -1620,17 +1732,13 @@ mod false_on_motion_inputs {
     }
 
     /// `count(*)` of an empty input is a row: the bare `false` keeps the
-    /// aggregate one-stage, and dispatch still runs it on one node for empty
-    /// buckets (`emits_row_from_empty_input`).
+    /// aggregate one-stage, and it runs on any node.
     #[test]
     fn false_below_count_keeps_the_aggregate_result() {
         let sql = r#"SELECT t."id" FROM "test_space" AS t
             JOIN (SELECT count(*) AS c FROM "test_space_hist" WHERE false) AS s
             ON t."id" = s.c"#;
-        assert_eq!(
-            vec![Buckets::new_empty()],
-            motion_input_buckets(sql, vec![])
-        );
+        assert_eq!(vec![Buckets::Any], motion_input_buckets(sql, vec![]));
     }
 
     /// One consumer's contradiction never empties a CTE another one reads.
@@ -1682,18 +1790,15 @@ fn join_buckets_left_follow_driving_side_inner_take_union() {
             format!(r#"{s1} left join "t5" on s."b" = "t5"."b""#),
             buckets(&[1]),
         ),
-        // Enrichment derives `"t5"."a" = 2`, pinning the unrestricted side too.
+        // The facts pin `"t5"."a" = 2`, the unrestricted side too.
         (
             format!(r#""t5" join {r2} on "t5"."a" = r."a""#),
-            if cfg!(feature = "enrich_restrictions") {
-                buckets(&[2])
-            } else {
-                Buckets::All
-            },
+            buckets(&[2]),
         ),
         (
             format!(r#"{s1} join {r2} on s."a" = r."a""#),
-            // Enrichment sees `a = 1 and a = 2` and empties both sides.
+            // Enrichment sees `a = 1 and a = 2` and empties both sides; the
+            // facts alone leave the contradictory class unpinned.
             if cfg!(feature = "enrich_restrictions") {
                 Buckets::new_empty()
             } else {
@@ -1782,8 +1887,22 @@ mod pinned_select_without_scan {
         }
     }
 
+    /// Subqueries on different buckets in the query itself are not pinned:
+    /// the planner keeps their motions and the stage runs.
+    #[test]
+    fn subqueries_on_different_buckets_are_not_pinned() {
+        let sql = "SELECT (SELECT b FROM t5 WHERE a = 1), (SELECT b FROM t3_2 WHERE a = 2)";
+        let plan = sql_to_optimized_ir(sql, vec![]);
+        let top = plan.get_top().unwrap();
+        assert!(!plan.is_pinned_select_without_scan(top).unwrap());
+        let coordinator = RouterRuntimeMock::new();
+        let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+        query.bucket_discovery(top).unwrap();
+    }
+
     /// Only a wrong proof pins subqueries to different buckets: fail rather
-    /// than read one of them.
+    /// than read one of them. The edit after optimize is out of the witness
+    /// contract, so this checks the tree walk alone.
     #[test]
     fn several_buckets_fail() {
         assert_ne!(bucket_of(&[1]), bucket_of(&[2]));
@@ -1815,6 +1934,11 @@ mod pinned_select_without_scan {
             panic!("expected a constant");
         };
         *value = Value::from(2);
+        // The edit changes the query after optimize, out of the contract of
+        // the facts witness: check the tree walk without it.
+        std::rc::Rc::make_mut(&mut plan.facts_proof)
+            .routes
+            .remove(&selection);
 
         let coordinator = RouterRuntimeMock::new();
         let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
@@ -1932,4 +2056,534 @@ fn cte_read_twice() {
         SELECT a FROM c UNION ALL SELECT a FROM t5 WHERE a = 2 UNION ALL SELECT a FROM c";
     let expected = buckets_of_key(&[Value::from(1)]).disjunct(&buckets_of_key(&[Value::from(2)]));
     assert_eq!(expected, buckets_of(query));
+}
+
+/// A node AddMotions proved single-node that routes wider after a lost
+/// witness fails the stage instead of running without its motion.
+#[test]
+fn lost_witness_of_a_single_node_proof_fails() {
+    use crate::ir::node::expression::{Expression, MutExpression};
+    use crate::ir::node::relational::Relational;
+    use crate::ir::node::{BoolExpr, Selection};
+    use crate::ir::operator::Bool;
+    use crate::test_helpers::sql_to_optimized_ir;
+
+    let mut plan = sql_to_optimized_ir("SELECT count(*) FROM t5 WHERE a = 1", vec![]);
+    let top = plan.get_top().unwrap();
+    assert!(!plan.facts_proof.single_node.is_empty());
+    let selection = single_rel(&plan, top, |rel| matches!(rel, Relational::Selection(_)));
+    let Relational::Selection(Selection { filter, .. }) =
+        plan.get_relation_node(selection).unwrap()
+    else {
+        unreachable!()
+    };
+    let filter = *filter;
+    assert!(matches!(
+        plan.get_expression_node(filter).unwrap(),
+        Expression::Bool(BoolExpr { op: Bool::Eq, .. })
+    ));
+    // `a <> 1`: the tree walk reads every bucket, and nothing narrows it.
+    let MutExpression::Bool(BoolExpr { op, .. }) = plan.get_mut_expression_node(filter).unwrap()
+    else {
+        unreachable!()
+    };
+    *op = Bool::NotEq;
+    Rc::make_mut(&mut plan.facts_proof).routes.clear();
+
+    let coordinator = RouterRuntimeMock::new();
+    let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+    let error = query.bucket_discovery(top).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("proven single-node by the planner"),
+        "{error}"
+    );
+}
+
+/// A node with a facts witness is routed by the walk and the witness
+/// together, the witness distorted to the bucket of 2 here. A walk of the
+/// bucket of 1 meets it too: nothing is left for the input of `count(*)`,
+/// which itself runs on any node. So does a walk wider than one bucket:
+/// the join inputs read the buckets of 1 and 3, and nothing is left.
+#[test]
+fn witness_narrows_the_walk() {
+    use crate::ir::bucket::facts_route::{FactsRoute, FactsRoutePart};
+    use crate::ir::Plan;
+    use crate::test_helpers::sql_to_optimized_ir;
+
+    let distort = |plan: &mut Plan| {
+        let mut distorted = 0;
+        for routes in Rc::make_mut(&mut plan.facts_proof).routes.values_mut() {
+            for route in routes {
+                if let FactsRoute::Key(parts) = route {
+                    *parts = vec![FactsRoutePart::Value(Value::from(2))];
+                    distorted += 1;
+                }
+            }
+        }
+        distorted
+    };
+    let coordinator = RouterRuntimeMock::new();
+    let bucket = |v: i64| coordinator.determine_bucket_id(&[&Value::from(v)]).unwrap();
+    assert_ne!(bucket(2), bucket(1));
+    assert_ne!(bucket(2), bucket(3));
+
+    let mut plan = sql_to_optimized_ir("SELECT count(*) FROM t5 WHERE a = 1", vec![]);
+    let top = plan.get_top().unwrap();
+    let input = plan.get_first_rel_child(top).unwrap();
+    assert_eq!(1, distort(&mut plan));
+    let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+    assert_eq!(Buckets::new_empty(), query.bucket_discovery(input).unwrap());
+    assert_eq!(Buckets::Any, query.bucket_discovery(top).unwrap());
+
+    let mut plan = sql_to_optimized_ir(
+        "SELECT x.a FROM (SELECT a FROM t5 WHERE a = 1) x \
+         JOIN (SELECT a FROM t5 WHERE a IN (1, 3)) y ON x.a = y.a",
+        vec![],
+    );
+    let top = plan.get_top().unwrap();
+    // The Selection of `x` and the key of each join input.
+    assert_eq!(3, distort(&mut plan));
+    let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+    assert_eq!(Buckets::new_empty(), query.bucket_discovery(top).unwrap());
+}
+
+/// A walk of one bucket is not the bucket of the key the facts proof rests
+/// on: `bucket_id = $2` names another bucket than the key `id = $1`. The
+/// witness of that key meets the walk and leaves the first branch no
+/// bucket, so the union reads the bucket of the key alone, without motions,
+/// instead of failing its single-node check with both buckets. The first
+/// `count(*)`, of no input, runs there too.
+#[test]
+fn witness_meets_a_walk_of_another_bucket() {
+    use crate::executor::engine::Router;
+    use crate::ir::options::Options;
+    use crate::ir::types::{DerivedType, UnrestrictedType};
+    use crate::utils::MutexLike;
+    use sql_frontend::frontend::sql::transform_into_plan;
+
+    let coordinator = RouterRuntimeMock::new();
+    let one = Value::from(1);
+    let key = coordinator.determine_bucket_id(&[&one]).unwrap();
+    let other = if key == 42 { 43 } else { 42 };
+    let int = DerivedType::new(UnrestrictedType::Integer);
+    for sql in [
+        r#"SELECT count(*) FROM "test_space"
+            WHERE "id" = "sys_op" AND "sys_op" = $1 AND "bucket_id" = $2
+            UNION ALL SELECT count(*) FROM "test_space" WHERE "id" = $1"#,
+        r#"SELECT "id" FROM "test_space"
+            WHERE "id" = "sys_op" AND "sys_op" = $1 AND "bucket_id" = $2
+            UNION SELECT "id" FROM "test_space" WHERE "id" = $1"#,
+    ] {
+        let mut plan = {
+            let metadata = coordinator.metadata().lock();
+            transform_into_plan(sql, &[int, int], &*metadata).unwrap()
+        };
+        plan.optimize_statement().unwrap();
+        assert!(plan.slices().slices().is_empty(), "{sql}");
+        plan.bind_statement(vec![one.clone(), Value::from(other)], Options::default())
+            .unwrap();
+        let top = plan.get_top().unwrap();
+        let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+        assert_eq!(
+            Buckets::new_filtered(collection![key]),
+            query.bucket_discovery(top).unwrap(),
+            "{sql}"
+        );
+    }
+}
+
+/// Key hashes of shared values, see `key_buckets`.
+mod shared_key_cache {
+    use crate::collection;
+    use crate::executor::bucket_discovery::walk_reads_no_bucket;
+    use crate::executor::engine::mock::RouterRuntimeMock;
+    use crate::executor::engine::{Router, Vshard};
+    use crate::executor::ExecutingQuery;
+    use crate::ir::bucket::facts_route::SameChecked;
+    use crate::ir::bucket::Buckets;
+    use crate::ir::bucket::{BucketsResolver, HashedKeys};
+    use crate::ir::node::relational::Relational;
+    use crate::ir::node::{Join, Selection};
+    use crate::ir::operator::JoinKind;
+    use crate::ir::options::Options;
+    use crate::ir::tree::traversal::{NodeIter, PostOrder};
+    use crate::ir::types::{DerivedType, UnrestrictedType};
+    use crate::ir::value::Value;
+    use crate::ir::Plan;
+    use crate::utils::MutexLike;
+    use pretty_assertions::assert_eq;
+    use smol_str::SmolStr;
+    use sql_frontend::frontend::sql::transform_into_plan;
+    use std::cell::{Cell, RefCell};
+
+    struct Counting(Cell<usize>);
+    impl BucketsResolver for Counting {
+        type Buckets = Buckets;
+        fn buckets_from_motion(
+            &self,
+            _: crate::ir::node::NodeId,
+        ) -> Result<Option<Buckets>, crate::errors::SbroadError> {
+            Ok(None)
+        }
+        fn buckets_from_values(
+            &self,
+            _: &[&Value],
+            _: Option<&SmolStr>,
+        ) -> Result<Buckets, crate::errors::SbroadError> {
+            self.0.set(self.0.get() + 1);
+            Ok(Buckets::new_filtered(collection![1]))
+        }
+        fn buckets_from_bucket_id(
+            &self,
+            _: &Value,
+            _: Option<&SmolStr>,
+        ) -> Result<Buckets, crate::errors::SbroadError> {
+            Ok(Buckets::new_filtered(collection![1]))
+        }
+    }
+
+    /// The plan of `sql` prepared with integer parameters and bound to
+    /// `params`.
+    fn bound(sql: &str, params: Vec<Value>) -> Plan {
+        let coordinator = RouterRuntimeMock::new();
+        let types = vec![DerivedType::new(UnrestrictedType::Integer); params.len()];
+        let mut plan = {
+            let metadata = coordinator.metadata().lock();
+            transform_into_plan(sql, &types, &*metadata).unwrap()
+        };
+        plan.optimize_statement().unwrap();
+        plan.bind_statement(params, Options::default()).unwrap();
+        plan
+    }
+
+    /// The key hashes of one discovery of the whole `plan`: the condition
+    /// walk and the facts routes of each node, as `bucket_discovery` calls
+    /// them, with one cache.
+    fn hashes(plan: &Plan) -> usize {
+        let resolver = Counting(Cell::new(0));
+        let hashed = RefCell::new(HashedKeys::new());
+        let same = RefCell::new(SameChecked::default());
+        let top = plan.get_top().unwrap();
+        for (id, rel) in
+            PostOrder::new(&plan.nodes, |node| plan.nodes.rel_iter(node), top).relational()
+        {
+            let walk = match rel {
+                Relational::Selection(Selection {
+                    child,
+                    subqueries,
+                    filter,
+                    ..
+                }) => plan.get_expression_tree_buckets_cached(
+                    *filter,
+                    &[*child],
+                    subqueries,
+                    &resolver,
+                    Some(&hashed),
+                ),
+                Relational::Join(Join {
+                    left,
+                    right,
+                    subqueries,
+                    condition,
+                    kind: JoinKind::Inner,
+                    ..
+                }) => plan.get_expression_tree_buckets_cached(
+                    *condition,
+                    &[*left, *right],
+                    subqueries,
+                    &resolver,
+                    Some(&hashed),
+                ),
+                _ => continue,
+            }
+            .unwrap();
+            let hash_keys = !walk_reads_no_bucket(&walk);
+            plan.facts_route_buckets(id, &resolver, hash_keys, &hashed, &same, walk)
+                .unwrap();
+        }
+        resolver.0.get()
+    }
+
+    fn check(cases: &[(&str, Vec<Value>, usize)]) {
+        for (sql, params, expected) in cases {
+            let plan = bound(sql, params.clone());
+            assert_eq!(*expected, hashes(&plan), "{sql} {params:?}");
+        }
+    }
+
+    fn ints(values: &[i64]) -> Vec<Value> {
+        values.iter().map(|v| Value::from(*v)).collect()
+    }
+
+    fn chain(key: &str) -> String {
+        format!(
+            "SELECT * FROM (SELECT a FROM t5 WHERE a = {key}) x \
+             JOIN t5 y ON x.a = y.a JOIN t5 z ON y.a = z.a"
+        )
+    }
+
+    /// The walk and the facts of `a = $1` hash its key once, and so do the
+    /// facts and the carriers of enrichment that repeat it on a chain.
+    #[test]
+    fn walk_and_facts_hash_a_key_once() {
+        check(&[
+            ("SELECT a FROM t5 WHERE a = $1", ints(&[1]), 1),
+            ("SELECT count(*) FROM t5 WHERE a = $1", ints(&[1]), 1),
+            ("SELECT a FROM t5 WHERE a = b AND b = $1", ints(&[1]), 1),
+            (&chain("$1"), ints(&[1]), 1),
+            (
+                "SELECT * FROM t5 WHERE a = $1 AND (b = 1 OR b = 2 OR b = 3)",
+                ints(&[1]),
+                1,
+            ),
+        ]);
+    }
+
+    /// Nodes of one parameter, and parameters of one value, share the hash;
+    /// other values do not.
+    #[test]
+    fn equal_values_share_the_hash() {
+        let twice = "SELECT a FROM t5 WHERE a = $1 UNION ALL SELECT a FROM t5 WHERE a = $1";
+        let two = "SELECT a FROM t5 WHERE a = $1 UNION ALL SELECT a FROM t5 WHERE a = $2";
+        let via_facts = "SELECT a FROM t5 WHERE a = b AND b = $1 \
+                         UNION ALL SELECT a FROM t5 WHERE a = $2";
+        check(&[
+            (twice, ints(&[1]), 1),
+            (two, ints(&[1, 1]), 1),
+            (two, ints(&[1, 2]), 2),
+            (via_facts, ints(&[7, 7]), 1),
+            (via_facts, ints(&[7, 8]), 2),
+        ]);
+    }
+
+    /// A composite key is one value of all its parts in hash order: another
+    /// last part, or the parts swapped, is another key.
+    #[test]
+    fn composite_keys_compare_every_part() {
+        let pair = |l: &str, r: &str| {
+            format!(
+                "SELECT a FROM t WHERE (a, b) = ({l}) UNION ALL SELECT a FROM t WHERE (a, b) = ({r})"
+            )
+        };
+        check(&[
+            (&pair("$1, $2", "$1, $3"), ints(&[1, 2, 2]), 1),
+            (&pair("$1, $2", "$1, $3"), ints(&[1, 2, 3]), 2),
+            (&pair("$1, $2", "$2, $1"), ints(&[1, 2]), 2),
+            (&pair("$1, $2", "$2, $1"), ints(&[1, 1]), 1),
+        ]);
+    }
+
+    /// Literals of a type that hashes by value share the hash with each
+    /// other and with parameters of their value.
+    #[test]
+    fn literal_keys_share_the_hash() {
+        check(&[
+            (&chain("1"), vec![], 1),
+            (
+                "SELECT a FROM t5 WHERE a = 1 UNION ALL SELECT a FROM t5 WHERE a = $1",
+                ints(&[1]),
+                1,
+            ),
+            (
+                "SELECT a FROM t5 WHERE a = 1 UNION ALL SELECT a FROM t5 WHERE a = $1",
+                ints(&[2]),
+                2,
+            ),
+        ]);
+    }
+
+    /// NULL and a bound value of another type than the route expects keep
+    /// their verdicts with the key already in the cache.
+    #[test]
+    fn null_and_wrong_type_after_a_hashed_key() {
+        let coordinator = RouterRuntimeMock::new();
+        let one = coordinator.determine_bucket_id(&[&Value::from(1)]).unwrap();
+        let sql = "SELECT a FROM t5 WHERE a = $1 UNION ALL SELECT a FROM t5 WHERE a = $2";
+        let route = |params: Vec<Value>| {
+            let plan = bound(sql, params);
+            let top = plan.get_top().unwrap();
+            ExecutingQuery::from_plan(&coordinator, plan)
+                .unwrap()
+                .bucket_discovery(top)
+        };
+        assert_eq!(
+            Buckets::new_filtered(collection![one]),
+            route(vec![Value::from(1), Value::Null]).unwrap()
+        );
+        let error = route(vec![Value::from(1), Value::from("1")]).unwrap_err();
+        assert!(
+            error.to_string().contains("facts route expects int"),
+            "{error}"
+        );
+    }
+
+    /// Each execution hashes its own values: the cache lives one discovery.
+    #[test]
+    fn executions_do_not_share_the_cache() {
+        let coordinator = RouterRuntimeMock::new();
+        let sql = "SELECT a FROM t5 WHERE a = $1 UNION ALL SELECT a FROM t5 WHERE a = b AND b = $1";
+        for v in [1, 2, 1, 7] {
+            let plan = bound(sql, ints(&[v]));
+            let top = plan.get_top().unwrap();
+            let bucket = coordinator.determine_bucket_id(&[&Value::from(v)]).unwrap();
+            let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+            assert_eq!(
+                Buckets::new_filtered(collection![bucket]),
+                query.bucket_discovery(top).unwrap(),
+                "{v}"
+            );
+        }
+    }
+}
+
+/// The pin of a class is one of its values: the others, unequal or NULL
+/// after bind, leave no row, and the witness routes nowhere.
+#[test]
+fn unequal_values_of_one_class_route_nowhere() {
+    let coordinator = RouterRuntimeMock::new();
+    let one = coordinator.determine_bucket_id(&[&Value::from(1)]).unwrap();
+    for (sql, params, expected) in [
+        (
+            "SELECT a FROM t5 WHERE a = $1 AND a = $2",
+            vec![Value::from(1), Value::from(1)],
+            Buckets::new_filtered([one].into_iter().collect()),
+        ),
+        (
+            "SELECT a FROM t5 WHERE a = $1 AND a = $2",
+            vec![Value::from(1), Value::from(2)],
+            Buckets::new_empty(),
+        ),
+        (
+            "SELECT a FROM t5 WHERE a = $1 AND a = $2",
+            vec![Value::from(1), Value::Null],
+            Buckets::new_empty(),
+        ),
+        (
+            "SELECT a FROM t5 WHERE a = 1 AND a = $1",
+            vec![Value::from(2)],
+            Buckets::new_empty(),
+        ),
+        (
+            "SELECT a FROM t5 WHERE bucket_id = $1 AND bucket_id = $2",
+            vec![Value::from(1), Value::from(2)],
+            Buckets::new_empty(),
+        ),
+    ] {
+        assert_eq!(expected, discover(sql, params.clone()), "{sql} {params:?}");
+    }
+}
+
+/// The hosts of one class share its list of values, so that a chain of joins
+/// on one key keeps one list and bucket discovery checks it once; unequal
+/// values still route nowhere.
+#[test]
+fn hosts_of_a_class_share_its_values() {
+    use crate::executor::engine::Router;
+    use crate::ir::bucket::facts_route::FactsRoute;
+    use crate::ir::types::{DerivedType, UnrestrictedType};
+    use crate::utils::MutexLike;
+    use sql_frontend::frontend::sql::transform_into_plan;
+
+    let sql = "SELECT x.a FROM t5 x JOIN t5 y ON x.a = y.a JOIN t5 z ON y.a = z.a \
+               WHERE x.a = $1 AND x.a = $2";
+    let params = vec![Value::from(1), Value::from(2)];
+    let coordinator = RouterRuntimeMock::new();
+    let types = vec![DerivedType::new(UnrestrictedType::Integer); params.len()];
+    let mut plan = {
+        let metadata = coordinator.metadata().lock();
+        transform_into_plan(sql, &types, &*metadata).unwrap()
+    };
+    plan.optimize_statement().unwrap();
+    let lists: Vec<_> = plan
+        .facts_proof
+        .routes
+        .values()
+        .flatten()
+        .filter_map(|route| match route {
+            FactsRoute::Same(values) => Some(values),
+            _ => None,
+        })
+        .collect();
+    assert!(lists.len() > 1, "{:?}", plan.facts_proof.routes);
+    assert!(lists.iter().all(|values| Rc::ptr_eq(values, lists[0])));
+    assert_eq!(Buckets::new_empty(), discover(sql, params));
+}
+
+/// Like `PreparedStatement::bind`, each execution binds a clone of the
+/// prepared plan, which shares its arenas: the witness routes every binding
+/// by its own value and leaves the prepared plan unbound.
+#[test]
+fn facts_witness_of_a_prepared_plan_routes_every_binding() {
+    use crate::executor::engine::Router;
+    use crate::ir::node::expression::Expression;
+    use crate::ir::options::Options;
+    use crate::ir::types::{DerivedType, UnrestrictedType};
+    use crate::utils::MutexLike;
+    use sql_frontend::frontend::sql::transform_into_plan;
+
+    let coordinator = RouterRuntimeMock::new();
+    let prepare = |sql: &str, types: &[DerivedType]| {
+        let metadata = coordinator.metadata().lock();
+        let mut plan = transform_into_plan(sql, types, &*metadata).unwrap();
+        plan.optimize_statement().unwrap();
+        plan
+    };
+    let route = |prepared: &crate::ir::Plan, params: Vec<Value>| {
+        let mut plan = prepared.clone();
+        plan.bind_statement(params, Options::default()).unwrap();
+        let top = plan.get_top().unwrap();
+        let mut query = ExecutingQuery::from_plan(&coordinator, plan).unwrap();
+        query.bucket_discovery(top).unwrap()
+    };
+    let bucket_of = |key: &[&Value]| {
+        Buckets::new_filtered(
+            [coordinator.determine_bucket_id(key).unwrap()]
+                .into_iter()
+                .collect(),
+        )
+    };
+
+    let prepared = prepare(
+        "SELECT count(*) FROM t5 WHERE a = $1",
+        &[DerivedType::new(UnrestrictedType::Integer)],
+    );
+    assert!(!prepared.facts_proof.routes.is_empty());
+    let (one, two) = (Value::from(1), Value::from(2));
+    for (param, expected) in [
+        (one.clone(), bucket_of(&[&one])),
+        (two.clone(), bucket_of(&[&two])),
+        // `count(*)` of no row runs on any node.
+        (Value::Null, Buckets::Any),
+        (one.clone(), bucket_of(&[&one])),
+    ] {
+        assert_eq!(expected, route(&prepared, vec![param.clone()]), "{param:?}");
+    }
+    for routes in prepared.facts_proof.routes.values() {
+        for route in routes {
+            let crate::ir::bucket::facts_route::FactsRoute::Key(parts) = route else {
+                continue;
+            };
+            for part in parts {
+                if let crate::ir::bucket::facts_route::FactsRoutePart::Bound(id, _) = part {
+                    assert!(matches!(
+                        prepared.get_expression_node(*id),
+                        Ok(Expression::Parameter(_))
+                    ));
+                }
+            }
+        }
+    }
+
+    // `CURRENT_USER` is replaced in each execution's copy, by the mock's "admin".
+    let prepared = prepare(
+        "SELECT count(*) FROM t1 WHERE a = current_user AND b = 1",
+        &[],
+    );
+    assert!(!prepared.facts_proof.routes.is_empty());
+    let admin = Value::from("admin");
+    for _ in 0..2 {
+        assert_eq!(bucket_of(&[&admin, &one]), route(&prepared, vec![]));
+    }
 }

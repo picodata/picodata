@@ -26,6 +26,7 @@ use self::transformation::redistribution::MotionPolicy;
 use crate::errors::{Action, Entity, SbroadError};
 use crate::utils::to_user;
 
+use crate::ir::bucket::facts_route::FactsProof;
 use crate::ir::columns::RelColumn;
 use crate::ir::expression::{Comparator, VolatilityType};
 use crate::ir::helpers::RepeatableState;
@@ -912,6 +913,15 @@ pub struct Plan {
     /// Effective subtree shapes that survive across executions of a
     /// prepared plan.
     pub(crate) shapes: PlanShapes,
+    /// Witness of the facts-based 0–1 bucket proof, see `bucket::facts_route`.
+    // TODO: make the routes instructions of a compiled routing program (with
+    // bound parameter slots, no relational walk on execution) instead of a
+    // separate structure. Until then each host keeps its own copy of a route
+    // (nested subqueries and joins repeat one `Key($1)`), and bucket
+    // discovery hashes it once per host.
+    //
+    // Shared by the copies that bind makes: no pass changes it after optimize.
+    pub facts_proof: Rc<FactsProof>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1163,6 +1173,7 @@ impl Plan {
             shard_columns: RefCell::default(),
             tier: None,
             shapes: PlanShapes::default(),
+            facts_proof: Default::default(),
         }
     }
 

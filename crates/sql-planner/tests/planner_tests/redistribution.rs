@@ -793,6 +793,19 @@ fn explicit_bucket_id_decimal_parameter_stays_single_node_for_aggregate() {
     assert_eq!(*plan.slices(), Slices::empty());
 }
 
+// A param of another type than the key is not a pin.
+#[cfg(feature = "enrich_restrictions")]
+#[test]
+fn sharding_key_decimal_parameter_is_not_a_pin() {
+    let query = r#"SELECT count(*)
+        FROM "t5"
+        WHERE "a" = $1"#;
+
+    let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Decimal)]);
+
+    assert_ne!(*plan.slices(), Slices::empty());
+}
+
 #[test]
 fn explicit_bucket_id_non_integer_constant_stays_single_node_for_aggregate() {
     let query = r#"SELECT count(*)
@@ -1163,17 +1176,19 @@ fn inner_above_left_join_diagnostic() {
 }
 
 mod between;
+#[cfg(feature = "enrich_restrictions")]
+mod conjunct_proof;
 mod except;
 mod not_in;
 mod segment;
 mod single_bucket;
 mod value_forms;
 
-/// Enrichment may add a routing predicate that safely narrows these queries.
-/// Their results with either setting are covered by integration tests.
-#[cfg(not(feature = "enrich_restrictions"))]
+/// The facts see through contradictions whose buckets collide (1 and 10208
+/// hash to one bucket): only `a = 2` reads rows, so no reduce is needed.
+/// Their results are covered by integration tests.
 #[test]
-fn static_bucket_proofs_keep_reduce_for_colliding_contradictions() {
+fn facts_proofs_drop_reduce_for_colliding_contradictions() {
     let inputs = [
         "SELECT a FROM t5 WHERE (a = 1 AND a = 10208) OR a = 2",
         "SELECT a FROM t5 WHERE a = 1 AND a = 10208 \
@@ -1185,7 +1200,53 @@ fn static_bucket_proofs_keep_reduce_for_colliding_contradictions() {
         let query = format!("EXPLAIN (LOGICAL) SELECT count(*) FROM ({input}) u");
         let plan = sql_to_optimized_ir(&query, vec![]);
         let explain = explain_logical(&plan).unwrap();
-        assert!(explain.contains("sum(count_"), "{query}\n{explain}");
+        assert!(!explain.contains("sum(count_"), "{query}\n{explain}");
+    }
+}
+
+/// Both branches pin `t`'s key `(a, b)` to the same parameters: they share
+/// one bucket, so the count needs no reduce.
+#[test]
+fn prepared_union_all_of_one_composite_key_stays_single_node() {
+    let query = r#"SELECT count(*) FROM (
+        SELECT a, b FROM t WHERE a = $1 AND b = $2
+        UNION ALL
+        SELECT a, b FROM t WHERE a = $1 AND b = $2) u"#;
+    let int = DerivedType::new(UnrestrictedType::Integer);
+    let plan = prepared_optimized_ir(query, &[int, int]);
+    assert_eq!(Slices::empty(), *plan.slices());
+}
+
+/// A composite key fixed column by column proves one node whatever spells
+/// the conjuncts: casts, CURRENT_USER, or more disjunctions beside them than
+/// DNF expands.
+#[test]
+fn composite_key_fixed_by_separate_conjuncts_stays_single_node() {
+    let disjunctions = (1..=10)
+        .map(|i| format!("(l.c > {i} OR r.d > {i})"))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    let queries = [
+        "SELECT count(*) FROM t1 WHERE a = current_user AND b = 1".to_string(),
+        format!(
+            "SELECT count(*) FROM t l JOIN t r \
+             ON l.a = r.a AND l.b = r.b AND l.a = 1 AND l.b = 2 AND {disjunctions}"
+        ),
+    ];
+    for query in queries {
+        let plan = sql_to_optimized_ir(&query, vec![]);
+        assert_eq!(*plan.slices(), Slices::empty(), "{query}");
+    }
+    // A key column under a cast is not a key, and a value of another type
+    // than a key column pins no part of the key.
+    for query in [
+        "SELECT count(*) FROM t WHERE a = 1::decimal AND b = 1::decimal",
+        "SELECT count(*) FROM t WHERE a = 1 AND b = 1::decimal",
+        "SELECT count(*) FROM t WHERE a::decimal = 1::int AND b::decimal = 1::int",
+        "SELECT count(*) FROM t WHERE (a::decimal, b::decimal) = (1::int, 1::int)",
+    ] {
+        let plan = sql_to_optimized_ir(query, vec![]);
+        assert_ne!(*plan.slices(), Slices::empty(), "{query}");
     }
 }
 
@@ -1277,16 +1338,14 @@ fn inner_join_on_same_shard_stays_single_node() {
     assert_eq!(*plan.slices(), Slices::empty());
 }
 
-/// An inner join runs on the union of its inputs' buckets: restricting one side
-/// does not pin it.
-/// Enrichment derives `l.a = 1`, pinning both sides: then no reduce is right.
-#[cfg(not(feature = "enrich_restrictions"))]
+/// The facts pin `l.a = 1` through the join condition: both sides read one
+/// bucket, so no reduce is needed.
 #[test]
-fn inner_join_with_one_restricted_side_keeps_reduce() {
+fn inner_join_with_one_restricted_side_drops_reduce() {
     let query = r#"explain (logical) SELECT count(*) FROM "t5" AS l
         JOIN (SELECT "a" FROM "t5" WHERE "a" = 1) AS r ON l."a" = r."a""#;
     let plan = explain_logical(&sql_to_optimized_ir(query, vec![])).unwrap();
-    assert!(plan.contains("sum(count_"), "{plan}");
+    assert!(!plan.contains("sum(count_"), "{plan}");
 }
 
 /// A global table is on every node, so an inner join with it stays on the other
@@ -1719,11 +1778,10 @@ fn prepared_sharding_key_below_global_join_stays_single_node() {
     assert_eq!(Slices::empty(), *plan.slices());
 }
 
-/// A NULL binding empties the filtered input of the join with a global table
-/// and makes it Any. The executor then routes the LEFT JOIN by its right
-/// input, every bucket, so `count(*)` still needs a motion.
+/// A global INNER JOIN preserves the filtered input's routing even when
+/// NULL empties it, so the following LEFT JOIN needs no aggregate motion.
 #[test]
-fn prepared_left_join_over_maybe_any_keeps_motion() {
+fn prepared_left_join_over_global_join_stays_single_node() {
     let query = r#"SELECT count(*) FROM (
         SELECT "s"."a" AS "x" FROM (SELECT * FROM "t5" WHERE "a" = $1) AS "s"
         JOIN "global_t" ON true
@@ -1731,5 +1789,22 @@ fn prepared_left_join_over_maybe_any_keeps_motion() {
 
     let plan = prepared_optimized_ir(query, &[DerivedType::new(UnrestrictedType::Integer)]);
 
-    assert_ne!(Slices::empty(), *plan.slices());
+    assert_eq!(Slices::empty(), *plan.slices());
+}
+
+/// `a = 1` is fixed in every alternative that collapses past the limit, so
+/// it still meets the later `b = 2` in the key `(a, b)` of `t`.
+#[test]
+fn collapsed_alternatives_keep_aggregate_single_node() {
+    let ors = |column: &str, n: usize| {
+        let branches: Vec<_> = (1..=n).map(|i| format!("\"{column}\" = {i}")).collect();
+        format!("({})", branches.join(" OR "))
+    };
+    let query = format!(
+        r#"SELECT count(*) FROM "t" WHERE "a" = 1 AND {} AND {} AND "b" = 2"#,
+        ors("c", 33),
+        ors("d", 2)
+    );
+    let plan = sql_to_optimized_ir(&query, vec![]);
+    assert_eq!(Slices::empty(), *plan.slices());
 }

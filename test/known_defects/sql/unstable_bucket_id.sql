@@ -96,3 +96,105 @@ insert into t on conflict: fail
 ──────────────────────────────────────────────────────────────────────
 ''
 buckets = [712]
+
+-- TEST: mixed-representations-gl2640.1
+-- SQL:
+EXPLAIN SELECT * FROM t WHERE b = 1 AND b = 1.0;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (t.a::int -> a, t.b::decimal -> b)
+  selection ((t.b::decimal = 1::int and t.b::decimal = 1.0::decimal))
+    scan t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = []
+
+-- TEST: mixed-representations-gl2640.1.1
+-- SQL:
+EXPLAIN SELECT * FROM t WHERE b = 1.00;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (t.a::int -> a, t.b::decimal -> b)
+  selection (t.b::decimal = 1.00::decimal)
+    scan t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [2158]
+
+-- TEST: mixed-representations-gl2640.2
+-- SQL:
+EXPLAIN SELECT * FROM t WHERE b = 1.0 OR b = 1.00;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (t.a::int -> a, t.b::decimal -> b)
+  selection (t.b::decimal = 1.0::decimal or t.b::decimal = 1.00::decimal)
+    scan t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [712, 2158]
+
+-- TEST: mixed-representations-gl2640.3
+-- SQL:
+EXPLAIN SELECT * FROM (SELECT b FROM t WHERE b = 1.0) AS l
+LEFT JOIN (SELECT b FROM t WHERE b = 1.000) AS r ON l.b = r.b;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (l.b::decimal -> b, r.b::decimal -> b)
+  left join on (l.b::decimal = r.b::decimal)
+    scan l
+      projection (t.b::decimal -> b)
+        selection (t.b::decimal = 1.0::decimal)
+          scan t
+    scan r
+      projection (t.b::decimal -> b)
+        selection (t.b::decimal = 1.000::decimal)
+          scan t
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets = [712]
+
+-- TEST: transitive-another-type-gl2640.1
+-- SQL:
+CREATE TABLE t2 (a INT PRIMARY KEY, c INT);
+
+-- TEST: transitive-another-type-gl2640.2
+-- SQL:
+EXPLAIN SELECT * FROM t2 WHERE a = c AND c = 1.0;
+-- EXPECTED:
+──────────────────────────────────────────────────────────────────────
+ # Logical plan                                                       
+──────────────────────────────────────────────────────────────────────
+''
+projection (t2.a::int -> a, t2.c::int -> c)
+  selection ((t2.a::int = t2.c::int and t2.c::int = 1.0::decimal))
+    scan t2
+''
+──────────────────────────────────────────────────────────────────────
+ # Buckets                                                            
+──────────────────────────────────────────────────────────────────────
+''
+buckets <= [1-3000]

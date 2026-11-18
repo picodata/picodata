@@ -799,6 +799,7 @@ mod cast;
 mod concat;
 mod empty_motion;
 mod exec_plan;
+mod facts_proof;
 mod frontend;
 mod groupby_alias;
 mod like;

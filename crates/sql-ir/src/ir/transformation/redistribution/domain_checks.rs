@@ -27,9 +27,9 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::aliases::AliasGenerator;
 use crate::ir::distribution::Distribution;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{Delete, NodeId};
+use crate::ir::node::{CurrentUser, Delete, NodeId};
 use crate::ir::operator::Bool;
-use crate::ir::transformation::equality_facts::{DomainCheck, DomainCheckKind, Pin};
+use crate::ir::transformation::equality_facts::{BindValue, DomainCheck, DomainCheckKind, Pin};
 use crate::ir::transformation::redistribution::{MotionPolicy, Program};
 use crate::ir::transformation::PlanningState;
 use crate::ir::tree::traversal::REL_CAPACITY;
@@ -44,7 +44,15 @@ impl Plan {
     pub(crate) fn make_pin(&mut self, pin: &Pin) -> NodeId {
         match pin {
             Pin::Const(value) => self.add_const(value.clone()),
-            Pin::Param(index, ty) => self.add_param(*index, *ty),
+            Pin::Param(index, ty) => self.add_pin_param(*index, *ty),
+        }
+    }
+
+    /// The node of a bind value: `CURRENT_USER` or a typed parameter.
+    fn add_pin_param(&mut self, param: BindValue, param_type: DerivedType) -> NodeId {
+        match param {
+            BindValue::CurrentUser => self.nodes.push(CurrentUser {}.into()),
+            BindValue::Param(index) => self.add_param(index, param_type),
         }
     }
 
@@ -54,12 +62,12 @@ impl Plan {
     /// - Building the comparison fails.
     pub(crate) fn make_param_check(
         &mut self,
-        param: u16,
+        param: BindValue,
         param_type: DerivedType,
         pin: &Pin,
     ) -> Result<NodeId, SbroadError> {
         let pin_id = self.make_pin(pin);
-        let param_id = self.add_param(param, param_type);
+        let param_id = self.add_pin_param(param, param_type);
         self.add_bool(param_id, Bool::Eq, pin_id)
     }
 

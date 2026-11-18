@@ -266,13 +266,13 @@ plan:
     [0] SCAN TABLE g (~1048576 rows)
         [0] SEARCH TABLE t USING PRIMARY KEY (a=?) (~1 row)
 ''
-buckets = any
+buckets = []
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = any
+buckets = []
 
 -- TEST: explain-raw-sharded-join-global
 -- SQL:
@@ -292,13 +292,13 @@ plan:
     [0] SCAN TABLE g (~1048576 rows)
         [0] SEARCH TABLE t USING PRIMARY KEY (a=?) (~1 row)
 ''
-buckets = any
+buckets = []
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = any
+buckets = []
 
 -- TEST: explain-raw-global-join-global
 -- SQL:
@@ -318,13 +318,13 @@ plan:
     [0] SCAN TABLE g (~983040 rows)
         [0] SCAN TABLE t (~1048576 rows)
 ''
-buckets = any
+buckets = []
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = any
+buckets = []
 
 -- TEST: explain-raw-sharded-join-sharded
 -- SQL:
@@ -344,13 +344,13 @@ plan:
     [0] SCAN TABLE t (~983040 rows)
         [0] SCAN TABLE g (~1048576 rows)
 ''
-buckets = any
+buckets = []
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = any
+buckets = []
 
 -- TEST: count-unequal-constants-in-row-after-bind
 -- SQL:

@@ -225,6 +225,7 @@ fn colocated_subquery_in_update_and_delete() {
           selection (t3_2.a::int = $1::int)
             scan t3_2
     ");
+    #[cfg(not(feature = "enrich_restrictions"))]
     insta::assert_snapshot!(explain(
         "DELETE FROM t5 WHERE a = $1 AND b IN (SELECT b FROM t3_2 WHERE a = $1)"
     ), @r"
@@ -232,6 +233,22 @@ fn colocated_subquery_in_update_and_delete() {
       motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
         projection (t5.a::int -> pk_col_0)
           selection ((t5.a::int = $1::int and t5.b::int in ROW($0)))
+            scan t5
+    subquery $0:
+      scan
+        projection (t3_2.b::int -> b)
+          selection (t3_2.a::int = $1::int)
+            scan t3_2
+    ");
+    // Enrich re-emits the pin after the subquery; the motions are the same.
+    #[cfg(feature = "enrich_restrictions")]
+    insta::assert_snapshot!(explain(
+        "DELETE FROM t5 WHERE a = $1 AND b IN (SELECT b FROM t3_2 WHERE a = $1)"
+    ), @r"
+    delete from t5
+      motion [policy: local, program: [PrimaryKey(0), ReshardIfNeeded]]
+        projection (t5.a::int -> pk_col_0)
+          selection ((t5.b::int in ROW($0) and t5.a::int = $1::int))
             scan t5
     subquery $0:
       scan
@@ -1623,4 +1640,43 @@ fn is_true_and_is_false_on_the_key_stay_single_node() {
         let explain = explain(query);
         assert!(explain.contains("motion"), "{query}\n{explain}");
     }
+}
+
+/// As a conjunct `x IS TRUE` is `x`: the key pinned under it needs no motion,
+/// as on the tree walk of master. `IS FALSE` and `IS NOT TRUE` over a
+/// comparison are not the comparison and keep it.
+#[test]
+fn is_true_over_a_key_comparison_stays_single_node() {
+    for query in [
+        "SELECT count(*) FROM t5 WHERE (a = 1) IS TRUE",
+        "SELECT count(*) FROM t5 WHERE ((a = $1) IS TRUE) IS TRUE",
+        "SELECT count(*) FROM bool_sharded WHERE (b = false) IS TRUE",
+        "SELECT count(*) FROM bool_sharded WHERE b IS TRUE IS TRUE",
+        "SELECT count(*) FROM t5 WHERE (a = 1 AND b = 2) IS TRUE",
+        "SELECT count(*) FROM t5 WHERE ((a = 1 AND b = 2) IS TRUE AND b > 0) IS TRUE",
+    ] {
+        let explain = explain(query);
+        assert!(!explain.contains("motion"), "{query}\n{explain}");
+    }
+    for query in [
+        "SELECT count(*) FROM t5 WHERE (a = 1) IS FALSE",
+        "SELECT count(*) FROM t5 WHERE (a = 1) IS NOT TRUE",
+        "SELECT count(*) FROM t5 WHERE (a = 1 AND b = 2) IS FALSE",
+    ] {
+        let explain = explain(query);
+        assert!(explain.contains("motion"), "{query}\n{explain}");
+    }
+}
+
+/// The output subquery equal to the one of `GROUP BY` is dropped after
+/// AddMotions proves its body single-node: the proof keeps only the nodes
+/// that stay (debug builds check it).
+#[test]
+fn proof_of_a_dropped_output_subquery_is_not_kept() {
+    let query = "WITH p0 AS (SELECT a FROM t), \
+        p1 AS (SELECT a FROM p0 UNION ALL SELECT a FROM p0), \
+        q0 AS (SELECT a FROM t), \
+        q1 AS (SELECT a FROM q0 UNION ALL SELECT a FROM q0) \
+        SELECT a + (SELECT sum(a) FROM p1) FROM t GROUP BY a + (SELECT sum(a) FROM q1)";
+    explain(query);
 }

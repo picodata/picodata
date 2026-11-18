@@ -7,10 +7,14 @@ use smol_str::{format_smolstr, SmolStr};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
+use std::rc::Rc;
 
 use crate::errors::{Action, Entity, SbroadError};
 use crate::ir::api::children;
+use crate::ir::bucket::facts_route::FactsProof;
+use crate::ir::bucket::facts_route::{FactsRoute, FactsRoutePart};
 use crate::ir::bucket::{BucketAlgebra, BucketProof, StaticResolver};
+use crate::ir::bucket::{BucketsResolver, UnboundKeyPart};
 use crate::ir::distribution::{Distribution, Key, KeySet};
 use crate::ir::expression::ColumnPositionMap;
 use crate::ir::node::expression::Expression;
@@ -28,7 +32,7 @@ use crate::ir::node::{
     Reference, Row, ScanCte, ScanFunction, ScanRelation, ScanSubQuery, SelectWithoutScan,
     Selection, SubQueryReference, UnaryExpr, Union, UnionAll, Update, Values, Window,
 };
-use crate::ir::transformation::equality_facts::EqualityFacts;
+use crate::ir::transformation::equality_facts::{BindValue, ClassId, EqualityFacts};
 use crate::ir::transformation::PlanningState;
 use crate::ir::tree::traversal::{NodeIter, PostOrder, REL_CAPACITY};
 use crate::ir::value::Value;
@@ -333,6 +337,14 @@ struct MotionsCache {
     /// Whether a union will still expose a one-stage scalar aggregate on the
     /// storages after the strategy returned by `resolve_union_conflicts` is applied.
     union_aggregates: AHashMap<NodeId, bool>,
+    /// Facts routes and single-node decisions, see `bucket::facts_route`.
+    facts_proof: FactsProof,
+    /// A node of each bind value, see `Plan::facts_bound_node`. Built on the
+    /// first lookup: one pass over the arena instead of one per pin.
+    facts_bound_nodes: Option<AHashMap<BindValue, NodeId>>,
+    /// The values of each class for `FactsRoute::Same`, see
+    /// `Plan::facts_same`: one list per class, shared by all its hosts.
+    facts_same: AHashMap<ClassId, Option<Rc<[FactsRoutePart]>>>,
     /// Set on the fresh cache of a debug recheck, so that the recheck does
     /// not start nested rechecks: shared CTE subtrees would make them exponential.
     #[cfg(debug_assertions)]
@@ -590,8 +602,15 @@ impl Plan {
         &self,
         rel_id: NodeId,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<bool, SbroadError> {
-        Ok(self.single_node_buckets(rel_id, cache)?.is_single_node())
+        let single = self
+            .single_node_buckets(rel_id, cache, state)?
+            .is_single_node();
+        if single {
+            cache.facts_proof.single_node.insert(rel_id);
+        }
+        Ok(single)
     }
 
     /// Routing bounds used to prove [`Self::is_single_node_subtree`].
@@ -599,6 +618,7 @@ impl Plan {
         &self,
         rel_id: NodeId,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<BucketProof, SbroadError> {
         if let Some(buckets) = cache.single_node.get(&rel_id) {
             // The cache must not change decisions: recompute from the current
@@ -609,7 +629,7 @@ impl Plan {
                     rechecking: true,
                     ..MotionsCache::default()
                 };
-                let fresh = self.compute_single_node_buckets(rel_id, &mut fresh_cache)?;
+                let fresh = self.compute_single_node_buckets(rel_id, &mut fresh_cache, state)?;
                 debug_assert_eq!(
                     buckets, &fresh,
                     "stale single-node buckets cached for {rel_id:?}"
@@ -617,8 +637,217 @@ impl Plan {
             }
             return Ok(buckets.clone());
         }
-        let buckets = self.compute_single_node_buckets(rel_id, cache)?;
+        let buckets = self.compute_single_node_buckets(rel_id, cache, state)?;
         cache.single_node.insert(rel_id, buckets.clone());
+        Ok(buckets)
+    }
+
+    /// The node a bind value of a facts class is replaced in: all nodes of
+    /// one value get the same constant, so any of them will do.
+    fn facts_bound_node(&self, wanted: BindValue, cache: &mut MotionsCache) -> Option<NodeId> {
+        use crate::ir::node::{Node32, Parameter};
+        let nodes = cache.facts_bound_nodes.get_or_insert_with(|| {
+            let mut nodes = AHashMap::new();
+            for (id, node) in self.nodes.iter32_with_ids() {
+                let value = match node {
+                    Node32::CurrentUser(_) => BindValue::CurrentUser,
+                    Node32::Parameter(Parameter { index, .. }) => BindValue::Param(*index),
+                    _ => continue,
+                };
+                nodes.entry(value).or_insert(id);
+            }
+            nodes
+        });
+        nodes.get(&wanted).copied()
+    }
+
+    /// Every value the class of `(rel_id, pos)` equates, when there are two
+    /// or more: after bind, two of them unequal or a NULL leave the domain
+    /// no row, which the pin alone (one representative) does not see.
+    /// Built once per class: every host of the class and every key position
+    /// in it share the list, as a chain of joins on one key has as many hosts
+    /// and keys as tables.
+    fn facts_same(
+        &self,
+        facts: &EqualityFacts,
+        rel_id: NodeId,
+        pos: usize,
+        cache: &mut MotionsCache,
+    ) -> Option<Rc<[FactsRoutePart]>> {
+        let class_id = facts.class_of_slot(rel_id, pos)?;
+        if let Some(same) = cache.facts_same.get(&class_id) {
+            return same.clone();
+        }
+        let class = &facts.classes[class_id.index()];
+        let build = |cache: &mut MotionsCache| -> Option<Rc<[FactsRoutePart]>> {
+            if class.is_contradictory() {
+                return None;
+            }
+            let mut parts: Vec<FactsRoutePart> = class
+                .constant
+                .iter()
+                .map(|value| FactsRoutePart::Value(value.clone()))
+                .collect();
+            for &param in class.params.iter() {
+                parts.push(FactsRoutePart::Bound(
+                    self.facts_bound_node(param, cache)?,
+                    facts.param_type(param),
+                ));
+            }
+            (parts.len() > 1).then(|| parts.into())
+        };
+        let same = build(cache);
+        cache.facts_same.insert(class_id, same.clone());
+        same
+    }
+
+    /// The pin of the output slot `(rel_id, pos)` as a key part and as the
+    /// route the executor binds. `None` for no pin or a parameter without a
+    /// node to bind, or a type stored in several forms (see
+    /// `EqualityFacts::routing_pin`).
+    fn facts_pin<'f>(
+        &self,
+        facts: &'f EqualityFacts,
+        rel_id: NodeId,
+        pos: usize,
+        cache: &mut MotionsCache,
+    ) -> Option<(UnboundKeyPart<'f>, FactsRoutePart)> {
+        use crate::ir::transformation::equality_facts::ClassPin;
+        let class = &facts.classes[facts.class_of_slot(rel_id, pos)?.index()];
+        Some(match facts.routing_pin(class)? {
+            ClassPin::Const(value) => (
+                UnboundKeyPart::Value(value),
+                FactsRoutePart::Value(value.clone()),
+            ),
+            ClassPin::Param(param) => (
+                match param {
+                    BindValue::CurrentUser => UnboundKeyPart::CurrentUser,
+                    BindValue::Param(index) => UnboundKeyPart::Param(index),
+                },
+                FactsRoutePart::Bound(
+                    self.facts_bound_node(param, cache)?,
+                    facts.param_type(param),
+                ),
+            ),
+        })
+    }
+
+    /// A pin of the `bucket_id` slot `(rel_id, pos)` by a parameter of
+    /// another numeric type, see `EquivalenceClass::bucket_params`: the
+    /// executor rounds its bound value to the bucket. Only for `bucket_id`:
+    /// the class's value is that bucket, not the parameter.
+    fn facts_bucket_param<'f>(
+        &self,
+        facts: &'f EqualityFacts,
+        rel_id: NodeId,
+        pos: usize,
+        cache: &mut MotionsCache,
+    ) -> Option<(UnboundKeyPart<'f>, FactsRoutePart)> {
+        let class = &facts.classes[facts.class_of_slot(rel_id, pos)?.index()];
+        if class.is_contradictory() {
+            return None;
+        }
+        let index = *class.bucket_params.first()?;
+        let param = BindValue::Param(index);
+        Some((
+            UnboundKeyPart::Param(index),
+            FactsRoutePart::Bound(
+                self.facts_bound_node(param, cache)?,
+                facts.param_type(param),
+            ),
+        ))
+    }
+
+    /// The buckets a `Selection` filter or an INNER `ON` restricts `rel_id`
+    /// to, from the pins of the equality facts, without reading its
+    /// condition; the executor routes the node by the same pins (see
+    /// `bucket::facts_route`). A pin of the domain holds for every row an input
+    /// contributes to the domain root, wherever the domain enforces it, so
+    /// the rows on other buckets can be skipped. A fully pinned sharding
+    /// key or `bucket_id` of an input bounds those rows to one bucket.
+    /// Emptiness comes from an `AlwaysFalse` check placed here or, without
+    /// enrichment, from `facts.dead_rels()`.
+    fn facts_filter_buckets(
+        &self,
+        rel_id: NodeId,
+        rel_children: &[NodeId],
+        subqueries: &[NodeId],
+        cache: &mut MotionsCache,
+        state: &PlanningState,
+    ) -> Result<BucketProof, SbroadError> {
+        use crate::ir::transformation::equality_facts::DomainCheckKind;
+        let mut buckets =
+            self.default_filter_buckets::<StaticResolver>(rel_children, subqueries)?;
+        let Some(facts) = state.facts.as_ref() else {
+            return Ok(buckets);
+        };
+        if facts
+            .domain_checks_of(rel_id)
+            .iter()
+            .any(|check| check.kind == DomainCheckKind::AlwaysFalse && check.host == rel_id)
+        {
+            cache.facts_proof.add_route(rel_id, FactsRoute::Empty);
+            return Ok(BucketProof::new_empty());
+        }
+        // Without enrichment no AlwaysFalse check is placed: an unsatisfiable
+        // condition of this node is known only to the facts.
+        if !cfg!(feature = "enrich_restrictions") && facts.dead_rels().contains(&rel_id) {
+            cache.facts_proof.add_route(rel_id, FactsRoute::Empty);
+            return Ok(BucketProof::new_empty());
+        }
+        for &child in rel_children {
+            // A motion inserted after the analysis has no classes.
+            if !facts.is_analyzed(child) {
+                continue;
+            }
+            if let Ok(Distribution::Segment { keys }) = self.rel_distr_ref(child) {
+                for key in keys.iter() {
+                    let pins: Option<Vec<_>> = key
+                        .positions
+                        .iter()
+                        .map(|pos| self.facts_pin(facts, child, *pos, cache))
+                        .collect();
+                    let Some(pins) = pins.filter(|pins| !pins.is_empty()) else {
+                        continue;
+                    };
+                    let (parts, route): (Vec<_>, Vec<_>) = pins.into_iter().unzip();
+                    let key_buckets = StaticResolver.buckets_from_unbound_key(&parts, None)?;
+                    buckets = buckets.conjunct(&key_buckets);
+                    cache.facts_proof.add_route(rel_id, FactsRoute::Key(route));
+                    for pos in key.positions.iter() {
+                        if let Some(same) = self.facts_same(facts, child, *pos, cache) {
+                            cache.facts_proof.add_route(rel_id, FactsRoute::Same(same));
+                        }
+                    }
+                }
+            }
+            let mut positions_cache = crate::ir::bucket::ShardPositionsCache::new();
+            let Some(positions) = self.shard_columns_positions(child, &mut positions_cache)? else {
+                continue;
+            };
+            for pos in positions.into_iter().flatten() {
+                let pin = match self.facts_pin(facts, child, pos, cache) {
+                    Some(pin) => Some(pin),
+                    None => self.facts_bucket_param(facts, child, pos, cache),
+                };
+                let Some((part, route)) = pin else {
+                    continue;
+                };
+                let id_buckets = match part {
+                    UnboundKeyPart::Value(value) => {
+                        StaticResolver.buckets_from_bucket_id(value, None)?
+                    }
+                    _ => BucketProof::new_at_most_one(),
+                };
+                buckets = buckets.conjunct(&id_buckets);
+                cache
+                    .facts_proof
+                    .add_route(rel_id, FactsRoute::BucketId(route));
+                if let Some(same) = self.facts_same(facts, child, pos, cache) {
+                    cache.facts_proof.add_route(rel_id, FactsRoute::Same(same));
+                }
+            }
+        }
         Ok(buckets)
     }
 
@@ -626,6 +855,7 @@ impl Plan {
         &self,
         rel_id: NodeId,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<BucketProof, SbroadError> {
         // A Single subtree can be executed as Any at a stage boundary. Do not
         // carry a key across that change of routing mode, or across a motion.
@@ -652,21 +882,17 @@ impl Plan {
             | Relational::OrderBy(_)
             | Relational::Limit(_) => {
                 let child_id = self.get_first_rel_child(rel_id)?;
-                self.single_node_buckets(child_id, cache)
+                self.single_node_buckets(child_id, cache, state)
             }
             Relational::Selection(sel) => {
-                let child = self.single_node_buckets(sel.child, cache)?;
-                let filter = self.get_expression_tree_buckets(
-                    sel.filter,
-                    &[sel.child],
-                    &sel.subqueries,
-                    &StaticResolver,
-                )?;
+                let child = self.single_node_buckets(sel.child, cache, state)?;
+                let filter =
+                    self.facts_filter_buckets(rel_id, &[sel.child], &sel.subqueries, cache, state)?;
                 Ok(child.conjunct(&filter))
             }
             Relational::Join(join) => {
-                let left = self.single_node_buckets(join.left, cache)?;
-                let right = self.single_node_buckets(join.right, cache)?;
+                let left = self.single_node_buckets(join.left, cache, state)?;
+                let right = self.single_node_buckets(join.right, cache, state)?;
                 match join.kind {
                     // The executor routes a left input of Any by the right one:
                     // a left input that may turn out Any must allow for it too.
@@ -675,11 +901,12 @@ impl Plan {
                         _ => left,
                     }),
                     JoinKind::Inner => {
-                        let filter = self.get_expression_tree_buckets(
-                            join.condition,
+                        let filter = self.facts_filter_buckets(
+                            rel_id,
                             &[join.left, join.right],
                             &join.subqueries,
-                            &StaticResolver,
+                            cache,
+                            state,
                         )?;
                         Ok(left.disjunct(&right).conjunct(&filter))
                     }
@@ -687,13 +914,13 @@ impl Plan {
             }
             Relational::UnionAll(UnionAll { left, right, .. })
             | Relational::Union(Union { left, right, .. }) => {
-                let left = self.single_node_buckets(*left, cache)?;
-                let right = self.single_node_buckets(*right, cache)?;
+                let left = self.single_node_buckets(*left, cache, state)?;
+                let right = self.single_node_buckets(*right, cache, state)?;
                 Ok(left.disjunct(&right))
             }
             // Pinned by `add_motions`: it runs next to its sharded subqueries.
             Relational::SelectWithoutScan(_) if self.is_pinned_select_without_scan(rel_id)? => {
-                let buckets = self.sharded_subqueries_buckets(rel_id, cache)?;
+                let buckets = self.sharded_subqueries_buckets(rel_id, cache, state)?;
                 debug_assert!(
                     buckets.is_some(),
                     "pinned SELECT without FROM {rel_id} has no sharded subqueries"
@@ -726,10 +953,11 @@ impl Plan {
         &self,
         rel_id: NodeId,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<Option<BucketProof>, SbroadError> {
         let mut buckets: Option<BucketProof> = None;
         for sq in self.sharded_subqueries(rel_id)? {
-            let sq_buckets = self.single_node_buckets(sq, cache)?;
+            let sq_buckets = self.single_node_buckets(sq, cache, state)?;
             buckets = Some(match buckets {
                 Some(buckets) => buckets.disjunct(&sq_buckets),
                 None => sq_buckets,
@@ -811,6 +1039,7 @@ impl Plan {
         rel_id: NodeId,
         gathered_by_windows: &AHashSet<NodeId>,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<AHashSet<NodeId>, SbroadError> {
         let mut colocated = AHashSet::new();
         if gathered_by_windows.contains(&rel_id) || self.get_relation_subqueries(rel_id)?.is_empty()
@@ -820,7 +1049,7 @@ impl Plan {
         let anchor = match self.get_relation_node(rel_id)? {
             // Not cached: the bounds depend on the subqueries' distributions,
             // which their motions change.
-            Relational::Selection(_) => self.compute_single_node_buckets(rel_id, cache)?,
+            Relational::Selection(_) => self.compute_single_node_buckets(rel_id, cache, state)?,
             Relational::Projection(Projection {
                 output,
                 group_by: None,
@@ -830,7 +1059,7 @@ impl Plan {
                 return Ok(colocated);
             }
             Relational::Projection(_) | Relational::GroupBy(_) | Relational::OrderBy(_) => {
-                self.single_node_buckets(self.get_first_rel_child(rel_id)?, cache)?
+                self.single_node_buckets(self.get_first_rel_child(rel_id)?, cache, state)?
             }
             _ => return Ok(colocated),
         };
@@ -842,7 +1071,7 @@ impl Plan {
             return Ok(colocated);
         }
         for sq in self.sharded_subqueries(rel_id)? {
-            let sq_buckets = self.single_node_buckets(sq, cache)?;
+            let sq_buckets = self.single_node_buckets(sq, cache, state)?;
             if matches!(sq_buckets, BucketProof::Filtered { .. })
                 && anchor.disjunct(&sq_buckets).is_single_node()
             {
@@ -942,6 +1171,7 @@ impl Plan {
         id: NodeId,
         output: NodeId,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<bool, SbroadError> {
         if self.contains_volatile(output, true)? {
             return Ok(false);
@@ -962,7 +1192,7 @@ impl Plan {
             }
         }
         Ok(self
-            .sharded_subqueries_buckets(id, cache)?
+            .sharded_subqueries_buckets(id, cache, state)?
             .is_some_and(|buckets| buckets.is_single_node_filtered()))
     }
 
@@ -1317,6 +1547,7 @@ impl Plan {
         rel_id: NodeId,
         in_place: bool,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<Strategy, SbroadError> {
         let rel = self.get_relation_node(rel_id)?;
 
@@ -1350,7 +1581,7 @@ impl Plan {
             strategy.upsert_child(first_child_id, MotionPolicy::None, Program::default());
             return Ok(strategy);
         };
-        if in_place && self.is_single_node_subtree(first_child_id, cache)? {
+        if in_place && self.is_single_node_subtree(first_child_id, cache, state)? {
             strategy.upsert_child(first_child_id, MotionPolicy::None, Program::default());
             return Ok(strategy);
         }
@@ -2236,7 +2467,7 @@ impl Plan {
 
         let mut map = Strategy::new(rel_id);
 
-        if self.resolve_except_global_vs_sharded(rel_id, state)? {
+        if self.resolve_except_global_vs_sharded(rel_id, cache, state)? {
             return Ok(map);
         }
 
@@ -2254,8 +2485,8 @@ impl Plan {
         // on an arbitrary node.
         if in_place
             && self
-                .single_node_buckets(left_id, cache)?
-                .disjunct(&self.single_node_buckets(right_id, cache)?)
+                .single_node_buckets(left_id, cache, state)?
+                .disjunct(&self.single_node_buckets(right_id, cache, state)?)
                 .is_single_node_filtered()
             && !self.has_shard_scalar_aggregate(left_id, cache)?
         {
@@ -2325,6 +2556,20 @@ impl Plan {
         Ok(map)
     }
 
+    /// Copy a planned subtree with the facts proof of each of its nodes. The
+    /// proof is keyed by node ids, and the copy runs without the motions it
+    /// removed, so a copy without it would neither be routed by the proof nor
+    /// checked as single-node. AddMotions copies planned subtrees only here.
+    fn clone_planned_subtree(
+        &mut self,
+        top_id: NodeId,
+        cache: &mut MotionsCache,
+    ) -> Result<NodeId, SbroadError> {
+        let (new_top_id, old_new) = SubtreeCloner::clone_subtree_with_map(self, top_id)?;
+        cache.facts_proof.copy_to_clone(&old_new);
+        Ok(new_top_id)
+    }
+
     /// Resolves the case when left child has distribution Global
     /// and right child has Any or Segment distribution.
     /// If distributions are different returns `false`, otherwise modifies the
@@ -2366,6 +2611,7 @@ impl Plan {
     fn resolve_except_global_vs_sharded(
         &mut self,
         except_id: NodeId,
+        cache: &mut MotionsCache,
         state: &mut PlanningState,
     ) -> Result<bool, SbroadError> {
         let left_id = self.get_rel_child(except_id, 0)?;
@@ -2382,7 +2628,9 @@ impl Plan {
             return Ok(false);
         }
 
-        let cloned_left_id = SubtreeCloner::clone_subtree(self, left_id)?;
+        // The copy runs on every replicaset: without the proof of the
+        // original, its one-stage scalar aggregates would run there too.
+        let cloned_left_id = self.clone_planned_subtree(left_id, cache)?;
 
         let right_dist = self.rel_distr_ref(right_id)?.clone();
         let intersect = Intersect {
@@ -2405,6 +2653,7 @@ impl Plan {
         &mut self,
         rel_id: NodeId,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<Strategy, SbroadError> {
         if !matches!(
             self.get_relation_node(rel_id)?,
@@ -2467,9 +2716,10 @@ impl Plan {
             // A global branch is read on one node only.
             let mut read_id = global_id;
             if matches!(self.get_relation_node(rel_id)?, Relational::Union(_)) {
-                if let Some(union_id) = self.ungathered_union(global_id, other_id, cache)? {
+                if let Some(union_id) = self.ungathered_union(global_id, other_id, cache, state)? {
                     self.change_child(rel_id, global_id, union_id)?;
                     read_id = union_id;
+                    cache.facts_proof.single_node.insert(rel_id);
                 }
             }
             map.upsert_child(
@@ -2491,8 +2741,10 @@ impl Plan {
             }
         }
         let shares_one_bucket =
-            !exposed.is_empty() && self.union_shares_one_bucket(left_id, right_id, cache)?;
-        if !shares_one_bucket {
+            !exposed.is_empty() && self.union_shares_one_bucket(left_id, right_id, cache, state)?;
+        if shares_one_bucket {
+            cache.facts_proof.single_node.insert(rel_id);
+        } else {
             for side in exposed {
                 map.upsert_child(
                     side,
@@ -2515,6 +2767,7 @@ impl Plan {
         global_id: NodeId,
         other_id: NodeId,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<Option<NodeId>, SbroadError> {
         let Relational::Motion(Motion {
             child: Some(union_id),
@@ -2530,29 +2783,53 @@ impl Plan {
         };
         let (left, right) = (*left, *right);
         let proof = self
-            .single_node_buckets(left, cache)?
-            .disjunct(&self.single_node_buckets(right, cache)?)
-            .disjunct(&self.single_node_buckets(other_id, cache)?);
+            .single_node_buckets(left, cache, state)?
+            .disjunct(&self.single_node_buckets(right, cache, state)?)
+            .disjunct(&self.single_node_buckets(other_id, cache, state)?);
         Ok(proof.is_single_node().then_some(union_id))
     }
 
-    /// Whether both branches select the same nonempty bucket. A possibly empty
-    /// input cannot pin a scalar aggregate, which emits a row even without input.
-    ///
-    /// Branches on one parameter key may be empty but read no other bucket:
-    /// the union runs on that bucket or, if none, on one node picked for the
-    /// aggregate (`emits_row_from_empty_input`).
+    /// Whether both branches read at most the bucket of one key. They may
+    /// read none: the union then runs on one node picked for the aggregate
+    /// (`emits_row_from_empty_input`).
     fn union_shares_one_bucket(
         &self,
         left: NodeId,
         right: NodeId,
         cache: &mut MotionsCache,
+        state: &PlanningState,
     ) -> Result<bool, SbroadError> {
-        let left = self.single_node_buckets(left, cache)?;
-        let right = self.single_node_buckets(right, cache)?;
-        let pinned = (left.is_nonempty_filtered() && right.is_nonempty_filtered())
-            || left.shares_param_key(&right);
-        Ok(pinned && left.disjunct(&right).is_single_node())
+        let left = self.single_node_buckets(left, cache, state)?;
+        let right = self.single_node_buckets(right, cache, state)?;
+        // With the facts proof, both inputs Filtered within the bucket of one
+        // key read at most that bucket, or none: then the stage runs once
+        // (`emits_row_from_empty_input`). A literal key is as good as a
+        // parameter one.
+        Ok(left.shares_key(&right) && left.disjunct(&right).is_single_node())
+    }
+
+    /// The verdict of [`Self::has_shard_scalar_aggregate`] that `id` decides
+    /// on its own, or `None` if it is that of its inputs.
+    pub fn shard_scalar_aggregate_of_node(&self, id: NodeId) -> Result<Option<bool>, SbroadError> {
+        if matches!(
+            self.rel_distr_ref(id),
+            Ok(Distribution::Single | Distribution::Global)
+        ) {
+            return Ok(Some(false));
+        }
+        Ok(match self.get_relation_node(id)? {
+            Relational::Motion(Motion {
+                policy: MotionPolicy::Segment(_) | MotionPolicy::Full,
+                ..
+            }) => Some(false),
+            Relational::Projection(Projection {
+                group_by: None,
+                having,
+                output,
+                ..
+            }) if having.is_some() || self.contains_aggregates(*output, true)? => Some(true),
+            _ => None,
+        })
     }
 
     /// Whether the stage computing `rel_id` also computes a scalar aggregate
@@ -2586,28 +2863,11 @@ impl Plan {
                 }
                 continue;
             }
-            if matches!(
-                self.rel_distr_ref(id),
-                Ok(Distribution::Single | Distribution::Global)
-            ) {
-                continue;
+            match self.shard_scalar_aggregate_of_node(id)? {
+                Some(true) => return Ok(true),
+                Some(false) => continue,
+                None => stack.extend(self.nodes.rel_iter(id)),
             }
-            match self.get_relation_node(id)? {
-                Relational::Motion(Motion {
-                    policy: MotionPolicy::Segment(_) | MotionPolicy::Full,
-                    ..
-                }) => continue,
-                Relational::Projection(Projection {
-                    group_by: None,
-                    having,
-                    output,
-                    ..
-                }) if having.is_some() || self.contains_aggregates(*output, true)? => {
-                    return Ok(true);
-                }
-                _ => {}
-            }
-            stack.extend(self.nodes.rel_iter(id));
         }
         Ok(false)
     }
@@ -2836,7 +3096,7 @@ impl Plan {
                 }
                 RelOwned::SelectWithoutScan(SelectWithoutScan { output, .. })
                     if in_place.contains(&id)
-                        && self.sws_is_pinnable(id, output, &mut cache)? =>
+                        && self.sws_is_pinnable(id, output, &mut cache, state)? =>
                 {
                     // Runs on the bucket of its subqueries, which need no
                     // motions. `Any` (others are `Global`) marks it as pinned
@@ -2887,7 +3147,7 @@ impl Plan {
                     )?;
                 }
                 RelOwned::UnionAll(UnionAll { .. }) => {
-                    let strategy = self.resolve_union_conflicts(id, &mut cache)?;
+                    let strategy = self.resolve_union_conflicts(id, &mut cache, state)?;
                     self.insert_motion_nodes(strategy, state)?;
                     self.set_rel_output_distribution(id)?;
                 }
@@ -2916,7 +3176,30 @@ impl Plan {
 
         let slices = self.calculate_slices(top_id)?;
         self.slices = slices.into();
+        self.keep_reachable_facts_proof(top_id, cache.facts_proof);
         Ok(self)
+    }
+
+    /// Store the facts proof of the nodes that stay in the plan.
+    fn keep_reachable_facts_proof(&mut self, top_id: NodeId, proof: FactsProof) {
+        let FactsProof {
+            mut routes,
+            mut single_node,
+        } = proof;
+        // A subtree examined above may be dropped by a later rewrite (an
+        // output subquery replaced by the equal one of `GROUP BY`): it never
+        // runs, so keep the proof of the nodes that stay.
+        if !routes.is_empty() || !single_node.is_empty() {
+            let reachable: AHashSet<NodeId> =
+                PostOrder::new(&self.nodes, |node| self.nodes.rel_iter(node), top_id)
+                    .map(|(id, _)| id)
+                    .collect();
+            routes.retain(|id, _| reachable.contains(id));
+            single_node.retain(|id| reachable.contains(id));
+        }
+        let proof = Rc::make_mut(&mut self.facts_proof);
+        proof.routes.extend(routes);
+        proof.single_node.extend(single_node);
     }
 
     /// Covers the `Values` children of `id` with motions and relinks the
@@ -2995,7 +3278,7 @@ impl Plan {
         cache: &mut MotionsCache,
         state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
-        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
+        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache, state)?;
         let mut correct_nodes = colocated.clone();
         for gr_expr in gr_exprs {
             let mut gr_expr_strategy = self.resolve_sq_conflicts(id, *gr_expr)?;
@@ -3016,7 +3299,7 @@ impl Plan {
         cache: &mut MotionsCache,
         state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
-        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
+        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache, state)?;
         let mut strategy = self.resolve_sq_conflicts(id, data)?;
         strategy.keep_in_place(&colocated);
         let correct_rel_ids = strategy.get_rel_ids();
@@ -3049,7 +3332,7 @@ impl Plan {
         cache: &mut MotionsCache,
         state: &mut PlanningState,
     ) -> Result<(), SbroadError> {
-        let strategy = self.resolve_union_conflicts(id, cache)?;
+        let strategy = self.resolve_union_conflicts(id, cache, state)?;
         // Both branches are on one bucket: the local UNION removes
         // the duplicates. Read the current children: the caller copied
         // the node before `old_new` and `resolve_union_conflicts`
@@ -3062,13 +3345,15 @@ impl Plan {
         let local = moves_nothing && in_place && {
             let left = self.get_rel_child(id, 0)?;
             let right = self.get_rel_child(id, 1)?;
-            self.single_node_buckets(left, cache)?
-                .disjunct(&self.single_node_buckets(right, cache)?)
+            self.single_node_buckets(left, cache, state)?
+                .disjunct(&self.single_node_buckets(right, cache, state)?)
                 .is_single_node_filtered()
         };
         self.insert_motion_nodes(strategy, state)?;
         self.set_rel_output_distribution(id)?;
-        if !local {
+        if local {
+            cache.facts_proof.single_node.insert(id);
+        } else {
             let new_top_id = self.add_motion_with_domain_checks(
                 id,
                 &MotionPolicy::Full,
@@ -3097,7 +3382,7 @@ impl Plan {
                 self.pushdown_limit(id)?;
             }
             Distribution::Any | Distribution::Segment { .. }
-                if self.is_single_node_subtree(rel_child_id, cache)? =>
+                if self.is_single_node_subtree(rel_child_id, cache, state)? =>
             {
                 // All data is on a single shard, no motion needed.
                 self.set_rel_distr(id, child_dist)?;
@@ -3130,7 +3415,7 @@ impl Plan {
     ) -> Result<(), SbroadError> {
         let rel_child_id = self.get_first_rel_child(id)?;
 
-        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
+        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache, state)?;
         let mut correct_rel_ids = colocated.clone();
         for order_by_el in order_by_elements {
             if let OrderByEntity::Expression { expr_id } = order_by_el.entity {
@@ -3148,7 +3433,7 @@ impl Plan {
                 self.set_rel_distr(id, Distribution::Single)?
             }
             Distribution::Any | Distribution::Segment { .. }
-                if self.is_single_node_subtree(rel_child_id, cache)? =>
+                if self.is_single_node_subtree(rel_child_id, cache, state)? =>
             {
                 // We don't need any motion, since all data is located in a single shard.
                 self.set_rel_distr(id, child_dist.clone())?;
@@ -3182,7 +3467,7 @@ impl Plan {
         if let Some(group_by_id) = group_by {
             self.adopt_groupby_sq_motions(id, group_by_id)?;
         }
-        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache)?;
+        let colocated = self.colocated_subqueries(id, gathered_by_windows, cache, state)?;
         let mut strategy = self.resolve_sq_conflicts(id, output)?;
         strategy.keep_in_place(&colocated);
         let correct_rel_ids = strategy.get_rel_ids();
@@ -3214,7 +3499,7 @@ impl Plan {
         // Windows and aggregates over one node run there in one stage.
         let single_node_group_by = match group_by {
             Some(group_by_id) if windows_in_place => {
-                self.is_single_node_subtree(group_by_id, cache)?
+                self.is_single_node_subtree(group_by_id, cache, state)?
             }
             _ => false,
         };
@@ -3241,7 +3526,7 @@ impl Plan {
         }
 
         if windows.is_empty()
-            && !self.is_single_node_subtree(target_dist_node, cache)?
+            && !self.is_single_node_subtree(target_dist_node, cache, state)?
             && self.add_two_stage_aggregation(id, state)?
         {
             // We have successfully added two stage aggregation.
@@ -3250,7 +3535,7 @@ impl Plan {
 
         if !windows.is_empty() {
             // If we have window functions without aggregates, lets deal with them.
-            let strategy = self.resolve_window_conflicts(id, windows_in_place, cache)?;
+            let strategy = self.resolve_window_conflicts(id, windows_in_place, cache, state)?;
             self.insert_motion_nodes(strategy, state)?;
         }
 
@@ -3283,7 +3568,7 @@ impl Plan {
             // after `node` was copied. `child` stays the key of
             // `cte_ref_counts` and `cte_motions`.
             let body_id = self.get_first_rel_child(id)?;
-            let is_single_node = self.is_single_node_subtree(body_id, cache)?;
+            let is_single_node = self.is_single_node_subtree(body_id, cache, state)?;
             let is_reused = cte_ref_counts.get(&child).copied().unwrap_or(0) > 1;
             // Global CTEs still need VALUES and reuse materialization checks.
             if !is_single_node || matches!(self.rel_distr_ref(body_id)?, Distribution::Global) {

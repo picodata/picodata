@@ -19,6 +19,10 @@ enum KeyPart {
     /// An unbound parameter. Equal indexes route alike; another parameter or
     /// a literal may route apart.
     Param(u16),
+    /// `CURRENT_USER`: one value per query, so every occurrence routes alike.
+    CurrentUser,
+    /// An explicit `bucket_id = <id>`.
+    BucketId(u64),
 }
 
 impl KeyPart {
@@ -40,12 +44,9 @@ impl RoutingKey {
         let parts = parts.iter().map(|part| match part {
             UnboundKeyPart::Value(value) => KeyPart::value(value),
             UnboundKeyPart::Param(index) => KeyPart::Param(*index),
+            UnboundKeyPart::CurrentUser => KeyPart::CurrentUser,
         });
         Self(parts.collect())
-    }
-
-    fn has_param(&self) -> bool {
-        self.0.iter().any(|part| matches!(part, KeyPart::Param(_)))
     }
 }
 
@@ -85,21 +86,16 @@ impl BucketProof {
         )
     }
 
-    pub(crate) fn is_nonempty_filtered(&self) -> bool {
-        matches!(self, Self::Filtered { nonempty: true, .. })
-    }
-
     pub(crate) fn is_single_node_filtered(&self) -> bool {
         matches!(self, Self::Filtered { .. }) && self.is_single_node()
     }
 
-    /// Whether both sets are bound to the same parameter key. Unlike a literal
-    /// key, it may select no bucket.
-    pub(crate) fn shares_param_key(&self, other: &Self) -> bool {
+    /// Whether both sets are bound to the same key.
+    pub(crate) fn shares_key(&self, other: &Self) -> bool {
         let (Self::Filtered { keys: a, .. }, Self::Filtered { keys: b, .. }) = (self, other) else {
             return false;
         };
-        a.intersection(b).any(RoutingKey::has_param)
+        !a.is_disjoint(b)
     }
 }
 
@@ -251,7 +247,12 @@ impl BucketsResolver for StaticResolver {
         _: Option<&SmolStr>,
     ) -> Result<BucketProof, SbroadError> {
         Ok(match value_to_bucket_id(value) {
-            Some(id) if id >= 1 => BucketProof::new_at_most_one(),
+            // Keyed, so that `bucket_id = 42` in every branch of an OR stays one bucket.
+            Some(id) if id >= 1 => BucketProof::Filtered {
+                upper: 1,
+                nonempty: false,
+                keys: HashSet::from_iter([RoutingKey(vec![KeyPart::BucketId(id)])]),
+            },
             _ => BucketProof::new_empty(),
         })
     }

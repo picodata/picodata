@@ -1,4 +1,5 @@
 use rustc_hash::FxHashSet;
+use std::cell::RefCell;
 use std::fmt::Display;
 use std::slice;
 
@@ -15,11 +16,12 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr};
 
+pub mod facts_route;
 mod proof;
 pub(crate) use proof::{BucketProof, StaticResolver};
 
 /// Memoizes `bucket_id` position lookups within a single expression.
-type ShardPositionsCache = SmallVec<[(NodeId, Option<Positions>); 4]>;
+pub(crate) type ShardPositionsCache = SmallVec<[(NodeId, Option<Positions>); 4]>;
 
 /// The only bucket a `bucket_id = <value>` predicate can match, if any.
 #[must_use]
@@ -120,7 +122,7 @@ impl BucketSet {
     }
 
     /// Returns `true` if `BucketSet` is proven to be empty.
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         match self {
             BucketSet::EstimatedCount { upper, .. } => *upper == 0,
             BucketSet::Exact(b) => b.is_empty(),
@@ -208,6 +210,16 @@ impl Buckets {
         }
     }
 
+    /// [`Buckets::conjunct`] into `self`, which keeps its set if it has one.
+    pub fn conjunct_assign(&mut self, buckets: &Buckets) {
+        match (&mut *self, buckets) {
+            (Buckets::Filtered(BucketSet::Exact(a)), Buckets::Filtered(BucketSet::Exact(b))) => {
+                a.retain(|id| b.contains(id));
+            }
+            _ => *self = self.conjunct(buckets),
+        }
+    }
+
     /// Disjunction of two sets of buckets.
     pub fn disjunct(&self, buckets: &Buckets) -> Buckets {
         match (self, buckets) {
@@ -261,6 +273,10 @@ pub trait BucketAlgebra: Clone {
     fn new_estimated(count: usize) -> Self;
     fn new_at_most_one() -> Self;
     fn conjunct(&self, other: &Self) -> Self;
+    /// `conjunct` into `self`.
+    fn conjunct_assign(&mut self, other: &Self) {
+        *self = self.conjunct(other);
+    }
     fn disjunct(&self, other: &Self) -> Self;
     /// [`Self::conjunct`] that may reuse the operands instead of cloning them.
     fn conjunct_owned(self, other: Self) -> Self {
@@ -287,6 +303,9 @@ impl BucketAlgebra for Buckets {
     fn conjunct(&self, other: &Self) -> Self {
         self.conjunct(other)
     }
+    fn conjunct_assign(&mut self, other: &Self) {
+        self.conjunct_assign(other);
+    }
     fn disjunct(&self, other: &Self) -> Self {
         self.disjunct(other)
     }
@@ -301,6 +320,71 @@ pub enum UnboundKeyPart<'v> {
     Value(&'v Value),
     /// The index of a parameter.
     Param(u16),
+    /// `CURRENT_USER`, replaced with a constant on bind: one value per query.
+    CurrentUser,
+}
+
+/// The buckets of the sharding keys hashed in one bucket discovery, by the
+/// values of their parts in hash order. The condition walk and the facts
+/// routes share it: a key is hashed once, whichever of them meets it first.
+/// Past `MAX_HASHED_KEYS` keys it stops growing: a new key is hashed every time.
+pub type HashedKeys<'p, B> = SmallVec<[(SmallVec<[&'p Value; 4]>, B); 2]>;
+
+/// The keys [`HashedKeys`] keeps. A key repeats on the few nodes of its route,
+/// while each `IN` list brings up to 512 distinct ones: a search over all of
+/// them made a discovery quadratic in the keys of the whole statement.
+const MAX_HASHED_KEYS: usize = 8;
+
+/// Conjuncts the buckets of the sharding key `values` into `acc`, see
+/// [`conjunct_into`]. The buckets are kept in `hashed` if every part hashes
+/// by its value: INT, TEXT, UUID and BOOL parts of one type and value hash to
+/// one bucket. A key with another part is hashed every time: decimal `1` and
+/// `1.0` are equal, but hash apart. A kept key narrows `acc` without a copy.
+pub fn conjunct_key_buckets<'p, R: BucketsResolver>(
+    resolver: &R,
+    values: &[&'p Value],
+    tier: Option<&SmolStr>,
+    hashed: Option<&RefCell<HashedKeys<'p, R::Buckets>>>,
+    acc: &mut Option<R::Buckets>,
+) -> Result<(), SbroadError> {
+    let narrow = |acc: &mut Option<R::Buckets>, buckets: &R::Buckets| match acc {
+        Some(acc) => acc.conjunct_assign(buckets),
+        None => *acc = Some(buckets.clone()),
+    };
+    let hashed = hashed.filter(|_| values.iter().all(|v| v.get_type().hashes_by_value()));
+    if let Some(hashed) = hashed {
+        let hashed = hashed.borrow();
+        let same_key = |key: &SmallVec<[&Value; 4]>| {
+            key.len() == values.len() && key.iter().zip(values).all(|(a, b)| same_part(a, b))
+        };
+        if let Some((_, buckets)) = hashed.iter().find(|(key, _)| same_key(key)) {
+            narrow(acc, buckets);
+            return Ok(());
+        }
+    }
+    let buckets = resolver.buckets_from_values(values, tier)?;
+    match hashed.filter(|hashed| hashed.borrow().len() < MAX_HASHED_KEYS) {
+        Some(hashed) => {
+            narrow(acc, &buckets);
+            hashed
+                .borrow_mut()
+                .push((SmallVec::from_slice(values), buckets));
+        }
+        None => conjunct_into(acc, buckets),
+    }
+    Ok(())
+}
+
+/// Parts of one type and one value. Not `Value::eq`, which compares across
+/// types.
+fn same_part(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Integer(a), Value::Integer(b)) => a == b,
+        (Value::String(a), Value::String(b)) => a == b,
+        (Value::Uuid(a), Value::Uuid(b)) => a == b,
+        (Value::Boolean(a), Value::Boolean(b)) => a == b,
+        _ => false,
+    }
 }
 
 pub trait BucketsResolver {
@@ -351,7 +435,7 @@ fn constant_pair_rejects_eq(l: &Value, r: &Value) -> bool {
 }
 
 /// Accumulate `other` into a conjunction with `acc`.
-fn conjunct_into<B: BucketAlgebra>(acc: &mut Option<B>, other: B) {
+pub(crate) fn conjunct_into<B: BucketAlgebra>(acc: &mut Option<B>, other: B) {
     *acc = Some(match acc.take() {
         Some(acc) => acc.conjunct_owned(other),
         None => other,
@@ -384,7 +468,7 @@ impl Plan {
 
     /// Positions of the `bucket_id` system column in the node's output, memoized
     /// in `cache` for the duration of one expression.
-    fn shard_columns_positions(
+    pub(crate) fn shard_columns_positions(
         &self,
         node_id: NodeId,
         cache: &mut ShardPositionsCache,
@@ -478,11 +562,12 @@ impl Plan {
     /// most common filter; `None` for other comparisons. The general path
     /// gives the same buckets with more lookups: a sharding key column is
     /// never `bucket_id`, so its check is not needed.
-    fn key_eq_constant_buckets<R: BucketsResolver>(
-        &self,
-        left: &Expression,
-        right: &Expression,
+    fn key_eq_constant_buckets<'p, R: BucketsResolver>(
+        &'p self,
+        left: &Expression<'p>,
+        right: &Expression<'p>,
         resolver: &R,
+        hashed: Option<&RefCell<HashedKeys<'p, R::Buckets>>>,
     ) -> Result<Option<R::Buckets>, SbroadError> {
         let (key, value) = match (left, right) {
             (key @ Expression::Reference(_), Expression::Constant(Constant { value }))
@@ -508,9 +593,9 @@ impl Plan {
         if matches!(value, Value::Null) {
             return Ok(Some(R::Buckets::new_empty()));
         }
-        Ok(Some(
-            resolver.buckets_from_values(&[value], self.tier.as_ref())?,
-        ))
+        let mut buckets = None;
+        conjunct_key_buckets(resolver, &[value], self.tier.as_ref(), hashed, &mut buckets)?;
+        Ok(buckets)
     }
 
     /// Whether constants make `left = right` provably not `TRUE`, either
@@ -556,10 +641,11 @@ impl Plan {
     /// In general it returns `Buckets::All`, but in some cases (e.g. `Eq` and `In` operators) it
     /// will return `Buckets::Filtered` (if such a result is met in SELECT or JOIN filter, it means
     /// that we can execute the query only on some of the replicasets).
-    fn get_buckets_from_expr<R: BucketsResolver>(
-        &self,
-        expr: Expression,
+    fn get_buckets_from_expr<'p, R: BucketsResolver>(
+        &'p self,
+        expr: Expression<'p>,
         resolver: &R,
+        hashed: Option<&RefCell<HashedKeys<'p, R::Buckets>>>,
     ) -> Result<Option<R::Buckets>, SbroadError> {
         let mut buckets = None;
         let tier = self.tier.as_ref();
@@ -574,7 +660,7 @@ impl Plan {
             let child_expr = self.get_expression_node(*child)?;
             if !child_expr.is_ref() {
                 return match op {
-                    Unary::IsTrue => self.get_buckets_from_expr(child_expr, resolver),
+                    Unary::IsTrue => self.get_buckets_from_expr(child_expr, resolver, hashed),
                     _ => Ok(None),
                 };
             }
@@ -588,6 +674,7 @@ impl Plan {
                 },
             };
             if is_sharding_key {
+                // A value of this call: not kept in `hashed`.
                 let value = Value::Boolean(*op == Unary::IsTrue);
                 let values_buckets = resolver.buckets_from_values(&[&value], tier)?;
                 conjunct_into(&mut buckets, values_buckets);
@@ -609,23 +696,27 @@ impl Plan {
         let right = self.get_expression_node(right_id)?;
 
         if *op == Bool::Eq {
-            if let Some(key_buckets) = self.key_eq_constant_buckets(&left, &right, resolver)? {
+            if let Some(key_buckets) =
+                self.key_eq_constant_buckets(&left, &right, resolver, hashed)?
+            {
                 return Ok(Some(key_buckets));
             }
         }
-        self.get_buckets_from_cmp(*op, left_id, &left, right_id, &right, resolver)
+        self.get_buckets_from_cmp(*op, left_id, &left, right_id, &right, resolver, hashed)
     }
 
     /// [`Self::get_buckets_from_expr`] of `left op right`, where `op` is `=`
     /// or `IN` and `key = constant` is already checked.
-    fn get_buckets_from_cmp<R: BucketsResolver>(
-        &self,
+    #[allow(clippy::too_many_arguments)]
+    fn get_buckets_from_cmp<'p, R: BucketsResolver>(
+        &'p self,
         op: Bool,
         left_id: NodeId,
-        left: &Expression,
+        left: &Expression<'p>,
         right_id: NodeId,
-        right: &Expression,
+        right: &Expression<'p>,
         resolver: &R,
+        hashed: Option<&RefCell<HashedKeys<'p, R::Buckets>>>,
     ) -> Result<Option<R::Buckets>, SbroadError> {
         // Conjunction of everything collected for this expression.
         // The only case several `Buckets` are conjuncted here is `Eq`.
@@ -788,7 +879,7 @@ impl Plan {
                         .iter()
                         .map(|part| match part {
                             UnboundKeyPart::Value(value) => Some(*value),
-                            UnboundKeyPart::Param(_) => None,
+                            UnboundKeyPart::Param(_) | UnboundKeyPart::CurrentUser => None,
                         })
                         .collect();
                     match values {
@@ -797,8 +888,7 @@ impl Plan {
                             conjunct_into(&mut buckets, key_buckets);
                         }
                         Some(values) if !values.is_empty() => {
-                            let values_buckets = resolver.buckets_from_values(&values, tier)?;
-                            conjunct_into(&mut buckets, values_buckets);
+                            conjunct_key_buckets(resolver, &values, tier, hashed, &mut buckets)?;
                         }
                         Some(_) => {}
                     }
@@ -823,6 +913,19 @@ impl Plan {
         subqueries: &[NodeId],
         resolver: &R,
     ) -> Result<R::Buckets, SbroadError> {
+        self.get_expression_tree_buckets_cached(expr_id, rel_children, subqueries, resolver, None)
+    }
+
+    /// As `get_expression_tree_buckets`, with the keys of the discovery in
+    /// `hashed`, see [`conjunct_key_buckets`].
+    pub fn get_expression_tree_buckets_cached<'p, R: BucketsResolver>(
+        &'p self,
+        expr_id: NodeId,
+        rel_children: &[NodeId],
+        subqueries: &[NodeId],
+        resolver: &R,
+        hashed: Option<&RefCell<HashedKeys<'p, R::Buckets>>>,
+    ) -> Result<R::Buckets, SbroadError> {
         let expr = self.get_expression_node(expr_id)?;
         // Only the whole filter is handled here. A false conjunct follows the
         // expression-discovery rules below, just as it does during execution.
@@ -846,7 +949,7 @@ impl Plan {
                 let left_expr = self.get_expression_node(*left)?;
                 let right_expr = self.get_expression_node(*right)?;
                 if let Some(buckets) =
-                    self.key_eq_constant_buckets(&left_expr, &right_expr, resolver)?
+                    self.key_eq_constant_buckets(&left_expr, &right_expr, resolver, hashed)?
                 {
                     return Ok(buckets);
                 }
@@ -872,20 +975,10 @@ impl Plan {
         // children's buckets: if some child subtree must be
         // executed on several nodes, we must use Buckets::All,
         // otherwise we should use Buckets::Any.
-        let default_buckets = {
-            let mut default_buckets = R::Buckets::any();
-            for child_id in rel_children.iter().chain(subqueries) {
-                let child_dist = self.rel_distr_ref(*child_id)?;
-                if matches!(child_dist, Distribution::Any | Distribution::Segment { .. }) {
-                    default_buckets = R::Buckets::all();
-                    break;
-                }
-            }
-            default_buckets
-        };
+        let default_buckets = self.default_filter_buckets::<R>(rel_children, subqueries)?;
         let conjunct_buckets = |expr| -> Result<R::Buckets, SbroadError> {
             Ok(self
-                .get_buckets_from_expr(expr, resolver)?
+                .get_buckets_from_expr(expr, resolver, hashed)?
                 .unwrap_or_else(|| default_buckets.clone()))
         };
         // Without AND and OR the expression is the only conjunct of the only chain.
@@ -898,10 +991,16 @@ impl Plan {
         ) {
             // A top `=` is not `key = constant`, so it is not checked again.
             let expr_buckets = match eq {
-                Some((left_id, left, right_id, right)) => {
-                    self.get_buckets_from_cmp(Bool::Eq, left_id, &left, right_id, &right, resolver)?
-                }
-                None => self.get_buckets_from_expr(expr, resolver)?,
+                Some((left_id, left, right_id, right)) => self.get_buckets_from_cmp(
+                    Bool::Eq,
+                    left_id,
+                    &left,
+                    right_id,
+                    &right,
+                    resolver,
+                    hashed,
+                )?,
+                None => self.get_buckets_from_expr(expr, resolver, hashed)?,
             };
             let expr_buckets = expr_buckets.unwrap_or_else(|| default_buckets.clone());
             return Ok(default_buckets.conjunct_owned(expr_buckets));
@@ -926,6 +1025,22 @@ impl Plan {
         }
 
         Ok(result.unwrap_or_else(R::Buckets::all))
+    }
+
+    /// The buckets of a filter that restricts nothing, see
+    /// [`Plan::get_expression_tree_buckets`].
+    pub(crate) fn default_filter_buckets<R: BucketsResolver>(
+        &self,
+        rel_children: &[NodeId],
+        subqueries: &[NodeId],
+    ) -> Result<R::Buckets, SbroadError> {
+        for child_id in rel_children.iter().chain(subqueries) {
+            let child_dist = self.rel_distr_ref(*child_id)?;
+            if matches!(child_dist, Distribution::Any | Distribution::Segment { .. }) {
+                return Ok(R::Buckets::all());
+            }
+        }
+        Ok(R::Buckets::any())
     }
 }
 

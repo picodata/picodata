@@ -56,8 +56,8 @@ use crate::ir::operator::{Bool, JoinKind};
 #[cfg(debug_assertions)]
 use crate::ir::transformation::equality_facts::UnionFind;
 use crate::ir::transformation::equality_facts::{
-    ClassId, ClassPin, DomainCheck, DomainCheckKind, EqualityFacts, EquivalenceClass, Pin, Slot,
-    SourceEquality,
+    BindValue, ClassId, ClassPin, DomainCheck, DomainCheckKind, EqualityFacts, EquivalenceClass,
+    Pin, Slot, SourceEquality,
 };
 use crate::ir::transformation::placement::{Dropped, Grouped, Placement};
 use crate::ir::transformation::restriction::RestrictInfo;
@@ -119,8 +119,9 @@ struct Star {
     anchor: NodeId,
     pin: Pin,
     cols: Vec<(Placement, Slot)>,
-    /// Parameters to compare with the pin, with a shared placement for the checks.
-    params: Option<(Placement, Vec<(u16, DerivedType)>)>,
+    /// Bind values (`$n`, `CURRENT_USER`) to compare with the pin, with a
+    /// shared placement for the checks.
+    params: Option<(Placement, Vec<(BindValue, DerivedType)>)>,
 }
 
 /// What enrichment derives from one class, see [`classify`].
@@ -304,12 +305,12 @@ impl Plan {
         // each domain has its own root: one check per class never repeats.
         #[cfg(debug_assertions)]
         {
-            let mut seen: AHashSet<(u16, NodeId)> = AHashSet::new();
+            let mut seen: AHashSet<(BindValue, NodeId)> = AHashSet::new();
             for (_, class, _) in &candidates {
                 for &param in &class.params {
                     debug_assert!(
                         seen.insert((param, class.anchor)),
-                        "enrich_restrictions: param {param} in two classes at {:?}",
+                        "enrich_restrictions: param {param:?} in two classes at {:?}",
                         class.anchor
                     );
                 }
@@ -519,7 +520,7 @@ impl Plan {
             cols.push((placement, slot));
         }
         // One check per param; the pin param itself needs none.
-        let params: Vec<(u16, DerivedType)> = class
+        let params: Vec<(BindValue, DerivedType)> = class
             .params
             .iter()
             .filter(|&&param| pin != ClassPin::Param(param))

@@ -322,9 +322,9 @@ pub enum Stage {
     EnrichRestrictions,
     #[cfg(feature = "enrich_restrictions")]
     PushDownRestrictions,
+    AddMotions,
     Dnf,
     MergeTuples,
-    AddMotions,
     UpdateSubstring,
     MarkUniqueParameters,
     /// Terminal sentinel: comes after every pass, so `optimize_before(End)`
@@ -389,7 +389,10 @@ impl Plan {
     /// - Failed to optimize the plan.
     pub fn optimize(&mut self) -> Result<&mut Self, SbroadError> {
         let top_id = self.get_top()?;
-        self.optimize_subtree(top_id)
+        self.optimize_subtree(top_id)?;
+        #[cfg(debug_assertions)]
+        self.debug_assert_facts_proof_attached(&[self.get_top()?]);
+        Ok(self)
     }
 
     /// The parse-time half of the statement compilation pipeline: validate raw
@@ -533,16 +536,19 @@ impl Plan {
                 plan.push_down_restrictions(top_id, &mut state)?
             );
         }
+        // Motions go in before DNF and MergeTuples: the bucket proofs of
+        // `AddMotions` read the filters as they are, and conditions it builds
+        // are normalized together with the rest.
+        stage!(
+            state,
+            Stage::AddMotions,
+            plan.add_motions_to_subtree(top_id, &mut state)?
+        );
         stage!(state, Stage::Dnf, plan.set_dnf_in_subtree(top_id)?);
         stage!(
             state,
             Stage::MergeTuples,
             plan.merge_tuples_in_subtree(top_id)?
-        );
-        stage!(
-            state,
-            Stage::AddMotions,
-            plan.add_motions_to_subtree(top_id, &mut state)?
         );
         stage!(state, Stage::UpdateSubstring, plan.update_substring()?);
         // After all transformations we can finally determine what parameters are unique.
@@ -671,6 +677,14 @@ impl Plan {
 
         for entry in BlockEntriesMut::new(&mut statements) {
             entry.with(|query| optimize_block_subtree(self, query))?;
+        }
+        // One proof holds the routes of every statement.
+        #[cfg(debug_assertions)]
+        {
+            let tops: Vec<NodeId> = crate::ir::node::BlockEntries::new(&statements)
+                .map(|entry| *entry.query)
+                .collect();
+            self.debug_assert_facts_proof_attached(&tops);
         }
 
         // Set block as the top node back.

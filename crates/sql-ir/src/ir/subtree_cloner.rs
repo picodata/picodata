@@ -428,10 +428,24 @@ impl SubtreeCloner {
     /// Assumes that all parameters are bound and there are no parameters
     /// in the subtree.
     ///
+    /// Not for a subtree planned by AddMotions: its nodes carry the facts
+    /// proof by id, which the copy would lose. Use `clone_planned_subtree`.
+    ///
     /// TODO: Should we return translation map as well? Seems like
     ///       it can simply life sometimes.
     pub fn clone_subtree(plan: &mut Plan, top_id: NodeId) -> Result<NodeId, SbroadError> {
         Self::clone_subtree_with_refs(plan, top_id, |_| Ok(()))
+    }
+
+    /// [`Self::clone_subtree`] that also returns the copy of each node by
+    /// its original, for `clone_planned_subtree` to copy the facts proof.
+    pub(crate) fn clone_subtree_with_map(
+        plan: &mut Plan,
+        top_id: NodeId,
+    ) -> Result<(NodeId, AHashMap<NodeId, NodeId>), SbroadError> {
+        let mut helper = Self::new(EXPR_CAPACITY);
+        let new_top_id = helper.clone(plan, top_id, |_| Ok(()))?;
+        Ok((new_top_id, helper.old_new_map))
     }
 
     /// Clone a subtree, mapping each copied reference once after rebinding its

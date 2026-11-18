@@ -20,8 +20,12 @@ fn check_sql_with_snapshot(
 ) -> PatternWithParams {
     let mut plan = sql_to_ir(query, params);
     let top_id = plan.get_top().unwrap();
-    // Render the plan as it stands just before motion planning.
+    // Render the plan without motions, but with the filters normalized as
+    // the storages get them: `optimize` runs DNF and MergeTuples after
+    // AddMotions.
     plan.optimize_before(top_id, Stage::AddMotions).unwrap();
+    plan.set_dnf_in_subtree(top_id).unwrap();
+    plan.merge_tuples_in_subtree(top_id).unwrap();
     let ex_plan = ExecutionPlan::new(plan);
     let top_id = ex_plan.get_ir_plan().get_top().unwrap();
 

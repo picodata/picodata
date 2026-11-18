@@ -10,6 +10,10 @@ fn key(value: i64) -> BucketProof {
         .unwrap()
 }
 
+fn nonempty(proof: &BucketProof) -> bool {
+    matches!(proof, BucketProof::Filtered { nonempty: true, .. })
+}
+
 fn param(index: u16) -> BucketProof {
     StaticResolver
         .buckets_from_unbound_key(&[UnboundKeyPart::Param(index)], None)
@@ -202,22 +206,22 @@ fn shared_parameter_keys_read_one_bucket() {
     assert!(both.disjunct(&param(1)).is_single_node());
     assert!(both.disjunct(&param(2)).is_single_node());
     // A parameter may bind to NULL, so its set is never proven nonempty.
-    assert!(!param(1).is_nonempty_filtered());
-    assert!(param(1).shares_param_key(&param(1)));
-    assert!(param(1).shares_param_key(&both));
-    assert!(!param(1).shares_param_key(&param(2)));
-    assert!(!key(1).shares_param_key(&key(1)));
-    assert!(!BucketProof::Any.shares_param_key(&param(1)));
+    assert!(!nonempty(&param(1)));
+    assert!(param(1).shares_key(&param(1)));
+    assert!(param(1).shares_key(&both));
+    assert!(!param(1).shares_key(&param(2)));
+    assert!(key(1).shares_key(&key(1)));
+    assert!(!BucketProof::Any.shares_key(&param(1)));
 }
 
 #[test]
 fn contradictory_keys_keep_common_constraints() {
     let contradictory = key(1).conjunct(&key(2));
     assert!(contradictory.is_single_node());
-    assert!(!contradictory.is_nonempty_filtered());
+    assert!(!nonempty(&contradictory));
     assert!(contradictory.disjunct(&key(1)).is_single_node());
     assert!(!contradictory.disjunct(&key(3)).is_single_node());
-    assert!(key(1).conjunct(&key(1)).is_nonempty_filtered());
+    assert!(nonempty(&key(1).conjunct(&key(1))));
 }
 
 #[test]
@@ -242,11 +246,11 @@ fn any_must_not_keep_a_possibly_empty_anchor() {
 fn unknown_parameters_have_no_shared_key() {
     let parameter = BucketProof::new_estimated(1);
     assert!(parameter.is_single_node());
-    assert!(!parameter.is_nonempty_filtered());
+    assert!(!nonempty(&parameter));
     assert!(!parameter.disjunct(&parameter).is_single_node());
     assert!(parameter.conjunct(&key(1)).is_single_node());
-    assert!(!parameter.conjunct(&key(1)).is_nonempty_filtered());
-    assert!(!BucketProof::new_at_most_one().is_nonempty_filtered());
+    assert!(!nonempty(&parameter.conjunct(&key(1))));
+    assert!(!nonempty(&BucketProof::new_at_most_one()));
     // A NULL binding turns this union into Any, so a later filter may widen
     // it to both buckets. The parameter's upper bound must not survive.
     let global_join = BucketProof::Any.disjunct(&parameter);

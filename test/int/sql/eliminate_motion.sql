@@ -849,7 +849,7 @@ projection (count(*)::int -> col_1)
  # Buckets                                                            
 ──────────────────────────────────────────────────────────────────────
 ''
-buckets = []
+buckets = any
 
 -- TEST: scalar-agg-update-no-buckets
 -- SQL:
