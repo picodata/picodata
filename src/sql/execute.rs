@@ -21,7 +21,7 @@ use sql::executor::engine::helpers::{
     build_insert_args, write_shared_update_args, TupleBuilderCommand, TupleBuilderPattern,
 };
 use sql::executor::engine::protocol::{DqlProtocol, ExecutionCacheMissData};
-use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache, Vshard};
+use sql::executor::engine::{CachedStmt, CachedStmtRef, KeyBuf, QueryCache, StorageCache, Vshard};
 use sql::executor::preemption::Scheduler;
 use sql::executor::protocol::SchemaInfo;
 use sql::executor::result::ConsumerResult;
@@ -1147,7 +1147,7 @@ fn determine_insert_bucket_id<R: Vshard>(
     runtime: &R,
     vt_tuple: &VTableTuple,
     motion_key: &MotionKey,
-    buf: &mut Vec<u8>,
+    buf: &mut KeyBuf,
 ) -> Result<u64, SbroadError> {
     let mut shard_key_tuple = Vec::with_capacity(motion_key.targets.len());
     for target in &motion_key.targets {
@@ -1185,7 +1185,7 @@ fn build_insert_bucket_index<R: Vshard>(
 
     let mut bucket_index: HashMap<u64, Vec<usize>, RepeatableState> =
         HashMap::with_hasher(RepeatableState);
-    let mut buf = Vec::new();
+    let mut buf = KeyBuf::new();
     for (pos, vt_tuple) in vtable.get_tuples().iter().enumerate() {
         let bucket_id = determine_insert_bucket_id(runtime, vt_tuple, motion_key, &mut buf)?;
         bucket_index.entry(bucket_id).or_default().push(pos);

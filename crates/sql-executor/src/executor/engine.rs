@@ -4,6 +4,7 @@
 
 use base64ct::{Base64, Encoding};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::ir::function::get_real_function_name;
@@ -503,6 +504,10 @@ pub fn block_vdbe_key(stmts: &[BlockStatement<BlockQuery>]) -> u64 {
     hasher.finish()
 }
 
+/// A buffer for the encoded sharding key. Usual keys (integers, short
+/// strings, UUIDs) fit in it on the stack.
+pub type KeyBuf = SmallVec<[u8; 32]>;
+
 pub trait Vshard {
     /// Execute a query on a given buckets.
     ///
@@ -556,12 +561,12 @@ pub trait Vshard {
     /// - Internal error. Under normal conditions we should always return
     ///   bucket id successfully.
     fn determine_bucket_id(&self, s: &[&Value]) -> Result<u64, SbroadError> {
-        self.determine_bucket_id_with_buf(s, &mut Vec::new())
+        self.determine_bucket_id_with_buf(s, &mut KeyBuf::new())
     }
 
     /// Same as [`Vshard::determine_bucket_id`], but encodes the sharding key
     /// into the given buffer. Use it when bucket ids are calculated for many
-    /// tuples in a row to avoid an allocation per tuple.
+    /// tuples in a row, so that a key longer than the buffer allocates once.
     ///
     /// # Errors
     /// - Internal error. Under normal conditions we should always return
@@ -569,6 +574,6 @@ pub trait Vshard {
     fn determine_bucket_id_with_buf(
         &self,
         s: &[&Value],
-        buf: &mut Vec<u8>,
+        buf: &mut KeyBuf,
     ) -> Result<u64, SbroadError>;
 }

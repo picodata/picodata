@@ -10,7 +10,9 @@ use sql::executor::engine::helpers::{
     dispatch_impl, empty_plan_write_for_top, materialize_motion, materialize_values,
 };
 use sql::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
-use sql::executor::engine::{get_builtin_functions, BlockExecData, QueryCache, Router, Vshard};
+use sql::executor::engine::{
+    get_builtin_functions, BlockExecData, KeyBuf, QueryCache, Router, Vshard,
+};
 use sql::executor::ir::ExecutionPlan;
 use sql::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sql::executor::preemption::SchedulerOptions;
@@ -620,7 +622,7 @@ const KEY_DEFS_MAX: usize = 16;
 pub(crate) fn calculate_bucket_id(
     tuple: &[&Value],
     bucket_count: u64,
-    buf: &mut Vec<u8>,
+    buf: &mut KeyBuf,
 ) -> Result<u64, SbroadError> {
     if bucket_count == 0 {
         return Err(SbroadError::FailedTo(
@@ -698,7 +700,7 @@ pub(crate) fn calculate_bucket_id(
         }
         // SAFETY: `buf` holds one MsgPack field per key part, and the loop above
         // checked that each of them is shorter than `i32::MAX` bytes.
-        let hash = unsafe { key_def.hash_key_raw(buf) };
+        let hash = unsafe { key_def.hash_key_raw(buf.as_slice()) };
 
         Ok(u64::from(hash) % bucket_count + 1)
     })
@@ -735,7 +737,7 @@ impl Vshard for Tier {
     fn determine_bucket_id_with_buf(
         &self,
         s: &[&Value],
-        buf: &mut Vec<u8>,
+        buf: &mut KeyBuf,
     ) -> Result<u64, SbroadError> {
         calculate_bucket_id(s, self.bucket_count(), buf)
     }
@@ -1215,7 +1217,7 @@ mod tests {
             ))),
         ]));
 
-        let mut buf = Vec::new();
+        let mut buf = KeyBuf::new();
         // Neighbour fields of different lengths share 4-byte murmur blocks.
         for len in 1..=3 {
             for window in values.windows(len) {
@@ -1235,7 +1237,7 @@ mod tests {
             KEY_DEFS.with_borrow(|cached| cached.iter().map(|(len, _)| *len).collect())
         }
 
-        let mut buf = Vec::new();
+        let mut buf = KeyBuf::new();
         let value = Value::from(1);
         let mut check_bucket_id = |len: usize| {
             let key = vec![&value; len];
@@ -1317,7 +1319,7 @@ mod tests {
             (vec![Value::from(vec![Value::from(2)])], 2373),
             (vec![Value::from(vec![Value::Double(2.0.into())])], 338),
         ];
-        let mut buf = Vec::new();
+        let mut buf = KeyBuf::new();
         for (key, expected) in cases {
             let key: Vec<&Value> = key.iter().collect();
             let bucket_id = calculate_bucket_id(&key, 3000, &mut buf).unwrap();

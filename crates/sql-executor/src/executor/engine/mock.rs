@@ -11,7 +11,7 @@ use crate::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::{
     helpers::{sharding_key_from_map, sharding_key_from_tuple, vshard::get_random_bucket},
-    Router, Vshard,
+    KeyBuf, Router, Vshard,
 };
 use crate::executor::hash::bucket_id_by_tuple;
 use crate::executor::ir::ExecutionPlan;
@@ -1286,7 +1286,7 @@ impl Vshard for RouterRuntimeMock {
     fn determine_bucket_id_with_buf(
         &self,
         s: &[&Value],
-        _buf: &mut Vec<u8>,
+        _buf: &mut KeyBuf,
     ) -> Result<u64, SbroadError> {
         Ok(bucket_id_by_tuple(s, self.bucket_count()))
     }
@@ -1327,7 +1327,7 @@ impl Vshard for &RouterRuntimeMock {
     fn determine_bucket_id_with_buf(
         &self,
         s: &[&Value],
-        _buf: &mut Vec<u8>,
+        _buf: &mut KeyBuf,
     ) -> Result<u64, SbroadError> {
         Ok(bucket_id_by_tuple(s, self.bucket_count()))
     }

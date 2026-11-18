@@ -1,5 +1,6 @@
 use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::{TupleBuilderCommand, TupleBuilderPattern};
+use crate::executor::engine::KeyBuf;
 use crate::executor::result::metadata_type_name;
 use crate::executor::Vshard;
 use crate::ir::helpers::RepeatableState;
@@ -343,7 +344,7 @@ impl VirtualTable {
         runtime: &impl Vshard,
     ) -> Result<(), SbroadError> {
         let mut index = HashMap::with_hasher(RepeatableState);
-        let mut buf = Vec::new();
+        let mut buf = KeyBuf::new();
         for (pos, tuple) in self.get_tuples().iter().enumerate() {
             let mut shard_key_tuple: Vec<&Value> = Vec::new();
             for target in &motion_key.targets {
@@ -432,7 +433,7 @@ impl VirtualTable {
         let mut delete_tuple: VTableTuple = vec![Value::Null; delete_tuple_pattern.len()];
         let mut delete_tuples: Vec<VTableTuple> = Vec::with_capacity(self.get_tuples().len());
         let tuples_len = self.get_tuples().len();
-        let mut buf = Vec::new();
+        let mut buf = KeyBuf::new();
         for (pos, insert_tuple) in self.get_mut_tuples().iter_mut().enumerate() {
             for (idx, c) in delete_tuple_pattern.iter().enumerate() {
                 if let TupleBuilderCommand::TakePosition(pos) = c {
@@ -533,7 +534,7 @@ impl VirtualTable {
             self.create_delete_tuples(runtime, old_shard_columns_len)?;
 
         // Index insert tuple, using new shard key values.
-        let mut buf = Vec::new();
+        let mut buf = KeyBuf::new();
         for (pointer, update_tuple) in self.get_mut_tuples().iter_mut().enumerate() {
             let mut update_tuple_shard_key = Vec::with_capacity(new_shard_columns_positions.len());
             for pos in new_shard_columns_positions {

@@ -15,7 +15,7 @@ use sql::executor::engine::helpers::vshard::disable_serialize_as_empty_for_subtr
 use sql::executor::engine::helpers::{
     set_block_pattern_cache_hooks, table_name, vshard::get_random_bucket, BlockPatternCacheHooks,
 };
-use sql::executor::engine::{CachedStmt, CachedStmtRef, QueryCache, StorageCache, Vshard};
+use sql::executor::engine::{CachedStmt, CachedStmtRef, KeyBuf, QueryCache, StorageCache, Vshard};
 use sql::executor::ir::{ExecutionPlan, LocalSqlParams};
 use sql::executor::lru::{Cache, EvictFn, LRUCache};
 use sql::executor::protocol::SchemaInfo;
@@ -642,7 +642,7 @@ impl Vshard for StorageRuntime {
     fn determine_bucket_id_with_buf(
         &self,
         s: &[&Value],
-        buf: &mut Vec<u8>,
+        buf: &mut KeyBuf,
     ) -> Result<u64, SbroadError> {
         calculate_bucket_id(s, self.bucket_count(), buf)
     }
