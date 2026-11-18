@@ -1925,3 +1925,11 @@ fn subquery_shared_by_group_by_and_having() {
 
     assert_eq!(Buckets::All, query.bucket_discovery(local_id).unwrap());
 }
+
+#[test]
+fn cte_read_twice() {
+    let query = "WITH c AS (SELECT a FROM t5 WHERE a = 1) \
+        SELECT a FROM c UNION ALL SELECT a FROM t5 WHERE a = 2 UNION ALL SELECT a FROM c";
+    let expected = buckets_of_key(&[Value::from(1)]).disjunct(&buckets_of_key(&[Value::from(2)]));
+    assert_eq!(expected, buckets_of(query));
+}

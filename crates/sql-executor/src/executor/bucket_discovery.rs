@@ -1,6 +1,5 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
-use std::cell::RefCell;
 use std::ops::Not;
 
 use crate::errors::{Action, Entity, SbroadError};
@@ -275,19 +274,14 @@ where
             return Ok(Buckets::Any);
         }
 
-        // The buckets of the CTE bodies, so that a CTE referenced again is not
-        // walked again.
-        let memo: RefCell<FxHashMap<NodeId, Buckets>> = RefCell::default();
+        // The buckets of the CTE bodies. The walk enters a body once, so the
+        // other references to it take its buckets from here.
+        let mut memo: FxHashMap<NodeId, Buckets> = FxHashMap::default();
         // The relational children of a node are visited right before it, so
         // their buckets are the last `arity` entries of the stack.
         let tree = PostOrder::new_by_node(
             &ir_plan.nodes,
             |id, node| match node {
-                Node::Relational(Relational::ScanCte(ScanCte { child, .. }))
-                    if memo.borrow().contains_key(child) =>
-                {
-                    ir_plan.nodes.empty_rel_iter().take(0)
-                }
                 Node::Relational(rel) => self
                     .exec_plan
                     .exec_rel_children(id, &rel)
@@ -305,7 +299,7 @@ where
 
         for (node_id, rel) in tree.relational() {
             if let Relational::ScanCte(ScanCte { child, .. }) = rel {
-                if let Some(buckets) = memo.borrow().get(child) {
+                if let Some(buckets) = memo.get(child) {
                     stack.push(buckets.clone());
                     continue;
                 }
@@ -381,7 +375,7 @@ where
                 }
                 Relational::ScanCte(ScanCte { child, .. }) => {
                     let buckets = next_child(&mut children)?;
-                    memo.borrow_mut().insert(*child, buckets.clone());
+                    memo.insert(*child, buckets.clone());
                     buckets
                 }
                 // `Except` takes the left child only: the motion moves the rows
