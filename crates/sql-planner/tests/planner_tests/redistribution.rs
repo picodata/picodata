@@ -1167,6 +1167,7 @@ mod except;
 mod not_in;
 mod segment;
 mod single_bucket;
+mod value_forms;
 
 /// Enrichment may add a routing predicate that safely narrows these queries.
 /// Their results with either setting are covered by integration tests.

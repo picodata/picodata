@@ -463,7 +463,7 @@ impl EquivalenceClass {
     ///   sneak in as the pin);
     /// - the class doesn't have a constant or param to pin at all (`a = b` and no more)
     #[must_use]
-    pub fn pin(&self) -> Option<ClassPin<'_>> {
+    fn pin(&self) -> Option<ClassPin<'_>> {
         if self.contradictory {
             return None;
         }
@@ -917,6 +917,21 @@ impl EqualityFacts {
             .get(&index)
             .copied()
             .unwrap_or_else(DerivedType::unknown)
+    }
+
+    /// The pin of `class` that may route a key or be derived as `col = pin`:
+    /// one of a type whose equal values hash to one bucket (see
+    /// [`DerivedType::hashes_by_value`]). A class of another type still
+    /// co-locates join sides and finds contradictions, as on master.
+    #[must_use]
+    pub fn routing_pin<'c>(&self, class: &'c EquivalenceClass) -> Option<ClassPin<'c>> {
+        let pin = class.pin()?;
+        // A class holds one type, so the pin's type is the class's.
+        let ty = match pin {
+            ClassPin::Const(value) => value.get_type(),
+            ClassPin::Param(param) => self.param_type(param),
+        };
+        ty.hashes_by_value().then_some(pin)
     }
 
     /// Register inserted nodes as passthroughs in the equality facts.
@@ -2114,6 +2129,8 @@ impl<'p> EqualityAnalysis<'p> {
                         if left_term.atom == FactAtom::Other || right_term.atom == FactAtom::Other {
                             continue;
                         }
+                        // A class holds values of one type: equal values of
+                        // two types may hash to different buckets.
                         if left_term.ty != right_term.ty {
                             continue;
                         }

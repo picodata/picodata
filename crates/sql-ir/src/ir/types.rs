@@ -632,6 +632,21 @@ impl DerivedType {
     pub fn set(&mut self, ty: UnrestrictedType) {
         self.0 = Some(ty)
     }
+
+    /// Whether equal values of this type always have one stored form, and
+    /// so hash to one bucket. DECIMAL (`1.0` and `1.00`), DOUBLE and DATETIME
+    /// (one moment in two time zones) do not, nor types that may hold them:
+    /// their equality classes co-locate join sides as on master, but pin no
+    /// key, see `EqualityFacts::routing_pin`.
+    #[must_use]
+    pub fn hashes_by_value(&self) -> bool {
+        use UnrestrictedType::*;
+        // No wildcard: a new type must be sorted here.
+        match self.0 {
+            Some(Integer | String | Uuid | Boolean) => true,
+            Some(Decimal | Double | Datetime | Map | Array(_) | Any) | None => false,
+        }
+    }
 }
 
 impl fmt::Display for DerivedType {

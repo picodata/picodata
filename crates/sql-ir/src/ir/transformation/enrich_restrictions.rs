@@ -142,11 +142,14 @@ enum ClassAction<'a> {
 /// this includes columns from different join operands when the join output
 /// carries both. A NULL constant is not a pin and does not permit pair derivation.
 /// Members are sorted by relation, so adjacent entries suffice for this check.
-fn classify(class: &EquivalenceClass) -> Option<ClassAction<'_>> {
+///
+/// A pin of a type stored in several forms derives nothing: `key = pin`
+/// would let the condition walk route the key by the form of the pin.
+fn classify<'c>(facts: &EqualityFacts, class: &'c EquivalenceClass) -> Option<ClassAction<'c>> {
     if class.is_contradictory() {
         return Some(ClassAction::Contradiction);
     }
-    if let Some(pin) = class.pin() {
+    if let Some(pin) = facts.routing_pin(class) {
         return (!class.members.is_empty() || !class.params.is_empty())
             .then_some(ClassAction::Pinned(pin));
     }
@@ -263,7 +266,7 @@ impl Plan {
             .classes
             .iter()
             .zip(facts.class_ids())
-            .filter_map(|(class, id)| Some((id, class, classify(class)?)))
+            .filter_map(|(class, id)| Some((id, class, classify(facts, class)?)))
             .collect();
         if candidates.is_empty() && facts.dead_rels().is_empty() {
             return Ok(None);

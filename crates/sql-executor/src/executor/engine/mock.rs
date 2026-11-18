@@ -981,6 +981,48 @@ impl RouterConfigurationMock {
             .unwrap(),
         );
 
+        // A decimal sharding key, compared with integer literals.
+        let columns = vec![
+            Column::new(
+                "bucket_id",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::Sharding,
+                true,
+            ),
+            Column::new(
+                "a",
+                DerivedType::new(UnrestrictedType::Decimal),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "b",
+                DerivedType::new(UnrestrictedType::Integer),
+                ColumnRole::User,
+                false,
+            ),
+            Column::new(
+                "c",
+                DerivedType::new(UnrestrictedType::Double),
+                ColumnRole::User,
+                true,
+            ),
+        ];
+        let sharding_key: &[&str] = &["a"];
+        let primary_key: &[&str] = &["a"];
+        tables.insert(
+            "dec_t".to_smolstr(),
+            Table::new_sharded(
+                random(),
+                "dec_t",
+                columns,
+                sharding_key,
+                primary_key,
+                SpaceEngine::Memtx,
+            )
+            .unwrap(),
+        );
+
         let columns = vec![
             Column::new(
                 "a",
