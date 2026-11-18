@@ -2,6 +2,7 @@
 //! Implements infrastructure to build a distributed
 //! query plan and dispatch it to the storage nodes.
 
+use arrayvec::ArrayVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Action, Entity, SbroadError};
 use sql::executor::engine::helpers::vshard::get_random_bucket;
@@ -599,10 +600,18 @@ pub fn replicasets_by_buckets(
 }
 
 thread_local! {
-    /// Last key definition used to calculate bucket ids,
-    /// along with the number of parts it was built for.
-    static LAST_KEY_DEF: RefCell<Option<(usize, KeyDef)>> = const { RefCell::new(None) };
+    /// The last key definitions used to calculate bucket ids, with the number
+    /// of parts each was built for. A statement mixes keys of different lengths
+    /// (e.g. an UPDATE by a one-column key and an INSERT into a table with a
+    /// composite key), so one cached key def would be built again each time.
+    static KEY_DEFS: RefCell<ArrayVec<(usize, KeyDef), KEY_DEFS_MAX>> =
+        const { RefCell::new(ArrayVec::new_const()) };
 }
+
+/// The maximum number of cached key defs. A lookup scans the cache for each
+/// row, and the number of different sharding key lengths has no limit. 16 is
+/// not measured: it is more than the key lengths of a usual workload.
+const KEY_DEFS_MAX: usize = 16;
 
 /// Calculate the bucket id for the given sharding key.
 ///
@@ -621,16 +630,18 @@ pub(crate) fn calculate_bucket_id(
         ));
     }
 
-    LAST_KEY_DEF.with_borrow_mut(|cached| {
+    KEY_DEFS.with_borrow_mut(|cached| {
         // Key def creation is expensive, while the bucket id is calculated for
         // every row of a virtual table. `key_hash` reads only the number of key
         // parts and their collations, so the types of the key fields don't matter,
         // and they can differ between rows, e.g. because of NULLs.
-        // So the last key def is kept and reused until the number of parts changes.
-        let hit = cached
-            .as_ref()
-            .is_some_and(|(part_count, _)| *part_count == tuple.len());
-        if !hit {
+        // So one key def is kept for each recent number of parts.
+        let pos = cached
+            .iter()
+            .position(|(part_count, _)| *part_count == tuple.len());
+        let pos = if let Some(pos) = pos {
+            pos
+        } else {
             let mut key_parts = Vec::with_capacity(tuple.len());
             for pos in 0..tuple.len() {
                 let field_no = u32::try_from(pos).map_err(|_| {
@@ -654,9 +665,14 @@ pub(crate) fn calculate_bucket_id(
                     format_smolstr!("{e:?}"),
                 )
             })?;
-            *cached = Some((tuple.len(), key_def));
-        }
-        let (_, key_def) = cached.as_ref().expect("key def is cached above");
+            // The key def that was added first goes out.
+            if cached.len() == KEY_DEFS_MAX {
+                cached.remove(0);
+            }
+            cached.push((tuple.len(), key_def));
+            cached.len() - 1
+        };
+        let (_, key_def) = &cached[pos];
 
         // The key is hashed as is, without building a tuple from it.
         buf.clear();
@@ -1211,6 +1227,39 @@ mod tests {
                 assert_eq!(bucket_id - 1, u64::from(tuple_hash(&key)), "key: {key:?}");
             }
         }
+    }
+
+    #[::tarantool::test]
+    fn bucket_id_with_evicted_key_def() {
+        fn cached_lens() -> Vec<usize> {
+            KEY_DEFS.with_borrow(|cached| cached.iter().map(|(len, _)| *len).collect())
+        }
+
+        let mut buf = Vec::new();
+        let value = Value::from(1);
+        let mut check_bucket_id = |len: usize| {
+            let key = vec![&value; len];
+            let bucket_id = calculate_bucket_id(&key, u64::MAX, &mut buf).unwrap();
+            assert_eq!(bucket_id - 1, u64::from(tuple_hash(&key)), "key: {key:?}");
+        };
+        KEY_DEFS.with_borrow_mut(|cached| cached.clear());
+
+        // Two lengths more than the cache keeps: the first two go out.
+        for len in 1..=KEY_DEFS_MAX + 2 {
+            check_bucket_id(len);
+        }
+        let full: Vec<usize> = (3..=KEY_DEFS_MAX + 2).collect();
+        assert_eq!(cached_lens(), full);
+
+        // A hit on the oldest key def neither builds nor evicts one.
+        check_bucket_id(3);
+        assert_eq!(cached_lens(), full);
+
+        // An evicted length is built again in place of the oldest one.
+        check_bucket_id(1);
+        let mut expected: Vec<usize> = (4..=KEY_DEFS_MAX + 2).collect();
+        expected.push(1);
+        assert_eq!(cached_lens(), expected);
     }
 
     /// Stored rows live in these buckets: a change here moves existing data.

@@ -2694,6 +2694,7 @@ dependencies = [
  "abi_stable",
  "ahash 0.8.12",
  "anyhow",
+ "arrayvec",
  "backtrace",
  "base64 0.22.1",
  "bindgen",
