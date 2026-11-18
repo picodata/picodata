@@ -302,7 +302,6 @@ pub enum Distribution {
     /// which will be determined by a hash of the provided `sharding_key`.
     ShardedImplicitly {
         sharding_key: Vec<SmolStr>,
-        #[serde(default)]
         sharding_fn: ShardingFn,
         tier: SmolStr,
     },
@@ -310,11 +309,7 @@ pub enum Distribution {
     /// which id is provided by field that is specified here.
     ///
     /// Default field name: "bucket_id"
-    ShardedByField {
-        #[serde(default = "default_bucket_id_field")]
-        field: SmolStr,
-        tier: SmolStr,
-    },
+    ShardedByField { field: SmolStr, tier: SmolStr },
 }
 
 impl Distribution {
@@ -332,10 +327,6 @@ impl Distribution {
             Distribution::ShardedImplicitly { tier, .. } => Some(tier),
         }
     }
-}
-
-const fn default_bucket_id_field() -> SmolStr {
-    SmolStr::new_static(DEFAULT_BUCKET_ID_COLUMN_NAME)
 }
 
 ::tarantool::define_str_enum! {
