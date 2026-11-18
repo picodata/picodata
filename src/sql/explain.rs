@@ -294,11 +294,19 @@ impl<'a> ExplainQuery<'a> {
             Err(err) => Err(err.to_string()),
         };
 
+        // These strings replace placeholders in the displayed SQL.
+        let params = params
+            .iter()
+            .map(|value| match value {
+                Value::Json(doc) => format!("'{}'", doc.to_string().replace('\'', "''")),
+                _ => value.to_string(),
+            })
+            .collect();
         let query_entry = QueryEntry::new(
             sql_query.to_string(),
             location,
             bucket_info.clone(),
-            params.iter().map(ToString::to_string).collect(),
+            params,
             tuples,
         );
 

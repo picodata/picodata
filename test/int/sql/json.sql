@@ -75,6 +75,19 @@ SELECT id, data IS NULL FROM t_null ORDER BY id;
 2, true,
 3, true
 
+-- TEST: json-raw-literals
+-- SQL:
+EXPLAIN (RAW) SELECT '"O''Brien"'::json AS s, 'null'::json IS NULL AS n;
+-- EXPECTED:
+╭───────────────────╮
+│ 1. Query (ROUTER) │
+╰───────────────────╯
+''
+SELECT '"O''Brien"'::json as "s", 'null'::json is null as "n"
+''
+plan:
+    [0] TRIVIAL
+
 -- TEST: init-block
 -- SQL:
 DROP TABLE IF EXISTS t_block;
@@ -420,7 +433,7 @@ EXPLAIN (RAW) SELECT JSON_EXTRACT_PATH($1, $2, $3);
 │ 1. Query (ROUTER) │
 ╰───────────────────╯
 ''
-SELECT {"d": [10, 20, 30]}::json [ 'd'::text ] [ '1'::text ] :: json as "col_1"
+SELECT '{"d": [10, 20, 30]}'::json [ 'd'::text ] [ '1'::text ] :: json as "col_1"
 ''
 plan:
     [0] TRIVIAL
