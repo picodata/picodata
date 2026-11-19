@@ -284,7 +284,7 @@ pub fn connection_error() {
 pub fn is_connected() {
     let port = listen_port();
     let conn = Conn::new(
-        ("localhost", port),
+        ("127.0.0.1", port),
         ConnOptions {
             reconnect_after: Duration::from_secs(0),
             ..ConnOptions::default()
@@ -575,7 +575,7 @@ pub fn triggers_connect() {
     }));
 
     let conn = Conn::new(
-        ("localhost", port),
+        ("127.0.0.1", port),
         ConnOptions::default(),
         Some(Rc::new(TriggersMock {
             checklist: checklist.clone(),
@@ -602,7 +602,7 @@ pub fn triggers_reject() {
     }
 
     let conn = Conn::new(
-        ("localhost", port),
+        ("127.0.0.1", port),
         ConnOptions::default(),
         Some(Rc::new(TriggersMock {})),
     )
@@ -632,7 +632,7 @@ pub fn triggers_schema_sync() {
     let is_trigger_called = Rc::new(Cell::new(false));
 
     let conn = Conn::new(
-        ("localhost", port),
+        ("127.0.0.1", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
