@@ -265,14 +265,12 @@ impl PgError {
     pub fn is_sbroad_parsing_error(&self) -> bool {
         use crate::traft::error::Error;
         use sql::errors::SbroadErrorInner;
-        use sql::frontend::sql::TOO_COMPLEX;
+        use sql::frontend::sql::is_too_complex;
 
         if let Self::PicodataError(e) = self {
             if let Error::Sbroad(e) = &**e {
-                return matches!(
-                    e.kind(),
-                    SbroadErrorInner::ParsingError(_, message) if !message.starts_with(TOO_COMPLEX)
-                );
+                return matches!(e.kind(), SbroadErrorInner::ParsingError(..))
+                    && !is_too_complex(e);
             }
         }
 

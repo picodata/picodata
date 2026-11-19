@@ -7,6 +7,8 @@
 
 use crate::errors::SbroadError;
 use crate::frontend::sql::ast::{AbstractSyntaxTree, ParseTree, ParsingPairsMap, Rule};
+use crate::frontend::sql::ast_new::RawAst;
+use crate::frontend::sql::{is_too_complex, Ast};
 use sql_ast_new_grammar::{parse_with_budget, TOO_COMPLEX};
 use std::collections::HashMap;
 
@@ -149,4 +151,16 @@ fn digits_take_steps() {
 #[test]
 fn dense_list_parses() {
     parse(&format!("select {}x", "x,".repeat(50_000))).unwrap();
+}
+
+/// Both parsers fail a query out of the budget with an error that
+/// `transform_into_plan` tells from a syntax error: it must not hand the query
+/// from the new parser to the current one and its own budget.
+#[test]
+fn too_complex_recognized() {
+    let query = query(("1 +", "1 in ({})"));
+    let err = <RawAst as Ast>::new(&query).map(drop).unwrap_err();
+    assert!(is_too_complex(&err), "{err}");
+    assert!(is_too_complex(&parse(&query).unwrap_err()));
+    assert!(!is_too_complex(&parse("select 1 +").unwrap_err()));
 }

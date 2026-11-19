@@ -3,7 +3,7 @@
 //! Parses an SQL statement to the abstract syntax tree (AST)
 //! and builds the intermediate representation (IR).
 
-use crate::errors::SbroadError;
+use crate::errors::{SbroadError, SbroadErrorInner};
 use crate::ir::metadata::Metadata;
 use crate::ir::types::DerivedType;
 use crate::ir::Plan;
@@ -19,10 +19,15 @@ pub mod ir;
 pub mod tree;
 mod type_system;
 
-/// The start of the parse error of a query that runs out of the step budget.
-pub use sql_ast_new_grammar::TOO_COMPLEX;
+use sql_ast_new_grammar::TOO_COMPLEX;
 /// The cap on the step budget of a query, `sql_parse_step_max`.
 pub use sql_ast_new_grammar::{set_step_max, DEFAULT_STEP_MAX, MIN_STEP_MAX};
+
+/// Whether `err` is the parse error of a query that runs out of the step
+/// budget.
+pub fn is_too_complex(err: &SbroadError) -> bool {
+    matches!(err.kind(), SbroadErrorInner::ParsingError(_, msg) if msg.starts_with(TOO_COMPLEX))
+}
 
 pub trait Ast<'q> {
     type AnalyzedAst;
@@ -43,12 +48,17 @@ pub fn transform_into_plan(
     param_types: &[DerivedType],
     metadata: &impl Metadata,
 ) -> Result<Plan, SbroadError> {
-    if let Ok(ast) = crate::frontend::sql::ast_new::new_stub(query) {
-        if let Ok(analyzed) = ast.analyze(metadata, param_types) {
-            if let Ok(plan) = analyzed.translate() {
-                return Ok(plan);
+    match crate::frontend::sql::ast_new::new_stub(query) {
+        Ok(ast) => {
+            if let Ok(analyzed) = ast.analyze(metadata, param_types) {
+                if let Ok(plan) = analyzed.translate() {
+                    return Ok(plan);
+                }
             }
         }
+        // The current parser would take a second budget for the same query.
+        Err(e) if is_too_complex(&e) => return Err(e),
+        Err(_) => {}
     }
     transform_into_plan_old(query, param_types, metadata)
 }
