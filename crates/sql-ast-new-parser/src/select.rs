@@ -45,7 +45,7 @@ pub(super) fn parse_select_stmt<'q>(
     let select_list =
         select_list.ok_or_else(|| parser_err(format_smolstr!("expected non empty select list")))?;
 
-    let select = SelectStmt::from_parts(select_list, table_expression);
+    let select = SelectStmt::from_parts(select_list, table_expression.map(Box::new));
 
     if select.has_asterisk() && !select.has_table_expression() {
         return Err(syntax_err(format_smolstr!(

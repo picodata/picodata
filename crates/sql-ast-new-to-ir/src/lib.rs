@@ -23,7 +23,8 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use sql_ast_new_nodes::error::{ast_err, ast_invariant_err, AstErr, AstResult};
 use sql_ast_new_nodes::expr::{
-    BinaryOp, BooleanOp, CmpOp, Expr, ExprInner, FunctionCallArgs, ResolvedFn, UnaryOp,
+    BinaryOp, BinaryOperation, BooleanOp, Cast, CmpOp, Exists, Expr, ExprInner, FunctionCall,
+    FunctionCallArgs, InExpr, Literal, ResolvedFn, UnaryOp, UnaryOperation,
 };
 use sql_ast_new_nodes::multiset::{
     Cte, MultisetInner, MultisetStmt, OpDupElimination, Operation, OperationKind,
@@ -31,7 +32,7 @@ use sql_ast_new_nodes::multiset::{
 use sql_ast_new_nodes::select::{ProjectionExpr, SelectStmt};
 use sql_ast_new_nodes::table_expression::{
     AnalyzedCteOrTable, BoundVar, From, FromEntry, GroupBy, JoinKind, JoinedTable, OrdrByGrpByElem,
-    TableFactor, TableFactorInner,
+    TableExpression, TableFactor, TableFactorInner,
 };
 use sql_ast_new_nodes::{Analyzed, Ident, Node, SqlOption};
 
@@ -45,7 +46,7 @@ use sql_ir::ir::node::{
 };
 use sql_ir::ir::operator::{Bool, JoinKind as IrJoinKind, Unary};
 use sql_ir::ir::subtree_cloner::SubtreeCloner;
-use sql_ir::ir::types::CastType;
+use sql_ir::ir::types::{CastType, DerivedType};
 use sql_ir::ir::value::Value;
 use sql_ir::ir::Plan;
 
@@ -317,72 +318,16 @@ impl<'q> NodeTranslator<'q> for SelectStmt<'q, Analyzed> {
         let mut proj_exprs: Vec<ProjExpr<'q>> = exprs.0.into_iter().map(ProjExpr::Orig).collect();
 
         // Relational node the GROUP BY keys read from.
-        let grby_child = if let Some(tbl_expr) = tbl_expr {
-            let (from, filter, grby, having, _windows) = tbl_expr.into_parts();
-
-            from.translate(ir, ctx)?;
-
-            if let Some(filter) = filter {
-                let filter_id = filter.translate(ir, ctx)?;
-                let select_id = ir.add_select(ir.get_top()?, filter_id)?;
-                ctx.attach_subqueries(ir, select_id)?;
-                ir.set_top(select_id)?;
-            }
-
-            // Save child of GROUP BY in IR
-            let grby_child = Some(ir.get_top()?);
-
-            // Park the select list: ordinal keys are translated out of it.
-            let saved_sel_lst = std::mem::replace(&mut ctx.proj_exprs, proj_exprs);
-            grby.translate(ir, ctx)?;
-            proj_exprs = std::mem::replace(&mut ctx.proj_exprs, saved_sel_lst);
-
-            if let Some(having) = having {
-                let filter_id = having.translate(ir, ctx)?;
-                let having_id = ir.add_having(ir.get_top()?, filter_id)?;
-                ctx.attach_subqueries(ir, having_id)?;
-                ir.set_top(having_id)?;
-            }
-
-            grby_child
-        } else {
-            None
+        let grby_child = match tbl_expr {
+            Some(tbl_expr) => Some(translate_table_expression(
+                *tbl_expr,
+                &mut proj_exprs,
+                ir,
+                ctx,
+            )?),
+            None => None,
         };
-
-        // Add IR nodes for each expression in SELECT list.
-        let mut out_vars = Vec::with_capacity(proj_exprs.len());
-
-        for proj_expr in proj_exprs {
-            let (expr_id, name, star) = match proj_expr {
-                ProjExpr::Orig(proj) => {
-                    let name = proj.output_name().map(Ident::normalized);
-                    let star = proj.asterisk_source().cloned();
-                    let (expr, _) = proj.into_parts();
-                    (expr.translate(ir, ctx)?, name, star)
-                }
-                ProjExpr::Translated(key_id, name, star) => {
-                    // The key reads the GroupBy child; its projected copy reads the top.
-                    let expr_id = SubtreeCloner::clone_subtree(ir, key_id)?;
-                    let grby_child = grby_child.ok_or_else(|| {
-                        internal_err(format_smolstr!("expected GROUP BY for translated key"))
-                    })?;
-                    let top_id = ir.get_top()?;
-                    ir.replace_target_in_subtree(expr_id, grby_child, top_id)?;
-                    (expr_id, name, star)
-                }
-            };
-
-            // Every item of a marked asterisk must be a marked reference: the
-            // storage SQL writes one `*` for them, which brings back any item
-            // left unmarked.
-            if let Some(star) = star {
-                ir.set_asterisk_source(expr_id, star)?;
-            }
-
-            // The analyzer names every item.
-            let name = name.ok_or_else(|| internal_err(format_smolstr!("expected item name")))?;
-            out_vars.push(ir.nodes.add_alias(name.as_str(), expr_id)?);
-        }
+        let out_vars = translate_select_list(proj_exprs, grby_child, ir, ctx)?;
 
         let top_id = if let Ok(src_rel) = ir.get_top() {
             // Add projection node over some tuple source.
@@ -399,6 +344,92 @@ impl<'q> NodeTranslator<'q> for SelectStmt<'q, Analyzed> {
         ir.set_top(top_id)?;
         Ok(())
     }
+}
+
+// The helpers of `SelectStmt::translate` are out of line: dev builds would
+// keep their slots in its frame.
+
+/// Translate FROM, WHERE, GROUP BY and HAVING; returns the node the GROUP BY
+/// keys read from. Ordinal GROUP BY keys are translated out of `proj_exprs`.
+#[inline(never)]
+fn translate_table_expression<'q>(
+    tbl_expr: TableExpression<'q, Analyzed>,
+    proj_exprs: &mut Vec<ProjExpr<'q>>,
+    ir: &mut Plan,
+    ctx: &mut Ctx<'q>,
+) -> AstResult<NodeId> {
+    let (from, filter, grby, having, _windows) = tbl_expr.into_parts();
+
+    from.translate(ir, ctx)?;
+
+    if let Some(filter) = filter {
+        let filter_id = filter.translate(ir, ctx)?;
+        let select_id = ir.add_select(ir.get_top()?, filter_id)?;
+        ctx.attach_subqueries(ir, select_id)?;
+        ir.set_top(select_id)?;
+    }
+
+    // Save child of GROUP BY in IR
+    let grby_child = ir.get_top()?;
+
+    // Park the select list: ordinal keys are translated out of it.
+    let saved_sel_lst = std::mem::replace(&mut ctx.proj_exprs, std::mem::take(proj_exprs));
+    grby.translate(ir, ctx)?;
+    *proj_exprs = std::mem::replace(&mut ctx.proj_exprs, saved_sel_lst);
+
+    if let Some(having) = having {
+        let filter_id = having.translate(ir, ctx)?;
+        let having_id = ir.add_having(ir.get_top()?, filter_id)?;
+        ctx.attach_subqueries(ir, having_id)?;
+        ir.set_top(having_id)?;
+    }
+
+    Ok(grby_child)
+}
+
+/// Translate the select list; returns the aliases of its expressions.
+#[inline(never)]
+fn translate_select_list<'q>(
+    proj_exprs: Vec<ProjExpr<'q>>,
+    grby_child: Option<NodeId>,
+    ir: &mut Plan,
+    ctx: &mut Ctx<'q>,
+) -> AstResult<Vec<NodeId>> {
+    // Add IR nodes for each expression in SELECT list.
+    let mut out_vars = Vec::with_capacity(proj_exprs.len());
+
+    for proj_expr in proj_exprs {
+        let (expr_id, name, star) = match proj_expr {
+            ProjExpr::Orig(proj) => {
+                let name = proj.output_name().map(Ident::normalized);
+                let star = proj.asterisk_source().cloned();
+                let (expr, _) = proj.into_parts();
+                (expr.translate(ir, ctx)?, name, star)
+            }
+            ProjExpr::Translated(key_id, name, star) => {
+                // The key reads the GroupBy child; its projected copy reads the top.
+                let expr_id = SubtreeCloner::clone_subtree(ir, key_id)?;
+                let grby_child = grby_child.ok_or_else(|| {
+                    internal_err(format_smolstr!("expected GROUP BY for translated key"))
+                })?;
+                let top_id = ir.get_top()?;
+                ir.replace_target_in_subtree(expr_id, grby_child, top_id)?;
+                (expr_id, name, star)
+            }
+        };
+
+        // Every item of a marked asterisk must be a marked reference: the
+        // storage SQL writes one `*` for them, which brings back any item
+        // left unmarked.
+        if let Some(star) = star {
+            ir.set_asterisk_source(expr_id, star)?;
+        }
+
+        // The analyzer names every item.
+        let name = name.ok_or_else(|| internal_err(format_smolstr!("expected item name")))?;
+        out_vars.push(ir.nodes.add_alias(name.as_str(), expr_id)?);
+    }
+    Ok(out_vars)
 }
 
 impl<'q> NodeTranslator<'q> for GroupBy<'q, Analyzed> {
@@ -694,146 +725,17 @@ impl<'q> NodeTranslator<'q> for Expr<'q, Analyzed> {
             ExprInner::Nil => Err(internal_err(format_smolstr!(
                 "expected no undefined expressions"
             ))),
-            ExprInner::BinaryOperation(operation) => {
-                let (left, right, op) = operation.into_parts();
-                let right_is_and = matches!(
-                    right.inner_ref(),
-                    ExprInner::BinaryOperation(inner) if inner.op == BinaryOp::Boolean(BooleanOp::And)
-                );
-
-                // Translate operands into IR
-                let left = left.translate(ir, ctx)?;
-                let right = right.translate(ir, ctx)?;
-
-                match op {
-                    BinaryOp::Arithmetic(op) => Ok(ir.add_arithmetic_to_plan(left, op, right)?),
-                    BinaryOp::Comparison(op) => {
-                        let op = match op {
-                            CmpOp::Eq => Bool::Eq,
-                            CmpOp::Neq => Bool::NotEq,
-                            CmpOp::Lt => Bool::Lt,
-                            CmpOp::Gt => Bool::Gt,
-                            CmpOp::Lte => Bool::LtEq,
-                            CmpOp::Gte => Bool::GtEq,
-                        };
-                        Ok(ir.add_cond(left, op, right)?)
-                    }
-                    BinaryOp::Boolean(BooleanOp::Or) => Ok(ir.add_cond(left, Bool::Or, right)?),
-                    // Old pipeline parity: `l AND (rl AND rr)` becomes `(l AND rl) AND rr`.
-                    BinaryOp::Boolean(BooleanOp::And) if right_is_and => {
-                        let MutExpression::Bool(BoolExpr {
-                            left: right_left, ..
-                        }) = ir.get_mut_expression_node(right)?
-                        else {
-                            return Err(internal_err(format_smolstr!("expected AND node")));
-                        };
-                        let right_left = *right_left;
-                        let rotated = ir.add_cond(left, Bool::And, right_left)?;
-                        if let MutExpression::Bool(BoolExpr { left, .. }) =
-                            ir.get_mut_expression_node(right)?
-                        {
-                            *left = rotated;
-                        }
-                        Ok(right)
-                    }
-                    BinaryOp::Boolean(BooleanOp::And) => Ok(ir.add_cond(left, Bool::And, right)?),
-                    BinaryOp::Concat => todo!(),
-                }
-            }
-            ExprInner::UnaryOperation(operation) => {
-                let (operand, op) = operation.into_parts();
-                match op {
-                    UnaryOp::Not => {
-                        let child = operand.translate(ir, ctx)?;
-                        Ok(ir.add_unary(Unary::Not, child)?)
-                    }
-                    UnaryOp::Plus | UnaryOp::Minus => todo!(),
-                }
-            }
+            ExprInner::BinaryOperation(operation) => translate_binary_operation(operation, ir, ctx),
+            ExprInner::UnaryOperation(operation) => translate_unary_operation(operation, ir, ctx),
             ExprInner::Var(var) => var.translate(ir, ctx),
-            ExprInner::Cast(cast) => {
-                // An identity cast (the analyzer wraps a bare USING-merged column
-                // in one) adds nothing to the plan.
-                // shortcut: explicit identity casts are elided too, revisit with full Cast translation.
-                let is_identity = cast.identity_child().is_some();
-                let (child, ty, _) = cast.into_parts();
-                let child_id = child.translate(ir, ctx)?;
-                if is_identity {
-                    Ok(child_id)
-                } else {
-                    Ok(ir.add_cast(child_id, ty)?)
-                }
-            }
-            ExprInner::Literal(lit) => {
-                let value = Value::try_from(lit)?;
-                Ok(ir.add_const(value))
-            }
+            ExprInner::Cast(cast) => translate_cast(cast, ir, ctx),
+            ExprInner::Literal(lit) => translate_literal(lit, ir),
             ExprInner::FunctionCall(call) => {
-                let (_, args, resolved_fn) = call.into_parts();
-                let ResolvedFn::Aggregate(kind) = resolved_fn else {
-                    todo!()
-                };
-
-                let (children, targets, is_distinct) = match args {
-                    FunctionCallArgs::CountAsterisk => {
-                        let child = ir.nodes.push(CountAsterisk {}.into());
-                        (vec![child], vec![None], false)
-                    }
-                    FunctionCallArgs::Exprs { distinct, exprs } => {
-                        let mut children = Vec::with_capacity(exprs.len());
-                        let mut targets = Vec::with_capacity(exprs.len());
-                        for arg in exprs {
-                            // Tarantool resolves the overload by the argument's own type.
-                            targets.push(
-                                arg.data_type()
-                                    .get()
-                                    .filter(|ty| ty.is_scalar())
-                                    .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some))?,
-                            );
-                            children.push(arg.translate(ir, ctx)?);
-                        }
-                        (children, targets, distinct)
-                    }
-                };
-
-                let fn_id = ir.add_aggregate_function(kind, children, is_distinct)?;
-                if let MutExpression::ScalarFunction(ScalarFunction { func_type, .. }) =
-                    ir.get_mut_expression_node(fn_id)?
-                {
-                    *func_type = meta.data_type;
-                }
-                // After the node exists: `add_aggregate_function` inspects raw arguments.
-                ir.cast_fn_args(fn_id, &targets)?;
-                Ok(fn_id)
+                translate_function_call(*call, meta.data_type, ir, ctx)
             }
             ExprInner::SubQuery(sq) => ExprSubQuery(sq).translate(ir, ctx),
-            ExprInner::Exists(exists) => {
-                let (is_not, sq) = exists.into_parts();
-                let row = ExprSubQuery(sq).translate(ir, ctx)?;
-                let exists_id = ir.add_unary(Unary::Exists, row)?;
-                Ok(if is_not {
-                    ir.add_unary(Unary::Not, exists_id)?
-                } else {
-                    exists_id
-                })
-            }
-            ExprInner::In(in_expr) => {
-                let (is_not, left, rhs) = in_expr.into_parts();
-                // shortcut: CAST(row) is no IN list, lift once the cast moves into the subquery.
-                if matches!(rhs.inner_ref(), ExprInner::Cast(_)) {
-                    return Err(unsupported_err(format_smolstr!(
-                        "IN over a differently typed subquery is not supported"
-                    )));
-                }
-                let left = left.translate(ir, ctx)?;
-                let rhs = rhs.translate(ir, ctx)?;
-                let in_id = ir.add_cond(left, Bool::In, rhs)?;
-                Ok(if is_not {
-                    ir.add_unary(Unary::Not, in_id)?
-                } else {
-                    in_id
-                })
-            }
+            ExprInner::Exists(exists) => translate_exists(exists, ir, ctx),
+            ExprInner::In(in_expr) => translate_in(in_expr, ir, ctx),
             // ExprInner::Row(_) => "Row",
             // ExprInner::Array(_) => "Array",
             // ExprInner::WindowFunction(_) => "WindowFunction",
@@ -850,6 +752,184 @@ impl<'q> NodeTranslator<'q> for Expr<'q, Analyzed> {
             other => todo!("{}", other.kind_name()),
         }
     }
+}
+
+// The `Expr::translate` arms, kept out of line: every stack slot of an inlined
+// arm is part of the one frame each level of expression recursion pays.
+
+#[inline(never)]
+fn translate_binary_operation<'q>(
+    operation: BinaryOperation<'q, Analyzed>,
+    ir: &mut Plan,
+    ctx: &mut Ctx<'q>,
+) -> AstResult<NodeId> {
+    let (left, right, op) = operation.into_parts();
+    let right_is_and = matches!(
+        right.inner_ref(),
+        ExprInner::BinaryOperation(inner) if inner.op == BinaryOp::Boolean(BooleanOp::And)
+    );
+
+    // Translate operands into IR
+    let left = left.translate(ir, ctx)?;
+    let right = right.translate(ir, ctx)?;
+
+    match op {
+        BinaryOp::Arithmetic(op) => Ok(ir.add_arithmetic_to_plan(left, op, right)?),
+        BinaryOp::Comparison(op) => {
+            let op = match op {
+                CmpOp::Eq => Bool::Eq,
+                CmpOp::Neq => Bool::NotEq,
+                CmpOp::Lt => Bool::Lt,
+                CmpOp::Gt => Bool::Gt,
+                CmpOp::Lte => Bool::LtEq,
+                CmpOp::Gte => Bool::GtEq,
+            };
+            Ok(ir.add_cond(left, op, right)?)
+        }
+        BinaryOp::Boolean(BooleanOp::Or) => Ok(ir.add_cond(left, Bool::Or, right)?),
+        // Old pipeline parity: `l AND (rl AND rr)` becomes `(l AND rl) AND rr`.
+        BinaryOp::Boolean(BooleanOp::And) if right_is_and => {
+            let MutExpression::Bool(BoolExpr {
+                left: right_left, ..
+            }) = ir.get_mut_expression_node(right)?
+            else {
+                return Err(internal_err(format_smolstr!("expected AND node")));
+            };
+            let right_left = *right_left;
+            let rotated = ir.add_cond(left, Bool::And, right_left)?;
+            if let MutExpression::Bool(BoolExpr { left, .. }) = ir.get_mut_expression_node(right)? {
+                *left = rotated;
+            }
+            Ok(right)
+        }
+        BinaryOp::Boolean(BooleanOp::And) => Ok(ir.add_cond(left, Bool::And, right)?),
+        BinaryOp::Concat => todo!(),
+    }
+}
+
+#[inline(never)]
+fn translate_unary_operation<'q>(
+    operation: UnaryOperation<'q, Analyzed>,
+    ir: &mut Plan,
+    ctx: &mut Ctx<'q>,
+) -> AstResult<NodeId> {
+    let (operand, op) = operation.into_parts();
+    match op {
+        UnaryOp::Not => {
+            let child = operand.translate(ir, ctx)?;
+            Ok(ir.add_unary(Unary::Not, child)?)
+        }
+        UnaryOp::Plus | UnaryOp::Minus => todo!(),
+    }
+}
+
+#[inline(never)]
+fn translate_cast<'q>(
+    cast: Cast<'q, Analyzed>,
+    ir: &mut Plan,
+    ctx: &mut Ctx<'q>,
+) -> AstResult<NodeId> {
+    // An identity cast (the analyzer wraps a bare USING-merged column
+    // in one) adds nothing to the plan.
+    // shortcut: explicit identity casts are elided too, revisit with full Cast translation.
+    let is_identity = cast.identity_child().is_some();
+    let (child, ty, _) = cast.into_parts();
+    let child_id = child.translate(ir, ctx)?;
+    if is_identity {
+        Ok(child_id)
+    } else {
+        Ok(ir.add_cast(child_id, ty)?)
+    }
+}
+
+#[inline(never)]
+fn translate_literal(lit: Literal<'_>, ir: &mut Plan) -> AstResult<NodeId> {
+    let value = Value::try_from(lit)?;
+    Ok(ir.add_const(value))
+}
+
+#[inline(never)]
+fn translate_function_call<'q>(
+    call: FunctionCall<'q, Analyzed>,
+    data_type: DerivedType,
+    ir: &mut Plan,
+    ctx: &mut Ctx<'q>,
+) -> AstResult<NodeId> {
+    let (_, args, resolved_fn) = call.into_parts();
+    let ResolvedFn::Aggregate(kind) = resolved_fn else {
+        todo!()
+    };
+
+    let (children, targets, is_distinct) = match args {
+        FunctionCallArgs::CountAsterisk => {
+            let child = ir.nodes.push(CountAsterisk {}.into());
+            (vec![child], vec![None], false)
+        }
+        FunctionCallArgs::Exprs { distinct, exprs } => {
+            let mut children = Vec::with_capacity(exprs.len());
+            let mut targets = Vec::with_capacity(exprs.len());
+            for arg in exprs {
+                // Tarantool resolves the overload by the argument's own type.
+                targets.push(
+                    arg.data_type()
+                        .get()
+                        .filter(|ty| ty.is_scalar())
+                        .map_or(Ok(None), |ty| CastType::try_from(&ty).map(Some))?,
+                );
+                children.push(arg.translate(ir, ctx)?);
+            }
+            (children, targets, distinct)
+        }
+    };
+
+    let fn_id = ir.add_aggregate_function(kind, children, is_distinct)?;
+    if let MutExpression::ScalarFunction(ScalarFunction { func_type, .. }) =
+        ir.get_mut_expression_node(fn_id)?
+    {
+        *func_type = data_type;
+    }
+    // After the node exists: `add_aggregate_function` inspects raw arguments.
+    ir.cast_fn_args(fn_id, &targets)?;
+    Ok(fn_id)
+}
+
+#[inline(never)]
+fn translate_exists<'q>(
+    exists: Exists<'q, Analyzed>,
+    ir: &mut Plan,
+    ctx: &mut Ctx<'q>,
+) -> AstResult<NodeId> {
+    let (is_not, sq) = exists.into_parts();
+    let row = ExprSubQuery(sq).translate(ir, ctx)?;
+    let exists_id = ir.add_unary(Unary::Exists, row)?;
+    Ok(if is_not {
+        ir.add_unary(Unary::Not, exists_id)?
+    } else {
+        exists_id
+    })
+}
+
+#[inline(never)]
+fn translate_in<'q>(
+    in_expr: InExpr<'q, Analyzed>,
+    ir: &mut Plan,
+    ctx: &mut Ctx<'q>,
+) -> AstResult<NodeId> {
+    let (is_not, left, rhs) = in_expr.into_parts();
+    // shortcut: CAST(row) is no IN list, lift once the cast moves into the subquery.
+    if matches!(rhs.inner_ref(), ExprInner::Cast(_)) {
+        return Err(unsupported_err(format_smolstr!(
+            "IN over a differently typed subquery is not supported"
+        )));
+    }
+    let left = left.translate(ir, ctx)?;
+    let rhs = rhs.translate(ir, ctx)?;
+    let in_id = ir.add_cond(left, Bool::In, rhs)?;
+    Ok(if is_not {
+        ir.add_unary(Unary::Not, in_id)?
+    } else {
+        in_id
+    })
 }
 
 #[cfg(test)]

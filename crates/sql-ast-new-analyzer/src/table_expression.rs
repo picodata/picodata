@@ -283,22 +283,7 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
             )));
         }
 
-        // Picodata does not support LATERAL yet, so a joined table cannot
-        // reference the FROM entries before it. A table function is the
-        // exception: as in PostgreSQL, its arguments see them.
-        let analyzed_tbl = if matches!(tbl.inner, TableFactorInner::Function(_)) {
-            tbl.bind(meta)?
-        } else {
-            let preserved_from = std::mem::take(&mut meta.binder.curr_from);
-            let analyzed_tbl = tbl.bind(meta)?;
-            meta.binder.curr_from = preserved_from;
-            analyzed_tbl
-        };
-
-        // Add analyzed table factor of joined table in order to resolve join condition against it.
-        meta.binder
-            .curr_from
-            .add_entry(FromEntry::TableFactor(analyzed_tbl));
+        bind_joined_factor(tbl, meta)?;
 
         // Rely on the parser allowing exactly one of JOIN/ON and JOIN/USING,
         // or none of them for CROSS JOIN.
@@ -308,47 +293,10 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
                 || (kind == JoinKind::Cross && condition.is_none() && using_cols.is_empty())
         );
 
-        // Previously analyzed entries in current FROM clause should be visible to the join condition.
-        // For example, in this query
-        // `SELECT * FROM (SELECT 1 a) t1 INNER JOIN (SELECT 2 a) t2 ON (SELECT t1.a)::BOOL`
-        // `t1.a` should be resolved subquery `t1` output attribute.
-        let partial_from = std::mem::take(&mut meta.binder.curr_from);
-        let stage = if condition.is_some() {
-            Stage::JoinOn
-        } else {
-            Stage::JoinUsing
-        };
-        let frame = meta.binder.top_frame_mut()?;
-        debug_assert!(frame.from.is_empty());
-        frame.from = partial_from;
-        let saved_stage = frame.set_stage(stage);
+        let (analyzed_cond, analyzed_using_columns) =
+            bind_join_condition(condition, using_cols, meta)?;
 
-        let analyzed_cond = match condition {
-            None => None,
-            Some(cond) => {
-                let (bound_expr, t_expr) = cond.bind_with_volatility(meta, false)?;
-                meta.type_system.add_filter(t_expr);
-                Some(bound_expr)
-            }
-        };
-
-        let analyzed_using_columns = using_cols
-            .into_iter()
-            .map(|col| col.bind(meta))
-            .collect::<AstResult<Vec<_>>>()?;
-
-        let frame = meta.binder.top_frame_mut()?;
-        frame.set_stage(saved_stage);
-        let partial_from = std::mem::take(&mut frame.from);
-        meta.binder.curr_from = partial_from;
-
-        // We expect to find inner analyzed table factor of joined table.
-        let inner_tbl_factor = match meta.binder.curr_from.pop_entry()? {
-            FromEntry::TableFactor(tbl_factor) => Ok(tbl_factor),
-            FromEntry::JoinedTable(_) => Err(analyze_err(format_smolstr!(
-                "expected to find only table factor, not joined table"
-            ))),
-        }?;
+        let inner_tbl_factor = pop_joined_factor(meta)?;
 
         Ok(Self::BoundNode::from_parts(
             inner_tbl_factor,
@@ -356,6 +304,87 @@ impl<'q> Binder<'q> for JoinedTable<'q, Raw> {
             analyzed_cond,
             analyzed_using_columns,
         ))
+    }
+}
+
+/// Bind the joined table factor and add it to the FROM clause under analysis,
+/// for the join condition to resolve against.
+#[inline(never)]
+fn bind_joined_factor<'q, M: Metadata>(
+    tbl: TableFactor<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<()> {
+    // Picodata does not support LATERAL yet, so a joined table cannot
+    // reference the FROM entries before it. A table function is the
+    // exception: as in PostgreSQL, its arguments see them.
+    let analyzed_tbl = if matches!(tbl.inner, TableFactorInner::Function(_)) {
+        tbl.bind(meta)?
+    } else {
+        let preserved_from = std::mem::take(&mut meta.binder.curr_from);
+        let analyzed_tbl = tbl.bind(meta)?;
+        meta.binder.curr_from = preserved_from;
+        analyzed_tbl
+    };
+    meta.binder
+        .curr_from
+        .add_entry(FromEntry::TableFactor(analyzed_tbl));
+    Ok(())
+}
+
+/// Bind the ON condition or the USING columns of a join against the partial
+/// FROM clause, installed into the statement frame for the duration.
+#[inline(never)]
+fn bind_join_condition<'q, M: Metadata>(
+    condition: Option<Expr<'q, Raw>>,
+    using_cols: Vec<JoinUsingColumn>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<(Option<Expr<'q, Analyzed>>, Vec<BoundJoinUsingVar>)> {
+    // Previously analyzed entries in current FROM clause should be visible to the join condition.
+    // For example, in this query
+    // `SELECT * FROM (SELECT 1 a) t1 INNER JOIN (SELECT 2 a) t2 ON (SELECT t1.a)::BOOL`
+    // `t1.a` should be resolved subquery `t1` output attribute.
+    let partial_from = std::mem::take(&mut meta.binder.curr_from);
+    let stage = if condition.is_some() {
+        Stage::JoinOn
+    } else {
+        Stage::JoinUsing
+    };
+    let frame = meta.binder.top_frame_mut()?;
+    debug_assert!(frame.from.is_empty());
+    frame.from = partial_from;
+    let saved_stage = frame.set_stage(stage);
+
+    let analyzed_cond = match condition {
+        None => None,
+        Some(cond) => {
+            let (bound_expr, t_expr) = cond.bind_with_volatility(meta, false)?;
+            meta.type_system.add_filter(t_expr);
+            Some(bound_expr)
+        }
+    };
+
+    let analyzed_using_columns = using_cols
+        .into_iter()
+        .map(|col| col.bind(meta))
+        .collect::<AstResult<Vec<_>>>()?;
+
+    let frame = meta.binder.top_frame_mut()?;
+    frame.set_stage(saved_stage);
+    let partial_from = std::mem::take(&mut frame.from);
+    meta.binder.curr_from = partial_from;
+    Ok((analyzed_cond, analyzed_using_columns))
+}
+
+/// Take the joined table factor [`bind_joined_factor`] added back off the FROM clause.
+#[inline(never)]
+fn pop_joined_factor<'q, M: Metadata>(
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<TableFactor<'q, Analyzed>> {
+    match meta.binder.curr_from.pop_entry()? {
+        FromEntry::TableFactor(tbl_factor) => Ok(tbl_factor),
+        FromEntry::JoinedTable(_) => Err(analyze_err(format_smolstr!(
+            "expected to find only table factor, not joined table"
+        ))),
     }
 }
 

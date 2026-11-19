@@ -17,6 +17,7 @@
 use smol_str::format_smolstr;
 
 use sql_ast_new_nodes::error::AstResult;
+use sql_ast_new_nodes::expr::Expr;
 use sql_ast_new_nodes::scope::{EqDepths, Scope};
 use sql_ast_new_nodes::select::{
     ProjectionExpr, SelectList, SelectListElem, SelectListExprs, SelectStmt,
@@ -82,69 +83,77 @@ impl<'q> Binder<'q> for SelectStmt<'q, Raw> {
         meta.binder.top_frame_mut()?.from = from;
 
         // 2. WHERE
-        let selection = match selection {
-            None => None,
-            Some(selection) => {
-                meta.binder.top_frame_mut()?.set_stage(Stage::Where);
+        let selection = bind_condition(selection, Stage::Where, meta)?;
 
-                let (expr, t_expr) = selection.bind_with_volatility(meta, false)?;
-
-                meta.type_system.add_filter(t_expr);
-
-                Some(expr)
-            }
-        };
-
-        // 3. GROUP BY discovery: resolves ordinal elements and potential
-        // aliases, and binds expression grouping keys — which the WINDOW
-        // clause and the select list are matched against.
-        meta.binder.top_frame_mut()?.set_raw_sel_lst(select_list);
-        let group_by = group_by.discover(meta)?;
-
-        // 4. WINDOWS. Bound definitions are parked on the frame — the select
-        // list and the query ORDER BY resolve `OVER w` against it — and put
-        // back by the multiset statement once ORDER BY has bound.
-        named_windows.bind(meta)?;
-
-        // 5. SELECT list expressions
-        meta.binder.top_frame_mut()?.set_stage(Stage::Projection);
-        meta.binder
-            .top_frame_mut()?
-            .take_raw_sel_lst()?
-            .bind(meta)?;
-
-        // 6. GROUP BY
-        meta.binder.top_frame_mut()?.set_stage(Stage::GroupBy);
-        group_by.bind(meta)?;
+        // 3-6
+        bind_grby_and_proj(select_list, group_by, named_windows, meta)?;
 
         // 7. HAVING
         meta.binder.top_frame_mut()?.set_stage(Stage::Having);
-        let having = match having {
-            None => None,
-            Some(having) => {
-                let (expr, t_expr) = having.bind_with_volatility(meta, false)?;
-
-                meta.type_system.add_filter(t_expr);
-
-                Some(expr)
-            }
-        };
-
-        let t_expr = TableExpression::from_parts(
-            // Keep FROM clause, GROUP BY clause, named windows in the statement frame until
-            // ORDER BY is bound
-            From::default(),
-            selection,
-            GroupBy::default(),
-            having,
-            NamedWindows::default(),
-        );
+        let having = bind_condition(having, Stage::Having, meta)?;
 
         Ok(Self::BoundNode::from_parts(
             SelectList::default(),
-            Some(t_expr),
+            Some(Box::new(TableExpression::from_parts(
+                // Keep FROM clause, GROUP BY clause, named windows in the statement frame until
+                // ORDER BY is bound
+                From::default(),
+                selection,
+                GroupBy::default(),
+                having,
+                NamedWindows::default(),
+            ))),
         ))
     }
+}
+
+/// Steps 3-6 of `SelectStmt::bind`, which share the raw select list.
+#[inline(never)]
+fn bind_grby_and_proj<'q, M: Metadata>(
+    select_list: SelectList<'q, Raw>,
+    group_by: GroupBy<'q, Raw>,
+    named_windows: NamedWindows<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<()> {
+    // 3. GROUP BY discovery: resolves ordinal elements and potential
+    // aliases, and binds expression grouping keys — which the WINDOW
+    // clause and the select list are matched against.
+    meta.binder.top_frame_mut()?.set_raw_sel_lst(select_list);
+    let group_by = group_by.discover(meta)?;
+
+    // 4. WINDOWS. Bound definitions are parked on the frame — the select
+    // list and the query ORDER BY resolve `OVER w` against it — and put
+    // back by the multiset statement once ORDER BY has bound.
+    named_windows.bind(meta)?;
+
+    // 5. SELECT list expressions
+    meta.binder.top_frame_mut()?.set_stage(Stage::Projection);
+    meta.binder
+        .top_frame_mut()?
+        .take_raw_sel_lst()?
+        .bind(meta)?;
+
+    // 6. GROUP BY
+    meta.binder.top_frame_mut()?.set_stage(Stage::GroupBy);
+    group_by.bind(meta)?;
+    Ok(())
+}
+
+/// Bind a WHERE or HAVING condition in `stage` and register its mirror as a filter.
+// Out of line: dev builds would keep its slots in `SelectStmt::bind`'s frame.
+#[inline(never)]
+fn bind_condition<'q, M: Metadata>(
+    cond: Option<Expr<'q, Raw>>,
+    stage: Stage,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<Option<Expr<'q, Analyzed>>> {
+    let Some(cond) = cond else {
+        return Ok(None);
+    };
+    meta.binder.top_frame_mut()?.set_stage(stage);
+    let (expr, t_expr) = cond.bind_with_volatility(meta, false)?;
+    meta.type_system.add_filter(t_expr);
+    Ok(Some(expr))
 }
 
 impl ExprTypeDeriver for SelectStmt<'_, Analyzed> {

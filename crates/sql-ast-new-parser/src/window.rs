@@ -104,13 +104,7 @@ pub(super) fn parse_window_function<'q>(
         }
     };
 
-    Ok(WindowFunction {
-        name,
-        resolved_fn: (),
-        args,
-        filter,
-        window,
-    })
+    Ok(WindowFunction::from_parts(name, (), args, filter, window))
 }
 
 fn parse_window_function_args<'q>(

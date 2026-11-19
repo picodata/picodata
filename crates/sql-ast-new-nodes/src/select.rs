@@ -32,17 +32,23 @@ pub struct SelectStmt<'q, State: AstState<'q>> {
 }
 
 impl<'q, State: AstState<'q>> SelectStmt<'q, State> {
-    pub fn into_parts(self) -> (SelectList<'q, State>, Option<TableExpression<'q, State>>) {
-        (self.select_list, self.table_expression.map(|t| *t))
+    // The box passes through: unboxing here copies the table expression in debug frames.
+    pub fn into_parts(
+        self,
+    ) -> (
+        SelectList<'q, State>,
+        Option<Box<TableExpression<'q, State>>>,
+    ) {
+        (self.select_list, self.table_expression)
     }
 
     pub fn from_parts(
         select_list: SelectList<'q, State>,
-        table_expression: Option<TableExpression<'q, State>>,
+        table_expression: Option<Box<TableExpression<'q, State>>>,
     ) -> Self {
         Self {
             select_list,
-            table_expression: table_expression.map(Box::new),
+            table_expression,
         }
     }
 }

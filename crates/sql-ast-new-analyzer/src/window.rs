@@ -38,7 +38,7 @@ use sql_ast_new_nodes::window::{
     FrameBound, FrameBounds, FrameType, NamedWindow, NamedWindows, ResolvedWindowFn, WindowFrame,
     WindowFunction, WindowFunctionArgs, WindowRef, WindowSpec,
 };
-use sql_ast_new_nodes::{Analyzed, AstNodeId, Raw};
+use sql_ast_new_nodes::{Analyzed, AstNodeId, Ident, Raw};
 use sql_ir::ir::aggregates::AggregateKind;
 use sql_ir::ir::metadata::Metadata;
 use sql_type_system::expr::WindowFrame as TypeWindowFrame;
@@ -96,7 +96,7 @@ impl<'q> Binder<'q> for NamedWindows<'q, Raw> {
                 over_t_expr,
                 effective_order_by_len,
                 order_t_expr,
-            } = bind_window_spec(spec, meta)?;
+            } = *bind_window_spec(spec, meta)?;
 
             // The root that puts the definition's expressions through type
             // analysis with the rest of the statement.
@@ -120,18 +120,67 @@ impl<'q> Binder<'q> for NamedWindows<'q, Raw> {
 // Out of line: inlined into recursive `Expr::bind`, its slots grow every level's frame.
 #[inline(never)]
 pub(crate) fn bind_win_fn<'q, M: Metadata>(
-    window_function: WindowFunction<'q, Raw>,
+    win_fn: WindowFunction<'q, Raw>,
     curr_id: AstNodeId,
     meta: &mut AnalyzerCtx<'q, M>,
 ) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
-    let WindowFunction {
-        name,
-        resolved_fn: (),
-        args,
-        filter,
-        window,
-    } = window_function;
+    let (name, args, filter, window) = win_fn.into_parts();
 
+    let aggr = check_win_fn_call(name.as_str(), &args, filter.is_some(), meta)?;
+    let args = bind_win_args(args, meta)?;
+    let filter = bind_win_filter(filter, meta)?;
+    bind_win_over(name, aggr, args, filter, window, curr_id, meta)
+}
+
+/// The rest of [`bind_win_fn`], once its arguments and FILTER are bound: the
+/// window reference, the call's mirror and the function it resolves to.
+#[inline(never)]
+fn bind_win_over<'q, M: Metadata>(
+    name: Ident,
+    aggr: Option<AggregateKind>,
+    (args, arg_t_exprs): (WindowFunctionArgs<'q, Analyzed>, Vec<AstTypeExpr>),
+    (filter, filter_t_expr): (Option<Expr<'q, Analyzed>>, Option<AstTypeExpr>),
+    winref: WindowRef<'q, Raw>,
+    curr_id: AstNodeId,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<(ExprInner<'q, Analyzed>, AstTypeExpr)> {
+    let (over, over_t_expr) = *bind_win_ref(winref, meta)?;
+
+    let t_expr = AstTypeExpr::new(
+        curr_id,
+        AstTypeExprKind::WindowFunction {
+            name: name.as_str().to_string(),
+            args: arg_t_exprs,
+            filter: filter_t_expr.map(Box::new),
+            over: Box::new(over_t_expr),
+        },
+    );
+    let resolved_fn = resolve_win_fn(aggr, name.as_str(), &t_expr, meta)?;
+
+    Ok((
+        ExprInner::WindowFunction(Box::new(WindowFunction::from_parts(
+            name,
+            resolved_fn,
+            args,
+            filter,
+            over,
+        ))),
+        t_expr,
+    ))
+}
+
+// The helpers below are out of line for the dev build: each one's slots would
+// otherwise all live in `bind_win_fn`'s frame.
+
+/// The placement, nesting and shape checks of a window function call, run
+/// before anything in it binds. Returns the aggregate the name calls, if any.
+#[inline(never)]
+fn check_win_fn_call<M: Metadata>(
+    name: &str,
+    args: &WindowFunctionArgs<'_, Raw>,
+    has_filter: bool,
+    meta: &AnalyzerCtx<'_, M>,
+) -> AstResult<Option<AggregateKind>> {
     if let Some(clause) = meta.binder.top_frame_ref()?.stage.forbid_win_fn() {
         return Err(semantic_err(format_smolstr!(
             "window functions are not allowed in {clause}"
@@ -156,15 +205,15 @@ pub(crate) fn bind_win_fn<'q, M: Metadata>(
         )));
     }
 
-    let aggr = AggregateKind::from_name(name.as_str());
-    if filter.is_some() && !aggr.is_some() {
+    let aggr = AggregateKind::from_name(name);
+    if has_filter && !aggr.is_some() {
         return Err(semantic_err(format_smolstr!(
             "FILTER is not implemented for non-aggregate window functions"
         )));
     }
 
     if matches!(aggr, Some(AggregateKind::COUNT)) {
-        if let WindowFunctionArgs::List(lst) = &args {
+        if let WindowFunctionArgs::List(lst) = args {
             if lst.is_empty() {
                 return Err(semantic_err(format_smolstr!(
                     "count(*) must be used to call a parameterless aggregate function"
@@ -172,10 +221,17 @@ pub(crate) fn bind_win_fn<'q, M: Metadata>(
             }
         }
     }
+    Ok(aggr)
+}
 
+#[inline(never)]
+fn bind_win_args<'q, M: Metadata>(
+    args: WindowFunctionArgs<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<(WindowFunctionArgs<'q, Analyzed>, Vec<AstTypeExpr>)> {
     let prev_stage = meta.binder.top_frame_mut()?.set_stage(Stage::WindowFn);
 
-    let (bound_args, arg_t_exprs) = match args {
+    let bound = match args {
         WindowFunctionArgs::Asterisk => (WindowFunctionArgs::Asterisk, Vec::new()),
         WindowFunctionArgs::List(exprs) => {
             let mut bound_exprs = Vec::with_capacity(exprs.len());
@@ -190,20 +246,30 @@ pub(crate) fn bind_win_fn<'q, M: Metadata>(
     };
 
     meta.binder.top_frame_mut()?.set_stage(prev_stage);
+    Ok(bound)
+}
 
-    let mut filter_t_expr = None;
-    let bound_filter = match filter {
-        None => None,
-        Some(filter) => {
-            let prev_stage = meta.binder.top_frame_mut()?.set_stage(Stage::WindowFilter);
-            let (bound_expr, t_expr) = filter.bind_with_volatility(meta, false)?;
-            meta.binder.top_frame_mut()?.set_stage(prev_stage);
-            filter_t_expr = Some(t_expr);
-            Some(bound_expr)
-        }
+#[inline(never)]
+fn bind_win_filter<'q, M: Metadata>(
+    filter: Option<Expr<'q, Raw>>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<(Option<Expr<'q, Analyzed>>, Option<AstTypeExpr>)> {
+    let Some(filter) = filter else {
+        return Ok((None, None));
     };
+    let prev_stage = meta.binder.top_frame_mut()?.set_stage(Stage::WindowFilter);
+    let (bound, t_expr) = filter.bind_with_volatility(meta, false)?;
+    meta.binder.top_frame_mut()?.set_stage(prev_stage);
+    Ok((Some(bound), Some(t_expr)))
+}
 
-    let (bound_window, over_t_expr) = match window {
+/// Bind the `OVER` part: a named window reference or an inline specification.
+#[inline(never)]
+fn bind_win_ref<'q, M: Metadata>(
+    window: WindowRef<'q, Raw>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<Box<(WindowRef<'q, Analyzed>, AstTypeExpr)>> {
+    Ok(Box::new(match window {
         WindowRef::Name(window_name) => {
             meta.binder
                 .top_frame_ref()?
@@ -215,47 +281,33 @@ pub(crate) fn bind_win_fn<'q, M: Metadata>(
         WindowRef::Spec(spec) => {
             let BoundSpec {
                 spec, over_t_expr, ..
-            } = bind_window_spec(spec, meta)?;
+            } = *bind_window_spec(spec, meta)?;
             (WindowRef::Spec(spec), over_t_expr)
         }
-    };
+    }))
+}
 
-    let t_expr = AstTypeExpr::new(
-        curr_id,
-        AstTypeExprKind::WindowFunction {
-            name: name.as_str().to_string(),
-            args: arg_t_exprs,
-            filter: filter_t_expr.map(Box::new),
-            over: Box::new(over_t_expr),
-        },
-    );
-
-    let resolved_fn = match aggr {
-        Some(kind) => ResolvedWindowFn::Aggregate(kind),
-        None => match name.as_str() {
-            "row_number" => ResolvedWindowFn::RowNumber,
-            "last_value" => ResolvedWindowFn::LastValue,
+#[inline(never)]
+fn resolve_win_fn<M: Metadata>(
+    aggr: Option<AggregateKind>,
+    name: &str,
+    t_expr: &AstTypeExpr,
+    meta: &mut AnalyzerCtx<'_, M>,
+) -> AstResult<ResolvedWindowFn> {
+    match aggr {
+        Some(kind) => Ok(ResolvedWindowFn::Aggregate(kind)),
+        None => match name {
+            "row_number" => Ok(ResolvedWindowFn::RowNumber),
+            "last_value" => Ok(ResolvedWindowFn::LastValue),
             _ => {
                 // Keep the type system's unknown-name and overload diagnostics.
-                meta.type_system.analyzer.analyze(&t_expr, None)?;
-                return Err(analyze_err(format_smolstr!(
-                    "window function {} has no resolved AST kind",
-                    name.as_str()
-                )));
+                meta.type_system.analyzer.analyze(t_expr, None)?;
+                Err(analyze_err(format_smolstr!(
+                    "window function {name} has no resolved AST kind"
+                )))
             }
         },
-    };
-
-    Ok((
-        ExprInner::WindowFunction(Box::new(WindowFunction {
-            name,
-            resolved_fn,
-            args: bound_args,
-            filter: bound_filter,
-            window: bound_window,
-        })),
-        t_expr,
-    ))
+    }
 }
 
 /// A bound window specification and what its callers read off it.
@@ -277,7 +329,31 @@ struct BoundSpec<'q> {
 fn bind_window_spec<'q, M: Metadata>(
     spec: WindowSpec<'q, Raw>,
     meta: &mut AnalyzerCtx<'q, M>,
-) -> AstResult<BoundSpec<'q>> {
+) -> AstResult<Box<BoundSpec<'q>>> {
+    let (effective_order_by_len, base_order_t_expr) = check_window_spec(
+        spec.base.as_ref().map(Ident::as_str),
+        !spec.partition_by.is_empty(),
+        spec.order_by.as_ref().map(OrderBy::len),
+        spec.frame.as_deref(),
+        meta,
+    )?;
+
+    let prev_stage = meta.binder.top_frame_mut()?.set_stage(Stage::WindowDef);
+    let bound = bind_window_spec_exprs(spec, effective_order_by_len, base_order_t_expr, meta)?;
+    meta.binder.top_frame_mut()?.set_stage(prev_stage);
+    Ok(bound)
+}
+
+// The helpers below are out of line for the dev build, like those of `bind_win_fn`.
+
+/// Bind the expressions of a checked specification, in the `WindowDef` stage.
+#[inline(never)]
+fn bind_window_spec_exprs<'q, M: Metadata>(
+    spec: WindowSpec<'q, Raw>,
+    effective_order_by_len: usize,
+    base_order_t_expr: Option<AstTypeExpr>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<Box<BoundSpec<'q>>> {
     let WindowSpec {
         base,
         partition_by,
@@ -285,89 +361,8 @@ fn bind_window_spec<'q, M: Metadata>(
         frame,
     } = spec;
 
-    // Resolve the base first, in Postgres' check order: the PARTITION BY
-    // override, the ORDER BY override, then the frame copy.
-    let (base_effective_order_by_len, base_order_t_expr) = match base.as_ref() {
-        None => (0, None),
-        Some(base_name) => {
-            let base_window = meta
-                .binder
-                .top_frame_ref()?
-                .find_window(base_name.as_str())
-                .ok_or_else(|| window_does_not_exist(base_name.as_str()))?;
-
-            if !partition_by.is_empty() {
-                return Err(semantic_err(format_smolstr!(
-                    r#"cannot override PARTITION BY clause of window "{}""#,
-                    base_name.as_str()
-                )));
-            }
-            if order_by.is_some() && base_window.has_effective_order_by() {
-                return Err(semantic_err(format_smolstr!(
-                    r#"cannot override ORDER BY clause of window "{}""#,
-                    base_name.as_str()
-                )));
-            }
-            if base_window.has_frame() {
-                return Err(semantic_err(format_smolstr!(
-                    r#"cannot copy window "{}" because it has a frame clause"#,
-                    base_name.as_str()
-                )));
-            }
-            (
-                base_window.effective_order_by_len,
-                base_window.order_t_expr.clone(),
-            )
-        }
-    };
-
-    let effective_order_by_len = order_by
-        .as_ref()
-        .map_or(base_effective_order_by_len, OrderBy::len);
-
-    // Frame sanity is structural: validated before anything in it binds.
-    if let Some(frame) = frame.as_ref() {
-        validate_frame_bounds(frame)?;
-        validate_range_frame(frame, effective_order_by_len)?;
-    }
-
-    let prev_stage = meta.binder.top_frame_mut()?.set_stage(Stage::WindowDef);
-
-    let mut bound_partition_by = Vec::with_capacity(partition_by.len());
-    let mut partition_by_t_exprs = Vec::with_capacity(partition_by.len());
-    for expr in partition_by {
-        let (bound_expr, t_expr) = expr.bind_with_volatility(meta, false)?;
-        bound_partition_by.push(bound_expr);
-        partition_by_t_exprs.push(t_expr);
-    }
-
-    let mut order_by_t_exprs = Vec::new();
-    let bound_order_by = match order_by {
-        None => None,
-        Some(order_by) => {
-            let mut bound_elems = Vec::with_capacity(order_by.len());
-            for elem in order_by.into_elements() {
-                let (elem_expr, direction, nulls) = elem.into_parts();
-                let expr = match elem_expr {
-                    // The parser keeps window ORDER BY literals as constants.
-                    OrdrByGrpByElem::Ordinal(_) => {
-                        return Err(analyze_err(format_smolstr!(
-                            "select-list ordinal in a window ORDER BY"
-                        )))
-                    }
-                    OrdrByGrpByElem::Expr(expr) => expr,
-                };
-                let (bound_expr, t_expr) = expr.bind_with_volatility(meta, false)?;
-                bound_elems.push(OrderByElement::from_parts(
-                    OrdrByGrpByElem::Expr(bound_expr),
-                    direction,
-                    nulls,
-                ));
-                order_by_t_exprs.push(t_expr);
-            }
-            Some(OrderBy::from(bound_elems))
-        }
-    };
+    let (bound_partition_by, partition_by_t_exprs) = bind_window_partition_by(partition_by, meta)?;
+    let (bound_order_by, order_by_t_exprs) = bind_window_order_by(order_by, meta)?;
 
     let order_t_expr = match (&bound_order_by, order_by_t_exprs.as_slice()) {
         (Some(_), [own]) => Some(own.clone()),
@@ -375,37 +370,135 @@ fn bind_window_spec<'q, M: Metadata>(
         (None, _) => base_order_t_expr,
     };
 
-    let (bound_frame, frame_t) = match frame {
-        None => (None, None),
-        Some(frame) => {
-            let (bound_frame, frame_t) = bind_window_frame(*frame, order_t_expr.as_ref(), meta)?;
-            (Some(bound_frame), frame_t)
-        }
-    };
-
-    meta.binder.top_frame_mut()?.set_stage(prev_stage);
+    let (bound_frame, frame_t) = bind_window_frame(frame, order_t_expr.as_ref(), meta)?;
 
     let over_id = meta.type_system.inc_expr_id();
-    let over_t_expr = AstTypeExpr::new(
-        over_id,
-        AstTypeExprKind::Window {
-            order_by: order_by_t_exprs,
-            partition_by: partition_by_t_exprs,
-            frame: frame_t.map(Box::new),
-        },
-    );
-
-    Ok(BoundSpec {
+    Ok(Box::new(BoundSpec {
         spec: WindowSpec {
             base,
             partition_by: bound_partition_by,
             order_by: bound_order_by,
             frame: bound_frame,
         },
-        over_t_expr,
+        over_t_expr: AstTypeExpr::new(
+            over_id,
+            AstTypeExprKind::Window {
+                order_by: order_by_t_exprs,
+                partition_by: partition_by_t_exprs,
+                frame: frame_t,
+            },
+        ),
         effective_order_by_len,
         order_t_expr,
-    })
+    }))
+}
+
+/// Check a specification before anything in it binds: the base reference in
+/// Postgres' order (the PARTITION BY override, the ORDER BY override, then the
+/// frame copy), then the frame's structure. Returns the effective ORDER BY
+/// length and the ORDER BY mirror inherited from the base.
+#[inline(never)]
+fn check_window_spec<M: Metadata>(
+    base: Option<&str>,
+    has_partition_by: bool,
+    order_by_len: Option<usize>,
+    frame: Option<&WindowFrame<'_, Raw>>,
+    meta: &AnalyzerCtx<'_, M>,
+) -> AstResult<(usize, Option<AstTypeExpr>)> {
+    let (base_effective_order_by_len, base_order_t_expr) = match base {
+        None => (0, None),
+        Some(base_name) => {
+            check_window_base(base_name, has_partition_by, order_by_len.is_some(), meta)?
+        }
+    };
+    let effective_order_by_len = order_by_len.unwrap_or(base_effective_order_by_len);
+
+    // Frame sanity is structural: validated before anything in it binds.
+    if let Some(frame) = frame {
+        validate_frame_bounds(frame)?;
+        validate_range_frame(frame, effective_order_by_len)?;
+    }
+    Ok((effective_order_by_len, base_order_t_expr))
+}
+
+fn check_window_base<M: Metadata>(
+    base_name: &str,
+    has_partition_by: bool,
+    has_order_by: bool,
+    meta: &AnalyzerCtx<'_, M>,
+) -> AstResult<(usize, Option<AstTypeExpr>)> {
+    let base_window = meta
+        .binder
+        .top_frame_ref()?
+        .find_window(base_name)
+        .ok_or_else(|| window_does_not_exist(base_name))?;
+
+    if has_partition_by {
+        return Err(semantic_err(format_smolstr!(
+            r#"cannot override PARTITION BY clause of window "{base_name}""#
+        )));
+    }
+    if has_order_by && base_window.has_effective_order_by() {
+        return Err(semantic_err(format_smolstr!(
+            r#"cannot override ORDER BY clause of window "{base_name}""#
+        )));
+    }
+    if base_window.has_frame() {
+        return Err(semantic_err(format_smolstr!(
+            r#"cannot copy window "{base_name}" because it has a frame clause"#
+        )));
+    }
+    Ok((
+        base_window.effective_order_by_len,
+        base_window.order_t_expr.clone(),
+    ))
+}
+
+#[inline(never)]
+fn bind_window_partition_by<'q, M: Metadata>(
+    partition_by: Vec<Expr<'q, Raw>>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<(Vec<Expr<'q, Analyzed>>, Vec<AstTypeExpr>)> {
+    let mut bound = Vec::with_capacity(partition_by.len());
+    let mut t_exprs = Vec::with_capacity(partition_by.len());
+    for expr in partition_by {
+        let (bound_expr, t_expr) = expr.bind_with_volatility(meta, false)?;
+        bound.push(bound_expr);
+        t_exprs.push(t_expr);
+    }
+    Ok((bound, t_exprs))
+}
+
+#[inline(never)]
+fn bind_window_order_by<'q, M: Metadata>(
+    order_by: Option<OrderBy<'q, Raw>>,
+    meta: &mut AnalyzerCtx<'q, M>,
+) -> AstResult<(Option<OrderBy<'q, Analyzed>>, Vec<AstTypeExpr>)> {
+    let Some(order_by) = order_by else {
+        return Ok((None, Vec::new()));
+    };
+    let mut bound_elems = Vec::with_capacity(order_by.len());
+    let mut t_exprs = Vec::new();
+    for elem in order_by.into_elements() {
+        let (elem_expr, direction, nulls) = elem.into_parts();
+        let expr = match elem_expr {
+            // The parser keeps window ORDER BY literals as constants.
+            OrdrByGrpByElem::Ordinal(_) => {
+                return Err(analyze_err(format_smolstr!(
+                    "select-list ordinal in a window ORDER BY"
+                )))
+            }
+            OrdrByGrpByElem::Expr(expr) => expr,
+        };
+        let (bound_expr, t_expr) = expr.bind_with_volatility(meta, false)?;
+        bound_elems.push(OrderByElement::from_parts(
+            OrdrByGrpByElem::Expr(bound_expr),
+            direction,
+            nulls,
+        ));
+        t_exprs.push(t_expr);
+    }
+    Ok((Some(OrderBy::from(bound_elems)), t_exprs))
 }
 
 /// The frame-extent sanity Postgres enforces in its grammar; this grammar
@@ -482,14 +575,17 @@ fn is_offset_bound(bound: &FrameBound<'_, Raw>) -> bool {
 /// The type mirror is `None` for a frame without offsets: it has nothing to type.
 #[allow(clippy::type_complexity)]
 fn bind_window_frame<'q, M: Metadata>(
-    frame: WindowFrame<'q, Raw>,
+    frame: Option<Box<WindowFrame<'q, Raw>>>,
     order_t_expr: Option<&AstTypeExpr>,
     meta: &mut AnalyzerCtx<'q, M>,
 ) -> AstResult<(
-    Box<WindowFrame<'q, Analyzed>>,
-    Option<TypeWindowFrame<AstNodeId>>,
+    Option<Box<WindowFrame<'q, Analyzed>>>,
+    Option<Box<TypeWindowFrame<AstNodeId>>>,
 )> {
-    let WindowFrame { ty, bounds } = frame;
+    let Some(frame) = frame else {
+        return Ok((None, None));
+    };
+    let WindowFrame { ty, bounds } = *frame;
     let mut bound_offsets = Vec::new();
 
     let bounds = match bounds {
@@ -503,7 +599,7 @@ fn bind_window_frame<'q, M: Metadata>(
     };
 
     if bound_offsets.is_empty() {
-        return Ok((Box::new(WindowFrame { ty, bounds }), None));
+        return Ok((Some(Box::new(WindowFrame { ty, bounds })), None));
     }
     let frame_t = match ty {
         FrameType::Rows => TypeWindowFrame::Rows(bound_offsets),
@@ -522,7 +618,10 @@ fn bind_window_frame<'q, M: Metadata>(
         }
     };
 
-    Ok((Box::new(WindowFrame { ty, bounds }), Some(frame_t)))
+    Ok((
+        Some(Box::new(WindowFrame { ty, bounds })),
+        Some(Box::new(frame_t)),
+    ))
 }
 
 fn bind_frame_bound<'q, M: Metadata>(
@@ -588,7 +687,7 @@ pub(crate) fn derive_window_function_types(
     w_func: &mut WindowFunction<'_, Analyzed>,
     type_report: &AstTypeReport,
 ) -> AstResult<()> {
-    match &mut w_func.args {
+    match w_func.args_mut() {
         WindowFunctionArgs::Asterisk => { /* no expression children */ }
         WindowFunctionArgs::List(exprs) => {
             for expr in exprs {
@@ -596,11 +695,11 @@ pub(crate) fn derive_window_function_types(
             }
         }
     }
-    if let Some(filter) = &mut w_func.filter {
+    if let Some(filter) = w_func.filter_mut() {
         // The type system checks the predicate is boolean.
         filter.derive_types(type_report)?;
     }
-    match &mut w_func.window {
+    match w_func.winref_mut() {
         WindowRef::Name(_) => { /* typed at its definition */ }
         WindowRef::Spec(spec) => derive_window_spec_types(spec, type_report)?,
     }

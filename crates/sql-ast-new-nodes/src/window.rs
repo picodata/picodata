@@ -48,11 +48,11 @@ use crate::{Analyzed, AstState, Ident, Raw};
 
 /// Window function invocation: `name(args) [FILTER (WHERE expr)] OVER window`.
 pub struct WindowFunction<'q, State: AstState<'q>> {
-    pub name: Ident,
-    pub resolved_fn: State::WindowFnT,
-    pub args: WindowFunctionArgs<'q, State>,
-    pub filter: Option<Expr<'q, State>>,
-    pub window: WindowRef<'q, State>,
+    name: Ident,
+    resolved_fn: State::WindowFnT,
+    args: WindowFunctionArgs<'q, State>,
+    filter: Option<Expr<'q, State>>,
+    window: WindowRef<'q, State>,
 }
 
 /// What an analyzed [`WindowFunction`] calls.
@@ -61,6 +61,55 @@ pub enum ResolvedWindowFn {
     Aggregate(AggregateKind),
     RowNumber,
     LastValue,
+}
+
+impl<'q> WindowFunction<'q, Raw> {
+    pub fn into_parts(
+        self,
+    ) -> (
+        Ident,
+        WindowFunctionArgs<'q, Raw>,
+        Option<Expr<'q, Raw>>,
+        WindowRef<'q, Raw>,
+    ) {
+        (self.name, self.args, self.filter, self.window)
+    }
+}
+
+impl<'q> WindowFunction<'q, Analyzed> {
+    pub fn args_mut(&mut self) -> &mut WindowFunctionArgs<'q, Analyzed> {
+        &mut self.args
+    }
+
+    pub fn filter_mut(&mut self) -> Option<&mut Expr<'q, Analyzed>> {
+        self.filter.as_mut()
+    }
+
+    pub fn winref_mut(&mut self) -> &mut WindowRef<'q, Analyzed> {
+        &mut self.window
+    }
+
+    pub fn resolved_fn(&self) -> ResolvedWindowFn {
+        self.resolved_fn
+    }
+}
+
+impl<'q, State: AstState<'q>> WindowFunction<'q, State> {
+    pub fn from_parts(
+        name: Ident,
+        resolved_fn: <State as AstState<'q>>::WindowFnT,
+        args: WindowFunctionArgs<'q, State>,
+        filter: Option<Expr<'q, State>>,
+        window: WindowRef<'q, State>,
+    ) -> Self {
+        Self {
+            name,
+            resolved_fn,
+            args,
+            filter,
+            window,
+        }
+    }
 }
 
 impl<'q, State: AstState<'q>> Render<'q, State> for WindowFunction<'q, State> {

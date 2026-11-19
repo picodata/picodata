@@ -1697,7 +1697,7 @@ fn window_functions_carry_resolved_identity() {
             let ExprInner::WindowFunction(call) = projection.expr_ref().inner_ref() else {
                 panic!("expected a window function");
             };
-            call.resolved_fn
+            call.resolved_fn()
         })
         .collect();
     assert_eq!(
