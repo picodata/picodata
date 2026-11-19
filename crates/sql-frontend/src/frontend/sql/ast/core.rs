@@ -22,8 +22,8 @@ use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
 use ::core::panic;
 use itertools::Itertools;
 use pest::iterators::{Pair, Pairs};
-use pest::Parser;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sql_ast_new_grammar::parse_limited;
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
@@ -146,15 +146,9 @@ impl AstCore {
         pair_to_ast_id: &mut PairToAstIdTranslation<'q>,
         tnt_parameters_ordered: &mut Vec<Pair<'q, Rule>>,
     ) -> Result<(), SbroadError> {
-        let mut command_pair = match ParseTree::parse(Rule::Command, query) {
-            Ok(p) => p,
-            Err(e) => {
-                return Err(SbroadError::ParsingError(
-                    Entity::Rule,
-                    format_smolstr!("{e}"),
-                ))
-            }
-        };
+        // The parse time is bounded only through `parse_limited`.
+        let mut command_pair = parse_limited::<ParseTree, Rule>(Rule::Command, query)
+            .map_err(|msg| SbroadError::ParsingError(Entity::Rule, msg.into()))?;
         let top_pair = command_pair
             .next()
             .expect("Query expected as a first parsing tree child.");

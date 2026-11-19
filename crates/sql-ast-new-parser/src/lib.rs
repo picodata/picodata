@@ -43,6 +43,8 @@ mod expr;
 mod keywords;
 mod multiset;
 mod pairs_traversal;
+#[cfg(test)]
+mod parse_cost;
 mod select;
 #[cfg(test)]
 mod structural_eq;
@@ -54,10 +56,9 @@ mod window;
 use std::fmt::{self, Display, Formatter};
 
 use pest::iterators::Pair;
-use pest::Parser;
 use smol_str::{format_smolstr, SmolStr};
 
-use sql_ast_new_grammar::{PairParser, Rule};
+use sql_ast_new_grammar::{parse_limited, PairParser, Rule};
 use sql_ast_new_nodes::error::{ast_err, ast_invariant_err, AstErr, AstResult};
 use sql_ast_new_nodes::{
     AbstractSyntaxTree, DqlStmt, Forward, Node, Raw, RawAst, ReadPreference, SqlOption,
@@ -84,7 +85,8 @@ pub fn parse(query: &str) -> AstResult<RawAst<'_>> {
     // There is no protection from too deep recursion in queries.
     // Be aware in dev binary on some queries with long chains of nested statements
     // stack overflow is possible.
-    let pair = match PairParser::parse(Rule::Command, query) {
+    // The parse time is bounded only through `parse_limited`.
+    let pair = match parse_limited::<PairParser, Rule>(Rule::Command, query) {
         Ok(mut p) => p.next().ok_or_else(|| {
             parser_err(format_smolstr!(
                 "query expected as a first parsing tree child"
@@ -93,8 +95,8 @@ pub fn parse(query: &str) -> AstResult<RawAst<'_>> {
         // The one user error that is not a `parse_err`: the server recognizes a
         // syntax error by this variant — pgproto then tries its well-known
         // PostgreSQL queries, the Lua console reformats the multi-line message.
-        Err(e) => {
-            return Err(SbroadError::ParsingError(Entity::Rule, format_smolstr!("{e}")).into());
+        Err(msg) => {
+            return Err(SbroadError::ParsingError(Entity::Rule, msg.into()).into());
         }
     };
 

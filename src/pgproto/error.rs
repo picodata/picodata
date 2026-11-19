@@ -259,13 +259,20 @@ impl PgError {
         )
     }
 
+    /// The parser rejected the query text, so it may be a well-known query.
+    /// Not a query that runs out of the parse budget: it is no well-known
+    /// query, and parsing it once more would only add to its cost.
     pub fn is_sbroad_parsing_error(&self) -> bool {
         use crate::traft::error::Error;
         use sql::errors::SbroadErrorInner;
+        use sql::frontend::sql::TOO_COMPLEX;
 
         if let Self::PicodataError(e) = self {
             if let Error::Sbroad(e) = &**e {
-                return matches!(e.kind(), SbroadErrorInner::ParsingError(..));
+                return matches!(
+                    e.kind(),
+                    SbroadErrorInner::ParsingError(_, message) if message != TOO_COMPLEX
+                );
             }
         }
 

@@ -19,6 +19,9 @@ pub mod ir;
 pub mod tree;
 mod type_system;
 
+/// The text of the parse error of a query that runs out of the step budget.
+pub use sql_ast_new_grammar::TOO_COMPLEX;
+
 pub trait Ast<'q> {
     type AnalyzedAst;
 

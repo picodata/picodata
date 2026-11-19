@@ -5418,6 +5418,7 @@ mod join;
 mod like;
 mod limit;
 mod params;
+mod parse_cost;
 mod single;
 mod table_function;
 mod text_literal_parsing;

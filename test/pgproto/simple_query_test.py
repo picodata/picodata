@@ -37,6 +37,26 @@ def test_simple_query_flow_errors(postgres: Postgres):
         )
 
 
+def test_too_complex_query(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
+
+    os.environ["PGSSLMODE"] = "disable"
+    conn = pg.Connection(user, password=password, host=postgres.host, port=postgres.port)
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    # The query is not looked up among the well-known queries: the second
+    # parser would overflow the fiber stack on it in a debug build.
+    query = "select " + "1 in (" * 40 + "1 +" + ")" * 40
+    with pytest.raises(pg.DatabaseError, match="query is too complex to parse"):
+        cur.execute(query)
+
+    cur.execute("select 1")
+    assert cur.fetchall() == ([1],)
+
+
 def test_simple_flow_session(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"
