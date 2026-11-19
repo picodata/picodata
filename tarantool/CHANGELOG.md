@@ -83,6 +83,12 @@
 - `network::ReconnClient` now reconnects when its connection has been closed
   with an error, e.g. by the peer restarting. Before, every request failed
   without being sent until `ReconnClient::reconnect` was called.
+- `network::client::tcp::TcpStream::{connect_timeout, connect_timeout_async}`
+  no longer try the remaining resolved addresses after the timeout expires and
+  return `Error::Timeout`. Before, an address that failed at once, e.g. IPv6
+  without a route, replaced the timeout with its own error. A zero timeout now
+  always returns `Error::Timeout`; before, a connection to a local listener
+  could succeed.
 
 ### Fixed (picodata)
 

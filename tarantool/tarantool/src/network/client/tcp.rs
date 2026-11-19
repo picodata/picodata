@@ -192,6 +192,9 @@ impl TcpStream {
         let mut last_error = None;
 
         for addr in resolve_addr(url, port, timeout.as_secs_f64())? {
+            if fiber::clock() >= deadline {
+                return Err(Error::Timeout);
+            }
             match Self::connect_single((&addr).into(), deadline) {
                 Ok(stream) => {
                     return Ok(stream);
@@ -232,6 +235,9 @@ impl TcpStream {
         let deadline = fiber::clock().saturating_add(timeout);
         let mut last_error = None;
         for addr in resolve_addr(url, port, timeout.as_secs_f64())? {
+            if fiber::clock() >= deadline {
+                return Err(Error::Timeout);
+            }
             match Self::connect_single_async((&addr).into())
                 .deadline(deadline)
                 .await
@@ -823,7 +829,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn connect_zero_timeout() {
         assert!(matches!(
-            TcpStream::connect_timeout("example.com", 80, _0_SEC)
+            TcpStream::connect_timeout("127.0.0.1", listen_port(), _0_SEC)
                 .err()
                 .unwrap(),
             Error::Timeout
@@ -833,9 +839,13 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn connect_zero_timeout_async() {
         assert!(matches!(
-            fiber::block_on(TcpStream::connect_timeout_async("example.com", 80, _0_SEC))
-                .err()
-                .unwrap(),
+            fiber::block_on(TcpStream::connect_timeout_async(
+                "127.0.0.1",
+                listen_port(),
+                _0_SEC
+            ))
+            .err()
+            .unwrap(),
             Error::Timeout
         ));
     }
