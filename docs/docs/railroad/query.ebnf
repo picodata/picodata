@@ -9,8 +9,9 @@ dql         ::= (with? select | values)
                     )
                     (','
                         (
-                            'read_preference' '=' ('LEADER' | 'REPLICA' | 'ANY')
-                            | ('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned
+                        'forward' '=' ('ON' | 'OFF' | 'RO_TO_RW')
+                        | 'read_preference' '=' ('LEADER' | 'REPLICA' | 'ANY')
+                        | ('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned
                         )
                     )*
                 ')')?
@@ -182,8 +183,16 @@ boolean     ::= 'TRUE'
                 | 'FALSE'
 dml         ::= (call | delete | insert | update)
                 ('OPTION' '('
-                    (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned)
-                    (',' (('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned))*
+                    (
+                        'forward' '=' ('ON' | 'OFF' | 'RO_TO_RW')
+                        | ('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned
+                    )
+                    (','
+                        (
+                        'forward' '=' ('ON' | 'OFF' | 'RO_TO_RW')
+                        | ('sql_motion_row_max' | 'sql_vdbe_opcode_max') '=' unsigned
+                        )
+                    )*
                 ')')?
 call        ::= 'CALL' procedure '(' (literal (',' literal)*)? ')'
 delete      ::= 'DELETE' 'FROM' table ('INDEXED' 'BY' index)? ('WHERE' expression)?
