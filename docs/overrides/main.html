@@ -40,7 +40,7 @@
 #}
 {% block config %}
   {%- set ts = config.extra.search_typesense -%}
-  {%- set lunr_worker = "search.f8cc74c7.min.js" -%}
+  {%- set lunr_worker = "search.2c215733.min.js" -%}
   {%- if ts and ts.url and config.env.PICODATA_DOC_VER -%}
     {%- set worker = "assets/javascripts/workers/search-typesense.js"
         ~ "?ts=" ~ (ts.url | urlencode)
@@ -77,4 +77,46 @@
   </nav>
 
   {{ super() }}
+
+  {#
+    Подсказки терминов (material.extensions.preview, hooks/glossary_links.py) рассчитаны на
+    наведение: тема открывает их по mouseenter и фокусу и закрывает по mouseleave. На сенсорном
+    экране наведения нет, и открытую касанием подсказку нечем закрыть. Поэтому там термин,
+    размеченный хуком, работает как переключатель: касание открывает подсказку, повторное касание
+    или касание мимо — закрывает; в глоссарий ведёт заголовок внутри подсказки. Ссылки авторов
+    остаются обычными ссылками без подсказки, иначе касание и открывало бы её, и уводило со
+    страницы. data-preview снимается здесь, в теле страницы, до того как тема навесит обработчики.
+  #}
+  <script>
+    if (matchMedia("(hover: none)").matches) {
+      for (const link of document.querySelectorAll("a[data-preview]:not(.glossary-term)")) {
+        link.removeAttribute("data-preview");
+      }
+
+      let open = null;
+      const leave = (el) => el.dispatchEvent(new MouseEvent("mouseleave"));
+      const close = () => {
+        if (!open) return;
+        leave(open);
+        open.blur();
+        document.querySelectorAll(".md-tooltip2").forEach(leave);
+        open = null;
+      };
+
+      document.addEventListener("click", (event) => {
+        const term = event.target.closest("a.glossary-term");
+        if (!term) return;
+        event.preventDefault();
+        const again = term === open;
+        close();
+        if (!again) {
+          open = term;
+          term.dispatchEvent(new MouseEvent("mouseenter"));
+        }
+      });
+      document.addEventListener("touchstart", (event) => {
+        if (!event.target.closest("a.glossary-term, .md-tooltip2")) close();
+      }, { passive: true });
+    }
+  </script>
 {% endblock %}

@@ -456,6 +456,16 @@ markdown_extensions:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - md_in_html
+  ## > preview
+  ## При наведении на ссылку в глоссарий показывает определение термина. Термины, которые
+  ## автор ссылкой не оформил, размечает hooks/glossary_links.py.
+  ## https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#instant-previews
+  - material.extensions.preview:
+      configurations:
+        - targets:
+            include:
+              - overview/glossary.md
+              - plugins/s3r/reference/glossary.md
 
 ## Дополнительный Javascript для навигации, сортировки и копирования в таблицах, рендеринга формул:
 extra_javascript:
@@ -485,5 +495,6 @@ hooks:
   - ./hooks/check_sorting.py
   - ./hooks/validate_system_tables.py
   - ./hooks/inline_svg.py
+  - ./hooks/glossary_links.py
   - ./hooks/export_to_pdf.py
   - ./hooks/search_typesense.py

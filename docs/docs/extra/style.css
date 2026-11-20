@@ -559,3 +559,9 @@ article > p > img {
 span.keys {
   white-space: nowrap;
 }
+
+/* Термины глоссария, размеченные при сборке (hooks/glossary_links.py): цвет обычного текста,
+   иначе страница рябит ссылками. Пунктир под ними ставит тема. */
+.md-typeset a.glossary-term {
+  color: inherit;
+}
