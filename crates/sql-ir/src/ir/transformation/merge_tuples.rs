@@ -602,6 +602,15 @@ impl Plan {
                         }
                     }
                 }
+                Expression::Between(_) => {
+                    for (pos, child) in expr.expr_children().into_iter().enumerate() {
+                        if let Some(chain) = chains.get(&child) {
+                            let new_child_id = f_to_plan(parent_id, chain, self)?;
+                            let mut expr_mut = self.get_mut_expression_node(id)?;
+                            *expr_mut.expr_children_mut()[pos] = new_child_id;
+                        }
+                    }
+                }
                 _ => continue,
             }
         }

@@ -102,9 +102,10 @@ impl Expression<'_> {
                 case_ty_general.expect("Case type must be known")
             }
             Expression::Alias(Alias { child, .. }) => plan.get_node_type(*child)?,
-            Expression::Bool(_) | Expression::Unary(_) | Expression::Like { .. } => {
-                DerivedType::new(UnrestrictedType::Boolean)
-            }
+            Expression::Bool(_)
+            | Expression::Unary(_)
+            | Expression::Like { .. }
+            | Expression::Between { .. } => DerivedType::new(UnrestrictedType::Boolean),
             Expression::Arithmetic(ArithmeticExpr {
                 left, right, op, ..
             }) => {

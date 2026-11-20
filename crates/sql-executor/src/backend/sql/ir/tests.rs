@@ -71,6 +71,7 @@ fn local_sql_params_do_not_mutate_constants() {
     }
 }
 
+mod between;
 mod except;
 mod inner_join;
 mod projection;

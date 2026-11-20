@@ -558,6 +558,7 @@ impl ColExpr {
                     let expr = ColExpr::Like(left, right, escape);
                     stack.push((expr, id));
                 }
+                Expression::Between { .. } => Self::from_between(id, &mut stack),
                 Expression::Constant(Constant { value }) => {
                     let expr =
                         ColExpr::Const(value.to_smolstr(), current_node.calculate_type(plan)?);
@@ -773,6 +774,15 @@ impl ColExpr {
             ColExpr::ScalarFunction(name.clone(), args, feature.clone(), *func_type, should_fmt);
         stack.push((func_expr, id));
         Ok(())
+    }
+
+    fn from_between(id: NodeId, stack: &mut ColExprStack<'_>) {
+        let high = stack.pop_expr(Some(id)).into();
+        let low = stack.pop_expr(Some(id)).into();
+        let left = stack.pop_expr(Some(id)).into();
+        let bounds = ColExpr::InfixOp(low, "and".to_smolstr(), high);
+        let expr = ColExpr::InfixOp(left, "between".to_smolstr(), bounds.into());
+        stack.push((expr, id));
     }
 
     fn from_unary(

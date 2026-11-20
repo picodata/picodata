@@ -304,7 +304,7 @@ fn front_sql18() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (hash_testing.product_code::text -> product_code)
-      selection ((hash_testing.product_code::text >= '1'::text and hash_testing.product_code::text <= '2'::text))
+      selection (hash_testing.product_code::text between '1'::text and '2'::text)
         scan hash_testing
     ");
 }
@@ -374,7 +374,7 @@ fn front_sql_between_with_additional_and_from_left() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id)
-      selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int))
+      selection ((t.id::int > 1::int and t.id::int between t.id::int and t.id::int + 10::int))
         scan test_space -> t
     ");
 }
@@ -389,7 +389,7 @@ fn front_sql_between_with_additional_not_from_left() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id)
-      selection (t.id::int < t.id::int or t.id::int > t.id::int + 10::int)
+      selection (not t.id::int between t.id::int and t.id::int + 10::int)
         scan test_space -> t
     ");
 }
@@ -404,7 +404,7 @@ fn front_sql_between_with_additional_and_from_left_and_right() {
 
     insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
     projection (t.id::int -> id)
-      selection ((t.id::int > 1::int and t.id::int >= t.id::int and t.id::int <= t.id::int + 10::int))
+      selection ((t.id::int > 1::int and t.id::int between t.id::int and t.id::int + 10::int))
         scan test_space -> t
     ");
 }
@@ -422,6 +422,42 @@ fn front_sql_between_with_nested_not_from_the_left() {
       selection (true::bool)
         scan test_space -> t
     ");
+}
+
+/// A false half is enough to fold `BETWEEN` of a constant: `0 >= 1` is false.
+#[test]
+fn front_sql_between_with_a_false_constant_half() {
+    for input in [
+        r#"explain (logical) SELECT "id" FROM "test_space" WHERE 0 BETWEEN 1 AND "id""#,
+        r#"explain (logical) SELECT "id" FROM "test_space" WHERE 2 BETWEEN "id" AND 1"#,
+    ] {
+        let plan = sql_to_optimized_ir(input, vec![]);
+        let explain = explain_logical(&plan).unwrap();
+        assert!(explain.contains("selection (false::bool)"), "{explain}");
+    }
+}
+
+/// A true half leaves the comparison of the other, which NOT negates, as it
+/// did when `BETWEEN` was two comparisons. A NULL half stays.
+#[test]
+fn front_sql_between_with_a_true_constant_half() {
+    for (condition, selection) in [
+        ("10 BETWEEN 1 AND id", "(10::int <= test_space.id::int)"),
+        ("10 NOT BETWEEN 1 AND id", "(10::int > test_space.id::int)"),
+        ("1 NOT BETWEEN id AND 10", "(1::int < test_space.id::int)"),
+        (
+            "10 BETWEEN NULL AND id",
+            "(10::int between NULL::unknown and test_space.id::int)",
+        ),
+    ] {
+        let input = format!("explain (logical) SELECT id FROM test_space WHERE {condition}");
+        let plan = sql_to_optimized_ir(&input, vec![]);
+        let explain = explain_logical(&plan).unwrap();
+        assert!(
+            explain.contains(&format!("selection {selection}")),
+            "{explain}"
+        );
+    }
 }
 
 #[test]
@@ -1877,7 +1913,10 @@ fn front_sql_tnt_style_params2() {
 
     let plan = sql_to_optimized_ir(input, vec![Value::Integer(1)]);
 
-    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @"projection ((1::int >= 1::int and 1::int <= 2::int) -> col_1)");
+    insta::assert_snapshot!(
+        explain_logical(&plan).unwrap(),
+        @"projection (1::int between 1::int and 2::int -> col_1)"
+    );
 }
 
 #[test]
@@ -2994,8 +3033,8 @@ fn front_sql_groupby_alias_in_between() {
     projection (1::int -> x)
       group by (gr_expr_1::bool)
         motion [policy: full, program: ReshardIfNeeded]
-          projection ((1::int >= 0::int and 1::int <= 2::int) -> gr_expr_1)
-            group by ((1::int >= 0::int and 1::int <= 2::int))
+          projection (1::int between 0::int and 2::int -> gr_expr_1)
+            group by (1::int between 0::int and 2::int)
               scan t1
     ");
 }
@@ -3009,8 +3048,8 @@ fn front_sql_groupby_alias_and_alias_in_between() {
     projection (gr_expr_1::int -> x)
       group by (gr_expr_1::int, gr_expr_2::bool)
         motion [policy: full, program: ReshardIfNeeded]
-          projection (t5.b::int -> gr_expr_1, (t5.b::int >= 0::int and t5.b::int <= 2::int) -> gr_expr_2)
-            group by (t5.b::int, (t5.b::int >= 0::int and t5.b::int <= 2::int))
+          projection (t5.b::int -> gr_expr_1, t5.b::int between 0::int and 2::int -> gr_expr_2)
+            group by (t5.b::int, t5.b::int between 0::int and 2::int)
               scan t5
     ");
 }
@@ -5426,3 +5465,37 @@ mod trim;
 mod union;
 mod update;
 mod window_frame;
+
+/// Two stage aggregation replaces the parts of `BETWEEN` like those of any other
+/// expression.
+#[test]
+fn front_sql_between_expression_in_two_stage_aggregation() {
+    for query in [
+        r#"SELECT "a" FROM "t" GROUP BY "a" HAVING "a" + 1 BETWEEN 0 AND 5"#,
+        r#"SELECT "a" + 1 BETWEEN 0 AND 5 AS "b" FROM "t" GROUP BY "a""#,
+        r#"SELECT count(*) + 1 BETWEEN 0 AND 5 AS "b" FROM "t""#,
+        r#"SELECT "a" + 1 BETWEEN 0 AND 5 AS "z" FROM "t" GROUP BY "z""#,
+        r#"SELECT DISTINCT "a" + 1 BETWEEN 0 AND 5 AS "b" FROM "t""#,
+    ] {
+        let _ = sql_to_optimized_ir(query, vec![]);
+    }
+}
+
+/// The plan of a nested `BETWEEN` grows linearly with the depth.
+#[test]
+fn front_sql_nested_between_in_two_stage_aggregation() {
+    let mut x = r#""a" = 1"#.to_string();
+    for _ in 0..40 {
+        x = format!("CASE WHEN {x} THEN 1 ELSE 0 END BETWEEN 0 AND 1");
+    }
+    for query in [
+        format!(r#"explain (logical) SELECT {x} AS "z" FROM "t" GROUP BY {x}"#),
+        format!(r#"explain (logical) SELECT {x} AS "z" FROM "t""#),
+        format!(r#"explain (logical) SELECT "a" FROM "t" GROUP BY "a" HAVING {x}"#),
+        format!(r#"explain (logical) SELECT DISTINCT {x} AS "z" FROM "t""#),
+        format!(r#"explain (logical) SELECT count(CASE WHEN {x} THEN 1 END) AS "z" FROM "t""#),
+    ] {
+        let plan = sql_to_optimized_ir(&query, vec![]);
+        explain_logical(&plan).unwrap();
+    }
+}

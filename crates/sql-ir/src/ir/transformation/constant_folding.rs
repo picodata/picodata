@@ -2,7 +2,7 @@ use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
-    ArenaType, BoolExpr, Constant, Join, Node32, Node64, Node96, NodeId, Selection,
+    ArenaType, Between, BoolExpr, Constant, Join, Node32, Node64, Node96, NodeId, Selection,
     SubQueryReference, UnaryExpr,
 };
 use crate::ir::operator::{Bool, Unary};
@@ -266,6 +266,9 @@ impl Plan {
                     || is_bool_const(*right)
             }
             Node32::Unary(UnaryExpr { child, .. }) => is_const(*child),
+            Node32::Between(Between { left, low, high }) => {
+                is_const(*left) && (is_const(*low) || is_const(*high))
+            }
             _ => false,
         })
     }
@@ -300,7 +303,12 @@ impl Plan {
                 filter,
             )
             .expressions()
-            .filter(|(_, expr)| matches!(expr, Expression::Bool(_) | Expression::Unary(_)))
+            .filter(|(_, expr)| {
+                matches!(
+                    expr,
+                    Expression::Bool(_) | Expression::Unary(_) | Expression::Between(_)
+                )
+            })
             .map(|(id, _)| id)
             .collect();
 
@@ -357,7 +365,8 @@ impl Plan {
                         }
                     }
                     MutExpression::Unary(UnaryExpr { op, child }) => {
-                        *child = *const_map.get(child).unwrap_or(child);
+                        let folded_child = const_map.get(child).copied();
+                        *child = folded_child.unwrap_or(*child);
 
                         let op = *op;
                         let child = *child;
@@ -372,9 +381,62 @@ impl Plan {
                             let const_id = self.nodes.next_id(ArenaType::Arena32);
                             const_map.insert(*op_id, const_id);
                             self.nodes.add_const(val);
+                        } else if let (
+                            Unary::Not,
+                            Some(_),
+                            Expression::Bool(BoolExpr { left, op, right }),
+                        ) = (op, folded_child, child_node)
+                        {
+                            // NOT was pushed down before the fold left this
+                            // comparison of a `BETWEEN`, so negate it here.
+                            if let Some((op, false)) = op.negate() {
+                                let (left, right) = (*left, *right);
+                                let new_id = self.nodes.add_bool(left, op, right)?;
+                                const_map.insert(*op_id, new_id);
+                            }
                         }
                     }
-                    _ => unreachable!("expected Bool or Unary node"),
+                    MutExpression::Between(Between { left, low, high }) => {
+                        for child in [&mut *left, &mut *low, &mut *high] {
+                            *child = *const_map.get(child).unwrap_or(child);
+                        }
+                        let (left, low, high) = (*left, *low, *high);
+                        // `left >= low AND left <= high`: a false half is enough.
+                        let half =
+                            |bound: NodeId, op: Bool| -> Result<Option<Value>, SbroadError> {
+                                match (
+                                    self.get_expression_node(left)?,
+                                    self.get_expression_node(bound)?,
+                                ) {
+                                    (
+                                        Expression::Constant(Constant { value: left }),
+                                        Expression::Constant(Constant { value: bound }),
+                                    ) => self.calculate_bool_op_res(left, bound, op),
+                                    _ => Ok(None),
+                                }
+                            };
+                        let new_id = match (half(low, Bool::GtEq)?, half(high, Bool::LtEq)?) {
+                            (Some(lower), Some(upper)) => self
+                                .calculate_bool_op_res(&lower, &upper, Bool::And)?
+                                .map(|val| self.nodes.add_const(val)),
+                            (Some(val @ Value::Boolean(false)), _)
+                            | (_, Some(val @ Value::Boolean(false))) => {
+                                Some(self.nodes.add_const(val))
+                            }
+                            // A true half leaves the comparison of the other,
+                            // which an index of the storage can take.
+                            (Some(Value::Boolean(true)), None) => {
+                                Some(self.nodes.add_bool(left, Bool::LtEq, high)?)
+                            }
+                            (None, Some(Value::Boolean(true))) => {
+                                Some(self.nodes.add_bool(left, Bool::GtEq, low)?)
+                            }
+                            _ => None,
+                        };
+                        let Some(new_id) = new_id else { continue };
+                        const_map.insert(*op_id, new_id);
+                    }
+                    _ => unreachable!("expected Bool, Unary or Between node"),
                 }
             }
 

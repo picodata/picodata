@@ -11,9 +11,9 @@ use crate::{
 };
 
 use super::{
-    Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Case, Cast, Concat, Constant, CountAsterisk,
-    CurrentUser, LetVarRef, Like, NodeAligned, NodeId, Over, Parameter, Reference, Row,
-    ScalarFunction, SubQueryReference, Timestamp, Trim, UnaryExpr, Window,
+    Alias, ArithmeticExpr, ArrayLiteral, Between, BoolExpr, Case, Cast, Concat, Constant,
+    CountAsterisk, CurrentUser, LetVarRef, Like, NodeAligned, NodeId, Over, Parameter, Reference,
+    Row, ScalarFunction, SubQueryReference, Timestamp, Trim, UnaryExpr, Window,
 };
 
 pub const EXPECTED_CHILDREN_CNT: usize = 4;
@@ -181,6 +181,15 @@ impl ExprChildren for Like {
     }
     fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
         smallvec![&mut self.left, &mut self.right, &mut self.escape]
+    }
+}
+
+impl ExprChildren for Between {
+    fn expr_children(&self) -> SmallVec<[NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![self.left, self.low, self.high]
+    }
+    fn expr_children_mut(&mut self) -> SmallVec<[&mut NodeId; EXPECTED_CHILDREN_CNT]> {
+        smallvec![&mut self.left, &mut self.low, &mut self.high]
     }
 }
 
@@ -387,6 +396,9 @@ pub enum ExprOwned {
     Window(Window),
     Parameter(Parameter),
     LetVarRef(LetVarRef),
+    // Last: the plan id hashes the variant index, so the plans without
+    // `BETWEEN` keep their ids.
+    Between(Between),
 }
 
 impl From<ExprOwned> for NodeAligned {
@@ -404,6 +416,7 @@ impl From<ExprOwned> for NodeAligned {
             ExprOwned::Constant(constant) => constant.into(),
             ExprOwned::CountAsterisk(count) => count.into(),
             ExprOwned::Like(like) => like.into(),
+            ExprOwned::Between(between) => between.into(),
             ExprOwned::Reference(reference) => reference.into(),
             ExprOwned::SubQueryReference(sq_reference) => sq_reference.into(),
             ExprOwned::Row(row) => row.into(),
@@ -456,6 +469,8 @@ pub enum Expression<'a> {
     Window(&'a Window),
     Parameter(&'a Parameter),
     LetVarRef(&'a LetVarRef),
+    // Last, as in `ExprOwned`.
+    Between(&'a Between),
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -484,6 +499,8 @@ pub enum MutExpression<'a> {
     Window(&'a mut Window),
     Parameter(&'a mut Parameter),
     LetVarRef(&'a mut LetVarRef),
+    // Last, as in `ExprOwned`.
+    Between(&'a mut Between),
 }
 
 #[allow(dead_code)]
@@ -614,7 +631,9 @@ impl Expression<'_> {
             // `a || b`
             | Expression::Concat(_)
             // `a LIKE '...'`
-            | Expression::Like(_) => true,
+            | Expression::Like(_)
+            // `a BETWEEN b AND c`
+            | Expression::Between(_) => true,
         }
     }
 
@@ -669,16 +688,10 @@ impl Expression<'_> {
             // One shared level makes either nesting parenthesized, so the
             // generated SQL means the same in both grammars.
             Expression::Like(_)
+            | Expression::Between(_)
             | Expression::Bool(BoolExpr {
                 op:
-                    Bool::Eq
-                    | Bool::NotEq
-                    | Bool::Lt
-                    | Bool::LtEq
-                    | Bool::Gt
-                    | Bool::GtEq
-                    | Bool::In
-                    | Bool::Between,
+                    Bool::Eq | Bool::NotEq | Bool::Lt | Bool::LtEq | Bool::Gt | Bool::GtEq | Bool::In,
                 ..
             }) => 5,
 
@@ -714,6 +727,7 @@ impl Expression<'_> {
             Expression::Concat(n) => n.expr_children(),
             Expression::Constant(n) => n.expr_children(),
             Expression::Like(n) => n.expr_children(),
+            Expression::Between(n) => n.expr_children(),
             Expression::Reference(n) => n.expr_children(),
             Expression::SubQueryReference(n) => n.expr_children(),
             Expression::Row(n) => n.expr_children(),
@@ -761,6 +775,7 @@ impl Expression<'_> {
             Expression::Concat(con) => ExprOwned::Concat((*con).clone()),
             Expression::Constant(constant) => ExprOwned::Constant((*constant).clone()),
             Expression::Like(like) => ExprOwned::Like((*like).clone()),
+            Expression::Between(between) => ExprOwned::Between((*between).clone()),
             Expression::CountAsterisk(count) => ExprOwned::CountAsterisk((*count).clone()),
             Expression::Reference(reference) => ExprOwned::Reference((*reference).clone()),
             Expression::SubQueryReference(sq_reference) => {
@@ -791,6 +806,7 @@ impl MutExpression<'_> {
             MutExpression::Concat(n) => n.expr_children_mut(),
             MutExpression::Constant(n) => n.expr_children_mut(),
             MutExpression::Like(n) => n.expr_children_mut(),
+            MutExpression::Between(n) => n.expr_children_mut(),
             MutExpression::Reference(n) => n.expr_children_mut(),
             MutExpression::SubQueryReference(n) => n.expr_children_mut(),
             MutExpression::Row(n) => n.expr_children_mut(),
@@ -839,6 +855,7 @@ impl ExprOwned {
             ExprOwned::Concat(n) => n.expr_children_mut(),
             ExprOwned::Constant(n) => n.expr_children_mut(),
             ExprOwned::Like(n) => n.expr_children_mut(),
+            ExprOwned::Between(n) => n.expr_children_mut(),
             ExprOwned::Reference(n) => n.expr_children_mut(),
             ExprOwned::SubQueryReference(n) => n.expr_children_mut(),
             ExprOwned::Row(n) => n.expr_children_mut(),

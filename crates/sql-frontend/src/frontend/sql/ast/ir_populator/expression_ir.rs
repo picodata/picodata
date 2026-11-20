@@ -14,43 +14,6 @@ use crate::ir::Plan;
 
 use super::ExpressionWalker;
 
-/// Check if `expr` is `A >= B between A <= C`, which is a special variant
-/// of `A >= B and A <= C` we got after rewriting a `BETWEEN` expression.
-///
-/// Panic if the expression is a malformed `BETWEEN` (it's a bug).
-#[allow(clippy::type_complexity)]
-pub(in crate::frontend::sql) fn try_deconstruct_between_expr<'a>(
-    plan: &'a Plan,
-    expr: &Expression<'a>,
-) -> Option<((NodeId, &'a BoolExpr), (NodeId, &'a BoolExpr))> {
-    let Expression::Bool(BoolExpr {
-        op: Bool::Between,
-        left: lhs_id,
-        right: rhs_id,
-    }) = expr
-    else {
-        return None;
-    };
-
-    let lhs = match plan
-        .get_expression_node(*lhs_id)
-        .expect("malformed BETWEEN (missing lhs)")
-    {
-        Expression::Bool(expr @ BoolExpr { op: Bool::GtEq, .. }) => expr,
-        _ => panic!("malformed BETWEEN (invalid lhs)"),
-    };
-
-    let rhs = match plan
-        .get_expression_node(*rhs_id)
-        .expect("malformed BETWEEN (missing rhs)")
-    {
-        Expression::Bool(expr @ BoolExpr { op: Bool::LtEq, .. }) => expr,
-        _ => panic!("malformed BETWEEN (invalid rhs)"),
-    };
-
-    Some(((*lhs_id, lhs), (*rhs_id, rhs)))
-}
-
 #[derive(Clone, Debug)]
 pub(in crate::frontend::sql) enum ParseExpressionInfixOperator {
     InfixBool(Bool),
@@ -387,22 +350,12 @@ impl ParseExpression {
         let plan_left_id = left.populate_plan(plan, worker)?;
         let plan_center_id = center.populate_plan(plan, worker)?;
         let plan_right_id = right.populate_plan(plan, worker)?;
-
-        // XXX: We're going replace `Bool::Between` with `Bool::And` after typecheck!
-        // This is required for better type inference, e.g.
-        //   SELECT '2026-01-13' BETWEEN '2026-01-01' AND '2026-01-20'::datetime;
-        let greater_eq_id = plan.add_cond(plan_left_id, Bool::GtEq, plan_center_id)?;
-        let less_eq_id = plan.add_cond(plan_left_id, Bool::LtEq, plan_right_id)?;
-        let and_id = plan.add_cond(greater_eq_id, Bool::Between, less_eq_id)?;
-        let between_id = if is_not {
-            plan.add_unary(Unary::Not, and_id)?
+        let between_id = plan.add_between(plan_left_id, plan_center_id, plan_right_id);
+        if is_not {
+            plan.add_unary(Unary::Not, between_id)
         } else {
-            and_id
-        };
-
-        worker.betweens.push(and_id);
-
-        Ok(between_id)
+            Ok(between_id)
+        }
     }
 
     fn populate_infix<M: Metadata>(

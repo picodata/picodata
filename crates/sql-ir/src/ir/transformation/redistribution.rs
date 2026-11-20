@@ -980,7 +980,7 @@ impl Plan {
     }
 
     /// Uses of each subquery in the node's own expressions, counted by
-    /// references to its first column (`BETWEEN` uses its operand twice).
+    /// references to its first column.
     fn subquery_occurrences(&self, rel_id: NodeId) -> Result<AHashMap<NodeId, usize>, SbroadError> {
         let mut occurrences = AHashMap::new();
         for expr_id in self.own_expressions(rel_id) {
@@ -1032,8 +1032,7 @@ impl Plan {
     /// - neither the consumer nor its input stage computes a scalar
     ///   aggregate: it emits a row even with no buckets, on an arbitrary node.
     ///
-    /// A subquery used twice (`BETWEEN`) runs at each use on that node, like
-    /// a global one.
+    /// A subquery used twice runs at each use on that node, like a global one.
     fn colocated_subqueries(
         &self,
         rel_id: NodeId,
@@ -1798,6 +1797,9 @@ impl Plan {
             self.calculate_strategy_for_left_join_with_global_tbl(rel_id, join_kind, state)?
         {
             self.insert_motion_nodes(strategy, state)?;
+            // The join runs on each storage over its rows of the inner child,
+            // so a subquery of the condition needs all its rows there.
+            self.adjust_sqs_of_rel_node(rel_id, &AHashSet::new(), state)?;
             return Ok(());
         }
 
@@ -1828,7 +1830,11 @@ impl Plan {
             self.correct_sq_strategy_for_global_tbl(rel_id, cond_id, &mut strategy)?;
         }
 
+        let covered = strategy.get_rel_ids();
         self.insert_motion_nodes(strategy, state)?;
+        // A subquery outside a comparison, e.g. under `BETWEEN` or an arithmetic
+        // operator, gets a full motion, as in the other nodes.
+        self.adjust_sqs_of_rel_node(rel_id, &covered, state)?;
 
         Ok(())
     }

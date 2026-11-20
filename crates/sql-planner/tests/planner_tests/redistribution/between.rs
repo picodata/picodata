@@ -66,3 +66,40 @@ fn between4() {
     plan.add_motions(&mut PlanningState::default()).unwrap();
     assert_eq!(Slices::empty(), *plan.slices());
 }
+
+/// A subquery of a join condition that is not an operand of a comparison gets a
+/// full motion, as in the other nodes. `t5` and `t3_2` are sharded by `a`.
+#[test]
+fn subquery_outside_a_comparison_of_a_join_condition_gets_a_full_motion() {
+    for join in [
+        "JOIN t3_2 ON t5.a = t3_2.a AND t5.b BETWEEN (SELECT b FROM t3_2) AND 5",
+        "LEFT JOIN t3_2 ON t5.a = t3_2.a AND t5.b BETWEEN (SELECT b FROM t3_2) AND 5",
+        "JOIN t3_2 ON t5.a = t3_2.a AND t5.b NOT BETWEEN (SELECT b FROM t3_2) AND 5",
+        "JOIN t3_2 ON t5.a = t3_2.a AND (SELECT b FROM t3_2) BETWEEN t5.b AND 5",
+        "JOIN t3_2 ON t5.a = t3_2.a AND t5.b + (SELECT b FROM t3_2) > 5",
+    ] {
+        let query = format!("SELECT t5.a FROM t5 {join}");
+        assert_full_motion(&query);
+    }
+}
+
+/// NOT reaches `IN` in an operand of BETWEEN, as under a comparison, and `NOT IN`
+/// needs all rows of its subquery for their NULLs.
+#[test]
+fn not_in_under_between_gets_a_full_motion() {
+    assert_full_motion(
+        "SELECT a FROM t5 WHERE (NOT (a IN (SELECT a FROM t3_2) OR b = 1)) \
+         BETWEEN true AND true",
+    );
+}
+
+fn assert_full_motion(query: &str) {
+    let mut plan = sql::helpers::sql_to_ir_without_bind(&format!("EXPLAIN (LOGICAL) {query}"), &[]);
+    plan.optimize().unwrap();
+    let explain = sql::explain::explain_logical(&plan).unwrap();
+    let subquery = explain.split("subquery $0:").nth(1).unwrap_or_default();
+    assert!(
+        subquery.trim_start().starts_with("motion [policy: full"),
+        "{query}\n{explain}"
+    );
+}

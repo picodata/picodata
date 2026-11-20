@@ -5333,8 +5333,7 @@ subquery $0:
     selection (
       (
         t0.cv::int = 3023424::int
-        and t0.w::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-        and t0.w::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+        and t0.w::datetime between '2023-01-01 0:00:00.0 +00:00:00'::datetime and '2023-05-01 0:00:00.0 +00:00:00'::datetime
         and t0.aw::int = 1::int
         and t0.aa::decimal <> 0::int
       )
@@ -5417,8 +5416,10 @@ FROM
               "m" as "t0"
             WHERE
               "t0"."cv" = 3023424::int
-              and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-              and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+              and (
+                "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+                and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+              )
               and "t0"."aw" = 1::int
               and "t0"."aa" <> 0::int
           ) as "cte0"
@@ -5510,8 +5511,7 @@ subquery $0:
     selection (
       (
         t0.cv::int = 3023424::int
-        and t0.w::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-        and t0.w::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+        and t0.w::datetime between '2023-01-01 0:00:00.0 +00:00:00'::datetime and '2023-05-01 0:00:00.0 +00:00:00'::datetime
         and t0.aw::int = 1::int
         and t0.aa::decimal <> 0::int
       )
@@ -5573,8 +5573,10 @@ FROM
           "m" as "t0"
         WHERE
           "t0"."cv" = 3023424::int
-          and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-          and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+          and (
+            "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+            and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+          )
           and "t0"."aw" = 1::int
           and "t0"."aa" <> 0::int
       ) as "cte0"
@@ -5687,8 +5689,7 @@ union
         t0.cv::int = 3023424::int
         and not coalesce(t0.aq::bool::bool, false::bool)::bool
         and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
-        and t0.ar::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-        and t0.ar::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+        and t0.ar::datetime between '2023-01-01 0:00:00.0 +00:00:00'::datetime and '2023-05-01 0:00:00.0 +00:00:00'::datetime
       )
     )
       left join on (
@@ -5829,8 +5830,10 @@ WHERE
   "t0"."cv" = 3023424::int
   and not coalesce ("t0"."aq"::bool, false::bool)
   and to_char ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
-  and "t0"."ar" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-  and "t0"."ar" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+  and (
+    "t0"."ar" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+    and "t0"."ar" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+  )
 ''
 plan:
     [2] SEARCH TABLE u AS t0 USING COVERING INDEX ix_bi (cv=? AND ar<?) (~2 rows)
@@ -5936,11 +5939,7 @@ subquery $0:
         and coalesce(
           t0.cs::datetime::datetime,
           t0.a::datetime::datetime
-        )::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-        and coalesce(
-          t0.cs::datetime::datetime,
-          t0.a::datetime::datetime
-        )::datetime <= '2025-10-20 0:00:00.0 +00:00:00'::datetime
+        )::datetime between '2010-01-01 0:00:00.0 +00:00:00'::datetime and '2025-10-20 0:00:00.0 +00:00:00'::datetime
         and t0.cu::int = 1333::int
         and t0.h::int is null
         and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
@@ -6007,8 +6006,7 @@ FROM
               "t1"."ag" is null
               and "t0"."cv" = 4797271::int
               and "t0"."cw" = 1415::int
-              and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-              and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) <= '2025-10-20 0:00:00.0 +00:00:00'::datetime
+              and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) BETWEEN '2010-01-01 0:00:00.0 +00:00:00'::datetime AND '2025-10-20 0:00:00.0 +00:00:00'::datetime
               and "t0"."cu" = 1333::int
               and "t0"."h" is null
               and coalesce ("t0"."bb"::int, 0::int) <> 1::int
@@ -6514,11 +6512,7 @@ projection (
       and coalesce(
         t0.cs::datetime::datetime,
         t0.a::datetime::datetime
-      )::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-      and coalesce(
-        t0.cs::datetime::datetime,
-        t0.a::datetime::datetime
-      )::datetime <= '2025-11-04 0:00:00.0 +00:00:00'::datetime
+      )::datetime between '2010-01-01 0:00:00.0 +00:00:00'::datetime and '2025-11-04 0:00:00.0 +00:00:00'::datetime
       and t0.h::int is null
       and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
     )
@@ -6552,13 +6546,12 @@ WHERE
   "t1"."ag" is null
   and "t0"."cv" = 8397725::int
   and "t0"."cw" = 1415::int
-  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) <= '2025-11-04 0:00:00.0 +00:00:00'::datetime
+  and coalesce ("t0"."cs"::datetime, "t0"."a"::datetime) BETWEEN '2010-01-01 0:00:00.0 +00:00:00'::datetime AND '2025-11-04 0:00:00.0 +00:00:00'::datetime
   and "t0"."h" is null
   and coalesce ("t0"."bb"::int, 0::int) <> 1::int
 ''
 plan:
-    [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~6 rows)
+    [0] SEARCH TABLE l AS t0 USING COVERING INDEX ix_ab (cv=? AND cw=?) (~7 rows)
         [0] SEARCH TABLE l AS t1 USING COVERING INDEX ix_v (cv=?) (~8 rows)
 ''
 buckets = [2739]
@@ -9416,8 +9409,7 @@ subquery $0:
         (
           t0.cv::int = 3023424::int
           and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-          and t0.w::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-          and t0.w::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+          and t0.w::datetime between '2023-01-01 0:00:00.0 +00:00:00'::datetime and '2023-05-01 0:00:00.0 +00:00:00'::datetime
           and t0.aw::int <> 2::int
         )
       )
@@ -9486,8 +9478,10 @@ FROM
     WHERE
       "t0"."cv" = 3023424::int
       and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-      and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-      and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+      and (
+        "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+        and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+      )
       and "t0"."aw" <> 2::int
     GROUP BY
       "t0"."w",
@@ -9583,8 +9577,7 @@ subquery $0:
       (
         t0.cv::int = 3023424::int
         and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-        and t0.w::datetime >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-        and t0.w::datetime <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+        and t0.w::datetime between '2023-01-01 0:00:00.0 +00:00:00'::datetime and '2023-05-01 0:00:00.0 +00:00:00'::datetime
         and t0.aw::int <> 2::int
       )
     )
@@ -9621,8 +9614,10 @@ FROM
         WHERE
           "t0"."cv" = 3023424::int
           and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-          and "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
-          and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+          and (
+            "t0"."w" >= '2023-01-01 0:00:00.0 +00:00:00'::datetime
+            and "t0"."w" <= '2023-05-01 0:00:00.0 +00:00:00'::datetime
+          )
           and "t0"."aw" <> 2::int
       ) as "cte0"
     GROUP BY
@@ -9685,8 +9680,7 @@ projection (
     (
       t0.cv::int = 3023424::int
       and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-      and t0.w::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-      and t0.w::datetime <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+      and t0.w::datetime between '2010-01-01 0:00:00.0 +00:00:00'::datetime and '2026-01-01 0:00:00.0 +00:00:00'::datetime
       and t0.aw::int <> 2::int
     )
   )
@@ -9721,8 +9715,10 @@ FROM
 WHERE
   "t0"."cv" = 3023424::int
   and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-  and "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-  and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  and (
+    "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+    and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  )
   and "t0"."aw" <> 2::int
 ''
 plan:
@@ -9828,8 +9824,7 @@ union
         t0.cv::int = 3023424::int
         and not coalesce(t0.aq::bool::bool, false::bool)::bool
         and to_char(t0.ar::datetime::datetime, '%Y-%m-%d'::text)::text::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
-        and t0.ar::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-        and t0.ar::datetime <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+        and t0.ar::datetime between '2010-01-01 0:00:00.0 +00:00:00'::datetime and '2026-01-01 0:00:00.0 +00:00:00'::datetime
       )
     )
       left join on (
@@ -9970,8 +9965,10 @@ WHERE
   "t0"."cv" = 3023424::int
   and not coalesce ("t0"."aq"::bool, false::bool)
   and to_char ("t0"."ar"::datetime, '%Y-%m-%d'::text)::datetime > '2020-01-02 0:00:00.0 +00:00:00'::datetime
-  and "t0"."ar" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-  and "t0"."ar" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  and (
+    "t0"."ar" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+    and "t0"."ar" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  )
 ''
 plan:
     [2] SEARCH TABLE u AS t0 USING COVERING INDEX ix_bi (cv=? AND ar<?) (~2 rows)
@@ -10036,8 +10033,7 @@ projection (
     (
       t0.cv::int = 3023424::int
       and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-      and t0.w::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-      and t0.w::datetime <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+      and t0.w::datetime between '2010-01-01 0:00:00.0 +00:00:00'::datetime and '2026-01-01 0:00:00.0 +00:00:00'::datetime
       and t0.aw::int = 2::int
       and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
     )
@@ -10070,8 +10066,10 @@ FROM
 WHERE
   "t0"."cv" = 3023424::int
   and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-  and "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-  and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  and (
+    "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+    and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  )
   and "t0"."aw" = 2::int
   and coalesce ("t0"."bb"::int, 0::int) <> 1::int
 ''
@@ -10135,8 +10133,7 @@ projection (
     (
       t0.cv::int = 3023424::int
       and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
-      and t0.w::datetime >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-      and t0.w::datetime <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+      and t0.w::datetime between '2010-01-01 0:00:00.0 +00:00:00'::datetime and '2026-01-01 0:00:00.0 +00:00:00'::datetime
       and t0.aw::int <> 2::int
       and t0.aw::int = 2::int
       and coalesce(t0.bb::int::int, 0::int)::int <> 1::int
@@ -10170,8 +10167,10 @@ FROM
 WHERE
   "t0"."cv" = 3023424::int
   and coalesce ("t0"."bb"::int, 0::int) <> 1::int
-  and "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
-  and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  and (
+    "t0"."w" >= '2010-01-01 0:00:00.0 +00:00:00'::datetime
+    and "t0"."w" <= '2026-01-01 0:00:00.0 +00:00:00'::datetime
+  )
   and "t0"."aw" <> 2::int
   and "t0"."aw" = 2::int
   and coalesce ("t0"."bb"::int, 0::int) <> 1::int

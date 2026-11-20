@@ -369,6 +369,21 @@ impl From<Like> for NodeAligned {
     }
 }
 
+/// `left BETWEEN low AND high`: `left >= low AND left <= high` with `left`
+/// evaluated once. `NOT BETWEEN` is `NOT` over it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Between {
+    pub left: NodeId,
+    pub low: NodeId,
+    pub high: NodeId,
+}
+
+impl From<Between> for NodeAligned {
+    fn from(value: Between) -> Self {
+        Self::Node32(Node32::Between(value))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum ReferenceTarget {
     /// The reference points at nothing (a placeholder).
@@ -2002,6 +2017,7 @@ pub enum Node32 {
     Unary(UnaryExpr),
     Concat(Concat),
     Like(Like),
+    Between(Between),
     Bool(BoolExpr),
     Limit(Limit),
     Arithmetic(ArithmeticExpr),
@@ -2041,6 +2057,7 @@ impl Node32 {
             Node32::Concat(concat) => NodeOwned::Expression(ExprOwned::Concat(concat)),
             Node32::CountAsterisk(count) => NodeOwned::Expression(ExprOwned::CountAsterisk(count)),
             Node32::Like(like) => NodeOwned::Expression(ExprOwned::Like(like)),
+            Node32::Between(between) => NodeOwned::Expression(ExprOwned::Between(between)),
             Node32::Except(except) => NodeOwned::Relational(RelOwned::Except(except)),
             Node32::Intersect(intersect) => NodeOwned::Relational(RelOwned::Intersect(intersect)),
             Node32::Invalid(inv) => NodeOwned::Invalid(inv),

@@ -66,12 +66,6 @@ pub enum Bool {
     NotEq,
     /// `OR`
     Or,
-    /// Note that `BETWEEN` is represented as `a >= b AND a <= c`, but for type checking
-    /// it's beneficial to temporarily write it as `a >= b BETWEEN a <= c` and then
-    /// replace `BETWEEN` with `AND`.
-    ///
-    /// See also: `InterimBetween`, `FinalBetween`.
-    Between,
 }
 
 impl Bool {
@@ -105,7 +99,6 @@ impl Bool {
             Bool::Lt => "<",
             Bool::LtEq => "<=",
             Bool::NotEq => "<>",
-            Bool::Between => "between",
         }
     }
 }
@@ -2241,7 +2234,7 @@ impl From<Bool> for ComparisonOperator {
             Bool::Lt => ComparisonOperator::Lt,
             Bool::LtEq => ComparisonOperator::LtEq,
             Bool::NotEq => ComparisonOperator::NotEq,
-            Bool::Or | Bool::Between | Bool::And => panic!("{op} is not a comparison operator"),
+            Bool::Or | Bool::And => panic!("{op} is not a comparison operator"),
         }
     }
 }

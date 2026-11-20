@@ -26,18 +26,25 @@ fn repeated_alias_over_cte_test() {
     "#);
 }
 
-/// `BETWEEN` copies its left operand, so the alias occurs twice.
+/// Each occurrence of the alias is resolved.
 #[test]
 fn alias_in_between_test() {
-    let info = get_broadcast(r#"SELECT 1 x FROM (SELECT 1) GROUP BY x BETWEEN 0 AND 2"#);
-    assert_yaml_snapshot!(info, @r#"
-    Any:
-      - "SELECT $1::int as \"x\" FROM (SELECT $2::int as \"col_1\") as \"unnamed_subquery\" GROUP BY $3::int >= $4::int and $5::int <= $6::int"
-      - - Integer: 1
-        - Integer: 1
-        - Integer: 1
-        - Integer: 0
-        - Integer: 1
-        - Integer: 2
+    let info = get_broadcast("SELECT 1 x FROM (SELECT 1) GROUP BY x BETWEEN 0 AND x + 1");
+    insta::assert_snapshot!(sent_sql(&[info]), @r#"
+    any:
+    SELECT
+      $1::int as "x"
+    FROM
+      (
+        SELECT
+          $2::int as "col_1") as "unnamed_subquery"
+    GROUP BY
+      $3::int BETWEEN $4::int AND $5::int + $6::int
+    - Integer(1)
+    - Integer(1)
+    - Integer(1)
+    - Integer(0)
+    - Integer(1)
+    - Integer(1)
     "#);
 }

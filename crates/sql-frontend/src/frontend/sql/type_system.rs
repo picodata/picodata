@@ -2,9 +2,9 @@ use crate::errors::SbroadError;
 use crate::frontend::sql::get_real_function_name;
 use crate::ir::node::expression::{Expression, MutExpression};
 use crate::ir::node::{
-    Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Bound, BoundType, Case, Cast, Concat, Constant,
-    Frame, FrameType, IndexExpr, LetVarRef, Like, NodeId, Over, Parameter, Reference, Row,
-    ScalarFunction, SubQueryReference, Trim, UnaryExpr, Window,
+    Alias, ArithmeticExpr, ArrayLiteral, Between, BoolExpr, Bound, BoundType, Case, Cast, Concat,
+    Constant, Frame, FrameType, IndexExpr, LetVarRef, Like, NodeId, Over, Parameter, Reference,
+    Row, ScalarFunction, SubQueryReference, Trim, UnaryExpr, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, Unary};
 use crate::ir::tree::traversal::{NodeIter, PostOrder};
@@ -116,8 +116,7 @@ pub fn to_type_expr(
         Expression::Arithmetic(ArithmeticExpr { op, left, right }) => {
             operator_to_type_expr(node_id, op.as_str(), *left, *right, plan, subquery_map)
         }
-        ref expr @ Expression::Bool(BoolExpr { op, left, right }) => match op {
-            Bool::Between => between_to_type_expr(node_id, expr, plan, subquery_map),
+        Expression::Bool(BoolExpr { op, left, right }) => match op {
             Bool::And | Bool::Or => {
                 operator_to_type_expr(node_id, op.as_str(), *left, *right, plan, subquery_map)
             }
@@ -149,6 +148,15 @@ pub fn to_type_expr(
             plan,
             subquery_map,
         ),
+        // Unify the types of the three operands.
+        Expression::Between(Between { left, low, high }) => {
+            let kind = TypeExprKind::Between(to_type_expr_many(
+                &[*left, *low, *high],
+                plan,
+                subquery_map,
+            )?);
+            Ok(TypeExpr::new(node_id, kind))
+        }
         Expression::Trim(Trim {
             pattern: Some(pattern),
             target,
@@ -325,25 +333,6 @@ fn comparison_to_type_expr(
     let right = to_type_expr(right, plan, subquery_map)?;
     let op = ComparisonOperator::from(op);
     let kind = TypeExprKind::Comparison(op, left.into(), right.into());
-    Ok(TypeExpr::new(node_id, kind))
-}
-
-fn between_to_type_expr(
-    node_id: NodeId,
-    expr: &Expression,
-    plan: &Plan,
-    subquery_map: &AHashMap<NodeId, NodeId>,
-) -> Result<TypeExpr, SbroadError> {
-    // Note: lhs: `A >= B`, rhs: `A <= C`.
-    let ((_, lhs), (_, rhs)) =
-        crate::frontend::sql::ast::ir_populator::try_deconstruct_between_expr(plan, expr)
-            .expect("malformed BETWEEN");
-    // Unify types of A, B, C.
-    let kind = TypeExprKind::Between(vec![
-        to_type_expr(lhs.left, plan, subquery_map)?,
-        to_type_expr(lhs.right, plan, subquery_map)?,
-        to_type_expr(rhs.right, plan, subquery_map)?,
-    ]);
     Ok(TypeExpr::new(node_id, kind))
 }
 

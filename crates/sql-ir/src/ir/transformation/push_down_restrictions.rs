@@ -43,14 +43,14 @@ use crate::ir::helpers::RepeatableState;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::{
-    Join, NodeId, Projection, Reference, ReferenceTarget, ScanSubQuery, Selection,
+    Between, Join, NodeId, Projection, Reference, ReferenceTarget, ScanSubQuery, Selection,
 };
-use crate::ir::operator::JoinKind;
+use crate::ir::operator::{Bool, JoinKind};
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::equality_facts::{EqualityFacts, Slot};
 use crate::ir::transformation::placement::{Dropped, Grouped, Placement};
 use crate::ir::transformation::restriction::RestrictInfo;
-use crate::ir::transformation::PlanningState;
+use crate::ir::transformation::{PlanningState, TransformationOldNewPair};
 use crate::ir::tree::traversal::REL_CAPACITY;
 use crate::ir::Plan;
 use ahash::{AHashMap, AHashSet};
@@ -499,6 +499,75 @@ impl Plan {
     }
 }
 
+/// Split a `BETWEEN` conjunct of `top` into `x >= lo AND x' <= hi`, with `x'` a
+/// copy of `x`, as PostgreSQL does, so that the push-down moves each comparison
+/// on its own. Only the conjuncts of the `AND` spine move, so a `BETWEEN`
+/// elsewhere stays whole, and `x` is copied once. A volatile `x` stays whole:
+/// apart, the comparisons would see two values. So does an `x` with a subquery:
+/// its halves would share the body and move as one component anyway. An outer
+/// join keeps its condition in place, and the halves with it.
+fn split_between_conjuncts(
+    plan: &mut Plan,
+    rel: NodeId,
+    top: NodeId,
+) -> Result<TransformationOldNewPair, SbroadError> {
+    if matches!(
+        plan.get_relation_node(rel)?,
+        Relational::Join(Join { kind, .. }) if *kind != JoinKind::Inner
+    ) {
+        return Ok(TransformationOldNewPair {
+            old_id: top,
+            new_id: top,
+        });
+    }
+    let conjuncts = plan.nodes.and_conjuncts(top);
+    let mut split = Vec::with_capacity(conjuncts.len() + 1);
+    for &id in &conjuncts {
+        let Expression::Between(Between { left, low, high }) = plan.get_expression_node(id)? else {
+            split.push(id);
+            continue;
+        };
+        let (left, low, high) = (*left, *low, *high);
+        // Bounds that read nothing place both comparisons where `x` goes.
+        let reads = |plan: &Plan, id| {
+            plan.get_all_refs_from_subtree(id)
+                .map(|refs| !refs.is_empty())
+        };
+        if plan.contains_volatile(left, true)?
+            || !plan.get_sq_refs_from_subtree(left)?.is_empty()
+            || !(reads(plan, low)? || reads(plan, high)?)
+        {
+            split.push(id);
+            continue;
+        }
+        let left_copy = SubtreeCloner::clone_subtree(plan, left)?;
+        split.push(plan.add_cond(left, Bool::GtEq, low)?);
+        split.push(plan.add_cond(left_copy, Bool::LtEq, high)?);
+    }
+    let mut new_top = top;
+    if split.len() != conjuncts.len() {
+        let mut split = split.into_iter();
+        new_top = split.next().expect("a BETWEEN conjunct");
+        for conjunct in split {
+            new_top = plan.concat_and(new_top, conjunct)?;
+        }
+    }
+    Ok(TransformationOldNewPair {
+        old_id: top,
+        new_id: new_top,
+    })
+}
+
+impl Plan {
+    /// See [`split_between_conjuncts`].
+    pub(super) fn split_between_conjuncts_in_subtree(
+        &mut self,
+        top_id: NodeId,
+    ) -> Result<(), SbroadError> {
+        self.transform_expr_trees(top_id, &split_between_conjuncts)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,6 +629,41 @@ mod tests {
         let wide = plan.nodes.add_row(vec![stable; 16]);
         assert!(plan.is_movable_clause(wide).unwrap());
         assert!(plan.is_movable_clause(body).is_err());
+    }
+
+    /// `BETWEEN` stays whole with a volatile left operand (apart, the
+    /// comparisons would see two values), a subquery on the left or bounds that
+    /// read nothing (the halves go where the whole goes), and splits otherwise.
+    #[test]
+    fn split_between_conjuncts_splits_when_the_halves_may_part() {
+        let mut plan = Plan::new();
+        let ty = DerivedType::new(UnrestrictedType::Integer);
+        let one = plan.add_const(Value::Integer(1));
+        let two = plan.add_const(Value::Integer(2));
+        let volatile = plan
+            .add_volatile_function(
+                &Function::new_volatile("volatile".into(), ty, false),
+                vec![one],
+                None,
+            )
+            .unwrap();
+        let alias = plan.nodes.add_alias("a", one).unwrap();
+        let rel = plan.add_select_without_scan(vec![alias]).unwrap();
+        let subquery = plan.nodes.add_sq_ref(RelColumn::new(rel, 0), ty);
+        let column = plan
+            .nodes
+            .add_ref(ReferenceTarget::Single(rel), 0, ty, None, false);
+        for (left, low, high, splits) in [
+            (volatile, column, two, false),
+            (subquery, column, two, false),
+            (column, one, two, false),
+            (one, column, two, true),
+            (one, one, subquery, true),
+        ] {
+            let between = plan.add_between(left, low, high);
+            let split = split_between_conjuncts(&mut plan, rel, between).unwrap();
+            assert_eq!(split.new_id != between, splits, "{left:?} {low:?} {high:?}");
+        }
     }
 
     #[test]

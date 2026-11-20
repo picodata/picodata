@@ -207,6 +207,7 @@ impl Plan {
             matches!(
                 expr,
                 Expression::Bool(_)
+                    | Expression::Between(_)
                     | Expression::Arithmetic(_)
                     | Expression::Alias(_)
                     | Expression::Row(_)
@@ -510,11 +511,11 @@ impl Plan {
             plan.split_columns_in_subtree(top_id)?
         );
         // Build per-node restrictions over the raw boolean tree (before DNF blow-up).
-        stage!(
-            state,
-            Stage::Restrictions,
+        stage!(state, Stage::Restrictions, {
+            #[cfg(feature = "enrich_restrictions")]
+            plan.split_between_conjuncts_in_subtree(top_id)?;
             plan.analyze_restrictions_in_subtree(top_id, &mut state)?
-        );
+        });
         stage!(
             state,
             Stage::EqualityFacts,

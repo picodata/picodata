@@ -579,11 +579,11 @@ fn two_subqueries_of_one_or_move_together() {
 
 #[test]
 fn one_body_of_two_conjuncts_is_listed_once_at_their_new_owner() {
-    // BETWEEN states its subquery twice: both conjuncts read `t` only, so
+    // `NOT IN` states its subquery twice: both conjuncts read `t` only, so
     // they land together and the new filter lists the body once.
     let plan = run_push_down(
         r#"SELECT * FROM "t" JOIN "t2" ON true
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "t"."a" AND "t"."b""#,
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN ("t"."a", "t"."b"))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
@@ -591,7 +591,7 @@ fn one_body_of_two_conjuncts_is_listed_once_at_their_new_owner() {
         join on (true::bool)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-              selection ((ROW($0) >= t.a::int and ROW($0) <= t.b::int))
+              selection ((ROW($0) <> t.a::int and ROW($0) <> t.b::int))
                 scan t
           scan t2
     subquery $0:
@@ -642,17 +642,17 @@ fn a_subquery_clause_over_both_operands_moves_into_the_on() {
 
 #[test]
 fn a_body_shared_across_join_operands_moves_into_the_on() {
-    // The two conjuncts of BETWEEN share one body and read the two operands:
+    // The two conjuncts of `NOT IN` share one body and read the two operands:
     // together they move into the ON, which lists the body once; the WHERE
     // loses it.
     let plan = run_push_down(
         r#"SELECT * FROM "t" JOIN "t2" ON true
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "t"."a" AND "t2"."f""#,
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN ("t"."a", "t2"."f"))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
       selection (true::bool)
-        join on ((ROW($0) >= t.a::int and ROW($0) <= t2.f::int))
+        join on ((ROW($0) <> t.a::int and ROW($0) <> t2.f::int))
           scan t
           scan t2
     subquery $0:
@@ -664,15 +664,15 @@ fn a_body_shared_across_join_operands_moves_into_the_on() {
 
 #[test]
 fn a_body_kept_by_a_remaining_conjunct_does_not_move() {
-    // `$0 <= t2.f` reads the nullable side and stays above the LEFT JOIN, so
-    // `$0 >= t.a`, which could descend alone, stays with it.
+    // `$0 <> t2.f` reads the nullable side and stays above the LEFT JOIN, so
+    // `$0 <> t.a`, which could descend alone, stays with it.
     let plan = run_push_down(
         r#"SELECT * FROM "t" LEFT JOIN "t2" ON "t"."a" = "t2"."e"
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "t"."a" AND "t2"."f""#,
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN ("t"."a", "t2"."f"))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection ((ROW($0) >= t.a::int and ROW($0) <= t2.f::int))
+      selection (not (ROW($0) = t.a::int or ROW($0) = t2.f::int))
         left join on (t.a::int = t2.e::int)
           scan t
           scan t2
@@ -748,7 +748,7 @@ fn a_component_descends_to_the_lower_join_that_first_needs_both_sides() {
     let plan = run_push_down(
         r#"SELECT * FROM (SELECT * FROM "t" JOIN "t2" ON "t"."a" = "t2"."e") AS "s"
            JOIN "t2" AS "z" ON true
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "s"."b" AND "s"."f""#,
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN ("s"."b", "s"."f"))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (s.a::int -> a, s.b::int -> b, s.c::int -> c, s.d::int -> d, s.e::int -> e, s.f::int -> f, s.g::int -> g, s.h::int -> h, z.e::int -> e, z.f::int -> f, z.g::int -> g, z.h::int -> h)
@@ -756,7 +756,7 @@ fn a_component_descends_to_the_lower_join_that_first_needs_both_sides() {
         join on (true::bool)
           scan s
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-              join on ((t.a::int = t2.e::int and ROW($0) >= t.b::int and ROW($0) <= t2.f::int))
+              join on ((t.a::int = t2.e::int and ROW($0) <> t.b::int and ROW($0) <> t2.f::int))
                 scan t
                 scan t2
           scan t2 -> z
@@ -771,7 +771,7 @@ fn a_component_descends_to_the_lower_join_that_first_needs_both_sides() {
 fn a_component_over_one_join_operand_descends_below_the_join() {
     let plan = run_push_down(
         r#"SELECT * FROM (SELECT * FROM "t") AS "s" JOIN "t2" ON true
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "s"."a" AND "s"."b""#,
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN ("s"."a", "s"."b"))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (s.a::int -> a, s.b::int -> b, s.c::int -> c, s.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
@@ -779,7 +779,7 @@ fn a_component_over_one_join_operand_descends_below_the_join() {
         join on (true::bool)
           scan s
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d)
-              selection ((ROW($0) >= t.a::int and ROW($0) <= t.b::int))
+              selection ((ROW($0) <> t.a::int and ROW($0) <> t.b::int))
                 scan t
           scan t2
     subquery $0:
@@ -791,17 +791,17 @@ fn a_component_over_one_join_operand_descends_below_the_join() {
 
 #[test]
 fn a_component_stops_at_the_last_place_common_to_its_conjuncts() {
-    // Alone, `$0 >= s.b` would reach `t`; with `$0 <= z.f` it stops at the
+    // Alone, `$0 <> s.b` would reach `t`; with `$0 <> z.f` it stops at the
     // upper join's ON, the deepest place that sees both.
     let plan = run_push_down(
         r#"SELECT * FROM (SELECT * FROM "t" JOIN "t2" ON "t"."a" = "t2"."e") AS "s"
            JOIN "t2" AS "z" ON true
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "s"."b" AND "z"."f""#,
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN ("s"."b", "z"."f"))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (s.a::int -> a, s.b::int -> b, s.c::int -> c, s.d::int -> d, s.e::int -> e, s.f::int -> f, s.g::int -> g, s.h::int -> h, z.e::int -> e, z.f::int -> f, z.g::int -> g, z.h::int -> h)
       selection (true::bool)
-        join on ((ROW($0) >= s.b::int and ROW($0) <= z.f::int))
+        join on ((ROW($0) <> s.b::int and ROW($0) <> z.f::int))
           scan s
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
               join on (t.a::int = t2.e::int)
@@ -817,10 +817,10 @@ fn a_component_stops_at_the_last_place_common_to_its_conjuncts() {
 
 #[test]
 fn a_column_less_conjunct_moves_with_its_component() {
-    // `$0 <= 10` reads no column but shares the body with `$0 >= t.a`.
+    // `$0 <> 10` reads no column but shares the body with `$0 <> t.a`.
     let plan = run_push_down(
         r#"SELECT * FROM "t" JOIN "t2" ON true
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "t"."a" AND 10"#,
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN ("t"."a", 10))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
@@ -828,7 +828,7 @@ fn a_column_less_conjunct_moves_with_its_component() {
         join on (true::bool)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-              selection ((ROW($0) >= t.a::int and ROW($0) <= 10::int))
+              selection ((ROW($0) <> t.a::int and ROW($0) <> 10::int))
                 scan t
           scan t2
     subquery $0:
@@ -842,11 +842,11 @@ fn a_column_less_conjunct_moves_with_its_component() {
 fn a_column_less_component_stays() {
     let plan = run_push_down(
         r#"SELECT * FROM "t" JOIN "t2" ON true
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN 1 AND 10"#,
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN (1, 10))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection ((ROW($0) >= 1::int and ROW($0) <= 10::int))
+      selection (not (ROW($0) = 1::int or ROW($0) = 10::int))
         join on (true::bool)
           scan t
           scan t2
@@ -929,13 +929,13 @@ fn a_large_component_relocates_each_conjunct_by_its_own_columns() {
 
 #[test]
 fn components_and_independent_conjuncts_keep_their_order_at_a_common_place() {
-    // Two BETWEEN components with an independent OR between them all land on
+    // Two `NOT IN` components with an independent OR between them all land on
     // `t`: there they keep the WHERE order.
     let plan = run_push_down(
         r#"SELECT * FROM "t" JOIN "t2" ON true
-           WHERE (SELECT max("e") FROM "t2" AS "x") BETWEEN "t"."a" AND "t"."b"
+           WHERE NOT ((SELECT max("e") FROM "t2" AS "x") IN ("t"."a", "t"."b"))
              AND ("t"."c" = 1 OR "t"."d" = 2)
-             AND (SELECT max("f") FROM "t2" AS "y") BETWEEN "t"."c" AND "t"."d""#,
+             AND NOT ((SELECT max("f") FROM "t2" AS "y") IN ("t"."c", "t"."d"))"#,
     );
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
@@ -943,7 +943,7 @@ fn components_and_independent_conjuncts_keep_their_order_at_a_common_place() {
         join on (true::bool)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-              selection ((ROW($1) >= t.a::int and ROW($1) <= t.b::int and (t.c::int = 1::int or t.d::int = 2::int) and ROW($0) >= t.c::int and ROW($0) <= t.d::int))
+              selection ((ROW($1) <> t.a::int and ROW($1) <> t.b::int and (t.c::int = 1::int or t.d::int = 2::int) and ROW($0) <> t.c::int and ROW($0) <> t.d::int))
                 scan t
           scan t2
     subquery $0:
@@ -954,6 +954,41 @@ fn components_and_independent_conjuncts_keep_their_order_at_a_common_place() {
       scan
         projection (max(x.e::int::int)::int -> col_1)
           scan t2 -> x
+    ");
+}
+
+/// The halves of `BETWEEN` go each to the input it reads.
+#[test]
+fn the_halves_of_between_part() {
+    let plan =
+        run_push_down("SELECT t5.a FROM t5 JOIN t3_2 ON true WHERE 5 BETWEEN t5.a AND t3_2.b");
+    assert_snapshot!(logical(&plan), @r"
+    projection (t5.a::int -> a)
+      selection (true::bool)
+        join on (true::bool)
+          scan t5
+            projection (t5.bucket_id::int -> bucket_id, t5.a::int -> a, t5.b::int -> b)
+              selection (5::int >= t5.a::int)
+                scan t5
+          scan t3_2
+            projection (t3_2.bucket_id::int -> bucket_id, t3_2.a::int -> a, t3_2.b::int -> b)
+              selection (5::int <= t3_2.b::int)
+                scan t3_2
+    ");
+}
+
+/// An outer join keeps its condition, so `BETWEEN` there stays whole.
+#[test]
+fn between_in_an_outer_join_condition_stays_whole() {
+    let plan = run_push_down(
+        "SELECT t5.a FROM t5 LEFT JOIN t3_2 \
+         ON t5.a = t3_2.a AND 5 BETWEEN t5.b AND t3_2.b",
+    );
+    assert_snapshot!(logical(&plan), @r"
+    projection (t5.a::int -> a)
+      left join on ((t5.a::int = t3_2.a::int and 5::int between t5.b::int and t3_2.b::int))
+        scan t5
+        scan t3_2
     ");
 }
 
@@ -968,7 +1003,7 @@ fn a_shared_body_moved_into_the_on_gets_its_motion_there() {
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
       selection (true::bool)
-        join on ((ROW($0) <= t2.f::int and ROW($0) >= t.a::int))
+        join on (ROW($0) between t.a::int and t2.f::int)
           scan t
           motion [policy: full, program: ReshardIfNeeded]
             projection (t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
@@ -985,11 +1020,11 @@ fn a_shared_body_moved_into_the_on_gets_its_motion_there() {
 
 #[test]
 fn an_unmovable_conjunct_pins_its_component_and_nothing_else() {
-    // `$0 >= lower(t.a)` and `$0 <= 'z'` share the body; the OR is independent.
+    // `$0 <> lower(t.a)` and `$0 <> 'z'` share the body; the OR is independent.
     let mut plan = sql_to_ir_without_bind(
         r#"SELECT * FROM "t" JOIN "t2" ON true
-           WHERE CAST((SELECT max("e") FROM "t2" AS "x") AS text)
-                 BETWEEN lower(CAST("t"."a" AS text)) AND 'z'
+           WHERE NOT (CAST((SELECT max("e") FROM "t2" AS "x") AS text)
+                 IN (lower(CAST("t"."a" AS text)), 'z'))
              AND ("t"."c" = 1 OR "t"."d" = 2)"#,
         &[],
     );
@@ -1031,7 +1066,7 @@ fn an_unmovable_conjunct_pins_its_component_and_nothing_else() {
     // Neither can `$0 <= 'z'`, which shares its body; the OR still descends.
     assert_snapshot!(logical(&plan), @r"
     projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
-      selection ((ROW($0)::text >= lower(t.a::int::text)::text and ROW($0)::text <= 'z'::text))
+      selection ((ROW($0)::text <> lower(t.a::int::text)::text and ROW($0)::text <> 'z'::text))
         join on (true::bool)
           scan t
             projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
@@ -1053,29 +1088,28 @@ mod subquery_lists {
 
     #[test]
     fn a_new_filter_lists_a_copied_body_once() {
-        // BETWEEN copies `x`: the moved conjuncts name x, y, x.
+        // Each conjunct of `NOT IN` states `x + y`: the moved ones name x, y, x, y.
         let plan = run_push_down(
-            r#"SELECT * FROM "t" JOIN "t2" ON true
-               WHERE (SELECT max("e") FROM "t2" AS "x")
-                     BETWEEN (SELECT max("f") FROM "t2" AS "y") + "t"."a" AND "t"."b""#,
+            "SELECT t5.a FROM t5 JOIN t3_2 ON true WHERE NOT ((SELECT max(a) FROM t3_2 AS x) \
+             + (SELECT max(b) FROM t3_2 AS y) IN (t5.a, t5.b))",
         );
         assert_snapshot!(logical(&plan), @r"
-        projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h)
+        projection (t5.a::int -> a)
           selection (true::bool)
             join on (true::bool)
-              scan t
-                projection (t.a::int -> a, t.b::int -> b, t.c::int -> c, t.d::int -> d, t.bucket_id::int -> bucket_id)
-                  selection ((ROW($1) >= ROW($0) + t.a::int and ROW($1) <= t.b::int))
-                    scan t
-              scan t2
+              scan t5
+                projection (t5.bucket_id::int -> bucket_id, t5.a::int -> a, t5.b::int -> b)
+                  selection ((ROW($1) + ROW($0) <> t5.a::int and ROW($1) + ROW($0) <> t5.b::int))
+                    scan t5
+              scan t3_2
         subquery $0:
           scan
-            projection (max(y.f::int::int)::int -> col_1)
-              scan t2 -> y
+            projection (max(y.b::int::int)::int -> col_1)
+              scan t3_2 -> y
         subquery $1:
           scan
-            projection (max(x.e::int::int)::int -> col_1)
-              scan t2 -> x
+            projection (max(x.a::int::int)::int -> col_1)
+              scan t3_2 -> x
         ");
         let (owner, x) = listed_body(&plan, "x");
         let (y_owner, y) = listed_body(&plan, "y");

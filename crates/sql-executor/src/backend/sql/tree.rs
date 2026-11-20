@@ -8,11 +8,11 @@ use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
 use crate::ir::node::Delete;
 use crate::ir::node::{
-    Alias, ArithmeticExpr, ArrayLiteral, BoolExpr, Bound, BoundType, Case, Cast, Concat, Except,
-    FrameType, GroupBy, Having, IndexExpr, Intersect, Join, Like, Limit, Motion, Node, NodeId,
-    OrderBy, Over, Parameter, Projection, Reference, ReferenceAsteriskSource, Row, ScalarFunction,
-    ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection, SubQueryReference, Trim,
-    UnaryExpr, Union, UnionAll, Values, Window,
+    Alias, ArithmeticExpr, ArrayLiteral, Between, BoolExpr, Bound, BoundType, Case, Cast, Concat,
+    Except, FrameType, GroupBy, Having, IndexExpr, Intersect, Join, Like, Limit, Motion, Node,
+    NodeId, OrderBy, Over, Parameter, Projection, Reference, ReferenceAsteriskSource, Row,
+    ScalarFunction, ScanCte, ScanRelation, ScanSubQuery, SelectWithoutScan, Selection,
+    SubQueryReference, Trim, UnaryExpr, Union, UnionAll, Values, Window,
 };
 use crate::ir::operator::{Bool, OrderByElement, OrderByEntity, OrderByType, Unary};
 use crate::ir::transformation::redistribution::MotionPolicy;
@@ -1061,6 +1061,7 @@ impl<'p> SyntaxPlan<'p> {
                     self.nodes.push_sn_plan(sn);
                 }
                 Expression::Like { .. } => self.add_like(id),
+                Expression::Between { .. } => self.add_between(id),
                 Expression::Reference { .. }
                 | Expression::SubQueryReference { .. }
                 | Expression::CountAsterisk { .. } => {
@@ -1989,6 +1990,58 @@ impl<'p> SyntaxPlan<'p> {
             self.nodes.push_sn_non_plan(SyntaxNode::new_escape()),
             escape_sn_id,
         ];
+
+        let sn = SyntaxNode::new_pointer(id, None, children);
+        self.nodes.push_sn_plan(sn);
+    }
+
+    fn add_between(&mut self, id: NodeId) {
+        let (_, expr) = self.prologue_expr(id);
+        let Expression::Between(Between { left, low, high }) = expr else {
+            panic!("Expected BETWEEN node");
+        };
+        let (left, low, high) = (*left, *low, *high);
+        let is_column = matches!(
+            self.plan.get_ir_plan().get_expression_node(left),
+            Ok(Expression::Reference(_))
+        );
+        let high_sn_id = self.pop_expr_from_stack(high, id);
+        let low_sn_id = self.pop_expr_from_stack(low, id);
+        let left_sn_id = self.pop_expr_from_stack(left, id);
+
+        // Tarantool checks BETWEEN again when an index takes only one bound,
+        // that bound too. A column costs nothing to repeat, so it gets the two
+        // comparisons, and the index takes them apart.
+        let children = if is_column {
+            let left_copy_sn_id = self.nodes.next_id();
+            self.nodes
+                .arena
+                .push(SyntaxNode::new_pointer(left, None, vec![]));
+            let mut op = |op: Bool| {
+                self.nodes
+                    .push_sn_non_plan(SyntaxNode::new_operator(&op.to_string()))
+            };
+            let (ge, and, le) = (op(Bool::GtEq), op(Bool::And), op(Bool::LtEq));
+            vec![
+                self.nodes.push_sn_non_plan(SyntaxNode::new_lparen()),
+                left_sn_id,
+                ge,
+                low_sn_id,
+                and,
+                left_copy_sn_id,
+                le,
+                high_sn_id,
+                self.nodes.push_sn_non_plan(SyntaxNode::new_rparen()),
+            ]
+        } else {
+            vec![
+                left_sn_id,
+                self.nodes.push_sn_non_plan(SyntaxNode::new_between()),
+                low_sn_id,
+                self.nodes.push_sn_non_plan(SyntaxNode::new_and()),
+                high_sn_id,
+            ]
+        };
 
         let sn = SyntaxNode::new_pointer(id, None, children);
         self.nodes.push_sn_plan(sn);

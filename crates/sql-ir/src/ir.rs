@@ -47,7 +47,7 @@ use crate::ir::tree::traversal::{NodeIter, PostOrder};
 use crate::ir::undo::TransformationLog;
 use crate::ir::value::Value;
 
-use self::node::{Bound, BoundType, Like, Over, Window};
+use self::node::{Between, Bound, BoundType, Like, Over, Window};
 
 pub mod acl;
 pub mod aggregates;
@@ -253,6 +253,7 @@ impl Nodes {
                         Node::Expression(Expression::CountAsterisk(count))
                     }
                     Node32::Like(like) => Node::Expression(Expression::Like(like)),
+                    Node32::Between(between) => Node::Expression(Expression::Between(between)),
                     Node32::Except(except) => Node::Relational(Relational::Except(except)),
                     Node32::Intersect(intersect) => {
                         Node::Relational(Relational::Intersect(intersect))
@@ -418,6 +419,9 @@ impl Nodes {
                         MutNode::Expression(MutExpression::CountAsterisk(count))
                     }
                     Node32::Like(like) => MutNode::Expression(MutExpression::Like(like)),
+                    Node32::Between(between) => {
+                        MutNode::Expression(MutExpression::Between(between))
+                    }
                     Node32::Except(except) => MutNode::Relational(MutRelational::Except(except)),
                     Node32::Intersect(intersect) => {
                         MutNode::Relational(MutRelational::Intersect(intersect))
@@ -1511,6 +1515,11 @@ impl Plan {
         Ok(self.nodes.push(node.into()))
     }
 
+    /// Add `left BETWEEN low AND high`.
+    pub fn add_between(&mut self, left: NodeId, low: NodeId, high: NodeId) -> NodeId {
+        self.nodes.push(Between { left, low, high }.into())
+    }
+
     pub fn add_index(
         &mut self,
         child: NodeId,
@@ -2398,6 +2407,22 @@ impl Plan {
                 self.are_order_by_exprs_equal(*lhs_left, *rhs_left, position_mapping)?
                     && self.are_order_by_exprs_equal(*lhs_right, *rhs_right, position_mapping)?
                     && self.are_order_by_exprs_equal(*lhs_escape, *rhs_escape, position_mapping)?,
+            ),
+            (
+                Expression::Between(Between {
+                    left: lhs_left,
+                    low: lhs_low,
+                    high: lhs_high,
+                }),
+                Expression::Between(Between {
+                    left: rhs_left,
+                    low: rhs_low,
+                    high: rhs_high,
+                }),
+            ) => Ok(
+                self.are_order_by_exprs_equal(*lhs_left, *rhs_left, position_mapping)?
+                    && self.are_order_by_exprs_equal(*lhs_low, *rhs_low, position_mapping)?
+                    && self.are_order_by_exprs_equal(*lhs_high, *rhs_high, position_mapping)?,
             ),
             (Expression::Reference(lhs_ref), Expression::Reference(rhs_ref)) => {
                 if !matches!(lhs_ref.target, ReferenceTarget::Single(_))

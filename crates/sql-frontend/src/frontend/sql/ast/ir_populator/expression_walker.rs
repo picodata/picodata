@@ -1,19 +1,15 @@
 use crate::errors::SbroadError;
 use crate::frontend::sql::ast::{PairToAstIdTranslation, Rule};
-use crate::frontend::sql::ir::{SubtreeCloner, Translation};
+use crate::frontend::sql::ir::Translation;
 use crate::ir::expression::{ColumnPositionMap, Position};
 use crate::ir::metadata::Metadata;
-use crate::ir::node::expression::MutExpression;
-use crate::ir::node::{BoolExpr, NodeId};
-use crate::ir::operator::Bool;
+use crate::ir::node::NodeId;
 use crate::ir::types::DerivedType;
 use crate::ir::Plan;
 use ahash::AHashMap;
 use pest::iterators::Pair;
 use smol_str::{format_smolstr, SmolStr};
 use std::collections::{HashMap, HashSet, VecDeque};
-
-use super::try_deconstruct_between_expr;
 
 /// Number of relational nodes we expect to retrieve column positions for.
 pub(in crate::frontend::sql) const COLUMN_POSITIONS_CACHE_CAPACITY: usize = 10;
@@ -292,16 +288,8 @@ where
     /// Used instead of reference to general `map` using during
     /// parsing in order no to take an immutable reference on it.
     pub(in crate::frontend::sql) sq_ast_to_plan_id: Translation,
-    /// Vec of BETWEEN expressions met during parsing.
-    /// Used later to fix them as soon as we need to resolve double-linking problem
-    /// of left expression.
-    pub(in crate::frontend::sql) betweens: Vec<NodeId>,
-    /// Map of { subquery_id -> row_id }
-    /// that is used to fix `betweens`, which children (references under rows)
-    /// may have been changed.
-    /// We can't fix between child (clone expression subtree) in the place of their creation,
-    /// because we'll copy references without adequate `parent` and `target` that we couldn't fix
-    /// later.
+    /// Map of { subquery_id -> row_id }: the row that replaces a subquery in
+    /// an expression.
     pub(in crate::frontend::sql) subquery_replaces: AHashMap<NodeId, NodeId>,
     /// Vec of { sq_id }
     /// After calling `parse_expr` and creating relational node that can contain SubQuery as
@@ -362,7 +350,6 @@ where
             sub_queries_to_fix_queue: VecDeque::new(),
             metadata,
             tnt_parameters_positions,
-            betweens: Vec::new(),
             reference_to_name_map: HashMap::with_capacity(REFERENCES_MAP_CAPACITY),
             column_positions_cache: HashMap::with_capacity(COLUMN_POSITIONS_CACHE_CAPACITY),
             inside_window_body: false,
@@ -441,49 +428,5 @@ where
     pub(in crate::frontend::sql) fn reset_windows(&mut self) {
         self.curr_named_windows.clear();
         self.curr_windows.clear();
-    }
-
-    /// Resolve the double linking problem in BETWEEN operator. On the AST to IR step
-    /// we transform `left BETWEEN center AND right` construction into
-    /// `left >= center AND left <= right`, where the same `left` expression is reused
-    /// twice. So, We need to copy the 'left' expression tree from `left >= center` to the
-    /// `left <= right` expression.
-    ///
-    /// Otherwise, we'll have problems on the dispatch stage while taking nodes from the original
-    /// plan to build a sub-plan for the storage. If the same `left` subtree is used twice in
-    /// the plan, these nodes are taken while traversing the `left >= center` expression and
-    /// nothing is left for the `left <= right` sutree.
-    pub(in crate::frontend::sql) fn fix_betweens(
-        &self,
-        plan: &mut Plan,
-    ) -> Result<(), SbroadError> {
-        for between_id in &self.betweens {
-            let between = plan.get_expression_node(*between_id)?;
-            let ((_lhs_id, lhs), (rhs_id, _rhs)) =
-                try_deconstruct_between_expr(plan, &between).expect("malformed BETWEEN");
-
-            // This pass only clones the BETWEEN lhs subtree. The expression types do not
-            // change here; we only create fresh `NodeId`s for the copied nodes.
-            let cloned_lower_bound = match self.subquery_replaces.get(&lhs.left) {
-                Some(id) => SubtreeCloner::clone_subtree(plan, *id)?,
-                None => SubtreeCloner::clone_subtree(plan, lhs.left)?,
-            };
-
-            let rhs = plan.get_mut_expression_node(rhs_id)?;
-            if let MutExpression::Bool(BoolExpr { ref mut left, .. }) = rhs {
-                *left = cloned_lower_bound;
-            } else {
-                panic!("Expected to see LEQ expression.")
-            }
-
-            // Finally, replace `Bool::Between` with `Bool::And`.
-            // See the explanation for `ParseExpression::FinalBetween` in pratt parser.
-            let between = plan.get_mut_expression_node(*between_id)?;
-            if let MutExpression::Bool(BoolExpr { op, .. }) = between {
-                *op = Bool::And;
-            }
-        }
-
-        Ok(())
     }
 }

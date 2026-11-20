@@ -6,7 +6,7 @@
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::node::expression::{Expression, MutExpression};
-use crate::ir::node::{BoolExpr, Cast, Constant, NodeId, Row, UnaryExpr};
+use crate::ir::node::{Between, BoolExpr, Cast, Constant, NodeId, Row, UnaryExpr};
 use crate::ir::operator::{Bool, Unary};
 use crate::ir::subtree_cloner::SubtreeCloner;
 use crate::ir::transformation::OldNewTransformationMap;
@@ -82,7 +82,7 @@ fn call_expr_tree_not_push_down(
     .filter(|(_, expr)| {
         matches!(
             expr,
-            Expression::Bool(_) | Expression::Row(_) | Expression::Cast(_)
+            Expression::Bool(_) | Expression::Row(_) | Expression::Cast(_) | Expression::Between(_)
         )
     })
     .map(|(id, _)| id)
@@ -102,6 +102,11 @@ fn call_expr_tree_not_push_down(
             MutExpression::Cast(Cast { child, .. }) => {
                 transformation_map.replace(child);
             }
+            MutExpression::Between(Between { left, low, high }) => {
+                for id in [left, low, high] {
+                    transformation_map.replace(id);
+                }
+            }
             _ => {}
         }
     }
@@ -118,7 +123,7 @@ impl Bool {
     /// # Returns:
     /// * `None` in case it is impossible to negate self
     /// * `Some` of pair (`negated_self`, `should_negate_children`)
-    fn negate(&self) -> Option<(Bool, bool)> {
+    pub(super) fn negate(&self) -> Option<(Bool, bool)> {
         match self {
             Bool::Or => Some((Bool::And, true)),
             Bool::And => Some((Bool::Or, true)),
@@ -129,7 +134,6 @@ impl Bool {
             Bool::LtEq => Some((Bool::Gt, false)),
             Bool::NotEq => Some((Bool::Eq, false)),
             Bool::In => None,
-            Bool::Between => unreachable!("Between in not pushdown"),
         }
     }
 }
@@ -243,6 +247,18 @@ impl Plan {
                 let new_child = self.push_down_not_for_expression(child_id, NotState::Off, map)?;
                 if child_id != new_child {
                     map.insert(child_id, new_child);
+                }
+                self.cover_with_not(expr_id, &not_state)?
+            }
+            // As the comparisons it stands for, it gets the operands negated
+            // inside, for example a `NOT IN` that needs a full motion.
+            Expression::Between(Between { left, low, high }) => {
+                for child_id in [*left, *low, *high] {
+                    let new_child =
+                        self.push_down_not_for_expression(child_id, NotState::Off, map)?;
+                    if child_id != new_child {
+                        map.insert(child_id, new_child);
+                    }
                 }
                 self.cover_with_not(expr_id, &not_state)?
             }

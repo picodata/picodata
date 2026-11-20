@@ -29,20 +29,32 @@ fn colocated_subquery() {
 }
 
 #[test]
-fn colocated_subquery_used_twice() {
+fn colocated_subquery_in_between() {
     let info = dispatch(
         "SELECT * FROM t5 WHERE a = $1 AND (SELECT b FROM t3_2 WHERE a = $1) BETWEEN 1 AND 2",
         vec![Value::from(7)],
     );
-    assert_yaml_snapshot!(info, @r#"
-    - Filtered:
-        - - "SELECT \"t5\".\"a\", \"t5\".\"b\" FROM \"t5\" WHERE \"t5\".\"a\" = $1::int and (SELECT \"t3_2\".\"b\" FROM \"t3_2\" WHERE \"t3_2\".\"a\" = $2::int) >= $3::int and (SELECT \"t3_2\".\"b\" FROM \"t3_2\" WHERE \"t3_2\".\"a\" = $2::int) <= $4::int"
-          - - Integer: 7
-            - Integer: 7
-            - Integer: 1
-            - Integer: 2
-          - replicaset_0
-          - - 2329
+    insta::assert_snapshot!(sent_sql(&info), @r#"
+    replicaset_0 [2329]:
+    SELECT
+      "t5"."a",
+      "t5"."b"
+    FROM
+      "t5"
+    WHERE
+      "t5"."a" = $1::int
+      and (
+        SELECT
+          "t3_2"."b"
+        FROM
+          "t3_2"
+        WHERE
+          "t3_2"."a" = $2::int
+      ) BETWEEN $3::int AND $4::int
+    - Integer(7)
+    - Integer(7)
+    - Integer(1)
+    - Integer(2)
     "#);
 }
 

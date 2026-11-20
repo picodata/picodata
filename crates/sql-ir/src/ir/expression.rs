@@ -17,8 +17,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use super::node::{
-    Bound, BoundType, Except, GroupBy, Having, Intersect, Join, Like, Limit, Motion, OrderBy, Over,
-    Projection, ReferenceTarget, ScanCte, ScanFunction, ScanRelation, ScanSubQuery,
+    Between, Bound, BoundType, Except, GroupBy, Having, Intersect, Join, Like, Limit, Motion,
+    OrderBy, Over, Projection, ReferenceTarget, ScanCte, ScanFunction, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, Union, UnionAll, Values, Window,
 };
 use super::operator::OrderByEntity;
@@ -494,6 +494,22 @@ impl<'plan> Comparator<'plan> {
                             return Ok(self.are_subtrees_equal(*escape_left, *escape_right)?
                                 && self.are_subtrees_equal(*left_left, *left_right)?
                                 && self.are_subtrees_equal(*right_left, *right_right)?);
+                        }
+                    }
+                    Expression::Between(Between {
+                        left: left_left,
+                        low: low_left,
+                        high: high_left,
+                    }) => {
+                        if let Expression::Between(Between {
+                            left: left_right,
+                            low: low_right,
+                            high: high_right,
+                        }) = right
+                        {
+                            return Ok(self.are_subtrees_equal(*left_left, *left_right)?
+                                && self.are_subtrees_equal(*low_left, *low_right)?
+                                && self.are_subtrees_equal(*high_left, *high_right)?);
                         }
                     }
                     Expression::Concat(Concat {
@@ -1381,6 +1397,11 @@ impl<'plan> Comparator<'plan> {
                 self.hash_for_child_expr(*left, depth);
                 self.hash_for_child_expr(*right, depth);
                 self.hash_for_child_expr(*escape_id, depth);
+            }
+            Expression::Between(Between { left, low, high }) => {
+                self.hash_for_child_expr(*left, depth);
+                self.hash_for_child_expr(*low, depth);
+                self.hash_for_child_expr(*high, depth);
             }
             Expression::Trim(Trim {
                 kind,

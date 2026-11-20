@@ -1413,6 +1413,7 @@ where
                         | Expression::Case { .. }
                         | Expression::Concat { .. }
                         | Expression::Like { .. }
+                        | Expression::Between { .. }
                         | Expression::Row { .. }
                         | Expression::ArrayLiteral { .. }
                         | Expression::Trim { .. }

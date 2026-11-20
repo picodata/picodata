@@ -522,3 +522,71 @@ fn option_clause_in_dml() {
           scan t
     ");
 }
+
+#[test]
+fn between_in_explain() {
+    let sql = r#"explain (logical) SELECT "a" FROM "t" WHERE "a" + 1 BETWEEN 3 AND 4"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    projection (t.a::int -> a)
+      selection (t.a::int + 1::int between 3::int and 4::int)
+        scan t
+    ");
+}
+
+/// DNF and the merge of AND chains keep each `BETWEEN` whole.
+#[test]
+fn between_in_a_chain_of_a_join_condition() {
+    let mut x = r#"t1."a" = t2."a""#.to_string();
+    for _ in 0..40 {
+        x = format!(r#"({x} AND t1."a" > 2) BETWEEN false AND true"#);
+    }
+    let sql = format!(r#"explain (logical) SELECT t1."a" FROM "t" t1 JOIN "t" t2 ON {x}"#);
+    assert_eq!(explain(&sql).matches("between").count(), 40);
+
+    let sql = r#"explain (logical) SELECT t1."a" FROM "t" t1 JOIN "t" t2
+        ON t1."a" = t2."a" AND t1."b" + 1 BETWEEN 1 AND 2
+        AND t2."b" + 1 BETWEEN 1 AND 2"#;
+    assert_eq!(explain(sql).matches("between").count(), 2);
+}
+
+/// `NOT` stays above `BETWEEN` when it is pushed down.
+#[test]
+fn not_between_in_explain() {
+    let sql = r#"explain (logical) SELECT t1."a" FROM "t" t1 JOIN "t" t2
+        ON t1."a" + 1 NOT BETWEEN 3 AND 4"#;
+    let explain = explain(sql);
+    assert!(
+        explain.contains("join on (not t1.a::int + 1::int between 3::int and 4::int)"),
+        "{explain}"
+    );
+}
+
+/// An aggregate on the left of `BETWEEN` gets one final expression.
+#[test]
+fn aggregate_in_between() {
+    let sql = r#"explain (logical) SELECT count(*) BETWEEN 0 AND 5 AS "x" FROM "t"
+        HAVING sum("a") NOT BETWEEN 1 AND 2"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    projection (sum(count_1::int::int)::int::int between 0::int and 5::int -> x)
+      having (not sum(sum_2::decimal::decimal)::decimal between 1::int and 2::int)
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (count(*)::int -> count_1, sum(t.a::int::int)::decimal -> sum_2)
+            scan t
+    ");
+}
+
+/// The passes that rewrite boolean expressions reach the operands of `BETWEEN`.
+#[test]
+fn rewritten_operands_of_between() {
+    let sql = r#"explain (logical) SELECT t1."a" FROM "t" t1 JOIN "t" t2
+        ON (t1."a" IN (1, 2)) BETWEEN false AND (t1."a" = 1 AND t1."b" = 2)"#;
+    let explain = explain(sql);
+    assert!(
+        explain.contains("(t1.a::int = 1::int or t1.a::int = 2::int) between"),
+        "{explain}"
+    );
+    assert!(
+        explain.contains("and (ROW(t1.a::int, t1.b::int) = ROW(1::int, 2::int))"),
+        "{explain}"
+    );
+}

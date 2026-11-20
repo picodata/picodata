@@ -19,8 +19,8 @@ use std::hash::BuildHasher;
 use super::node::expression::Expression;
 use super::node::relational::Relational;
 use super::node::{
-    ArithmeticExpr, Cast, LetVarRef, Like, Limit, Over, Parameter, ScalarFunction, Timestamp,
-    Window,
+    ArithmeticExpr, Between, Cast, LetVarRef, Like, Limit, Over, Parameter, ScalarFunction,
+    Timestamp, Window,
 };
 
 /// Helper macros to build a hash map or set
@@ -323,6 +323,15 @@ impl Plan {
                     self.formatted_arena_node(buf, tabulation_number + 1, *right)?;
                     writeln_with_tabulation(buf, tabulation_number + 1, "Escape")?;
                     self.formatted_arena_node(buf, tabulation_number + 1, *escape)?;
+                }
+                Expression::Between(Between { left, low, high }) => {
+                    writeln!(buf, "Between")?;
+                    writeln_with_tabulation(buf, tabulation_number + 1, "Left child")?;
+                    self.formatted_arena_node(buf, tabulation_number + 1, *left)?;
+                    writeln_with_tabulation(buf, tabulation_number + 1, "Low")?;
+                    self.formatted_arena_node(buf, tabulation_number + 1, *low)?;
+                    writeln_with_tabulation(buf, tabulation_number + 1, "High")?;
+                    self.formatted_arena_node(buf, tabulation_number + 1, *high)?;
                 }
                 Expression::ScalarFunction(ScalarFunction {
                     name,

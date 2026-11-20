@@ -334,7 +334,7 @@ fn subtree_next<'plan>(
                 | Expression::Concat { .. } => iter.handle_left_right_children(expr),
                 Expression::Index { .. } => iter.handle_index_iter(expr),
                 Expression::Trim { .. } => iter.handle_trim(expr),
-                Expression::Like { .. } => iter.handle_like(expr),
+                Expression::Like { .. } | Expression::Between { .. } => iter.handle_like(expr),
                 Expression::Row(Row { list, .. })
                 | Expression::ArrayLiteral(ArrayLiteral { list, .. })
                 | Expression::ScalarFunction(ScalarFunction { children: list, .. }) => {

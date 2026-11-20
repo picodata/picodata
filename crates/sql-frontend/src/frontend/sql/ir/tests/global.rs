@@ -750,6 +750,35 @@ fn front_sql_global_left_join4() {
     ");
 }
 
+/// The join runs on each storage over its rows of `t2`, so a sharded subquery
+/// of the condition needs all its rows there.
+#[test]
+fn front_sql_global_left_join_sharded_subquery_in_condition() {
+    let input = r#"
+    explain (logical) select "e", "b" from "global_t"
+    left join "t2" on "a" = "e" and "f" <= (select "f" from "t2" where "e" = 7)
+    "#;
+
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r"
+    projection (unnamed_join.e::int -> e, unnamed_join.b::int -> b)
+      motion [policy: full, program: AddMissingRowsForLeftJoin]
+        projection (global_t.a::int -> a, global_t.b::int -> b, t2.e::int -> e, t2.f::int -> f, t2.g::int -> g, t2.h::int -> h, t2.bucket_id::int -> bucket_id)
+          join on ((global_t.a::int = t2.e::int and t2.f::int <= ROW($0)))
+            motion [policy: full, program: ReshardIfNeeded]
+              projection (global_t.a::int -> a, global_t.b::int -> b)
+                scan global_t
+            scan t2
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t2.f::int -> f)
+            selection (t2.e::int = 7::int)
+              scan t2
+    ");
+}
+
 #[test]
 fn front_order_by_from_global_node_must_not_add_motion() {
     let input =

@@ -338,7 +338,7 @@ explain select (1 between 1 and 20) between (2 between 1 and 30) and (3 between 
  # Logical plan                                                       
 ──────────────────────────────────────────────────────────────────────
 ''
-projection (((1::int >= 1::int and 1::int <= 20::int) >= (2::int >= 1::int and 2::int <= 30::int) and (1::int >= 1::int and 1::int <= 20::int) <= (3::int >= 1::int and 3::int <= 40::int)) -> col_1)
+projection ((1::int between 1::int and 20::int) between (2::int between 1::int and 30::int) and (3::int between 1::int and 40::int) -> col_1)
 ''
 ──────────────────────────────────────────────────────────────────────
  # Buckets                                                            

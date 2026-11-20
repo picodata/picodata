@@ -14,8 +14,8 @@ mod select_set;
 mod values;
 
 pub(in crate::frontend::sql) use expression_ir::{
-    connect_escape_to_like_node, find_interim_between, try_deconstruct_between_expr,
-    ParseExpression, ParseExpressionInfixOperator,
+    connect_escape_to_like_node, find_interim_between, ParseExpression,
+    ParseExpressionInfixOperator,
 };
 pub(in crate::frontend::sql) use expression_parser::{
     parse_bool_expr, parse_expr_no_type_check, parse_scalar_expr,

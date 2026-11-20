@@ -1,7 +1,7 @@
 //! IR tree traversal module.
 
 use super::{
-    node::{expression::Expression, Bound, BoundType, Like, Over, Window},
+    node::{expression::Expression, Between, Bound, BoundType, Like, Over, Window},
     operator::{OrderByElement, OrderByEntity},
     Node, Nodes, Plan,
 };
@@ -45,22 +45,18 @@ trait TreeIterator<'nodes> {
         }
     }
 
+    /// The children of `LIKE` and `BETWEEN`, in the order of the SQL text.
     fn handle_like(&mut self, expr: Expression) -> Option<NodeId> {
-        let Expression::Like(Like {
-            left,
-            right,
-            escape: escape_id,
-        }) = expr
-        else {
-            panic!("Like expected")
+        let children = match expr {
+            Expression::Like(Like {
+                left,
+                right,
+                escape,
+            }) => [*left, *right, *escape],
+            Expression::Between(Between { left, low, high }) => [*left, *low, *high],
+            _ => panic!("Like or Between expected"),
         };
-        let child_step = self.get_child().get();
-        let res = match child_step {
-            0 => Some(*left),
-            1 => Some(*right),
-            2 => Some(*escape_id),
-            _ => None,
-        };
+        let res = children.get(self.get_child().get()).copied();
         self.advance();
         res
     }

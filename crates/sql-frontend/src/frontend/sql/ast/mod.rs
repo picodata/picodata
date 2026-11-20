@@ -562,10 +562,6 @@ impl<'q> AbstractSyntaxTree<'q> {
         // because they preserve expression types semantically or copy already known
         // reference types into newly created nodes.
 
-        // This pass only clones the lhs subtree of `BETWEEN` and gives the copy fresh
-        // `NodeId`s. It does not retarget references or change expression types, so it
-        // is safe to keep it after `recalculate_ref_types()`.
-        worker.fix_betweens(&mut plan)?;
         // This rewrite retargets references inside copied subtrees, but the current
         // `Projection -> GroupBy/Having -> child` contract preserves column positions
         // and types, so the expression type should stay the same. Be careful if we

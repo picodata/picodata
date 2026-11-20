@@ -364,12 +364,12 @@ fn subquery_on_another_key_keeps_motion() {
 }
 
 #[test]
-fn colocated_subquery_used_twice() {
+fn colocated_subquery_in_between() {
     insta::assert_snapshot!(explain(
         "SELECT * FROM t5 WHERE a = $1 AND (SELECT b FROM t3_2 WHERE a = $1) BETWEEN 1 AND 2"
     ), @r"
     projection (t5.a::int -> a, t5.b::int -> b)
-      selection ((t5.a::int = $1::int and ROW($0) >= 1::int and ROW($0) <= 2::int))
+      selection ((t5.a::int = $1::int and ROW($0) between 1::int and 2::int))
         scan t5
     subquery $0:
       scan
@@ -889,18 +889,18 @@ fn select_without_scan_keeps_motions_for_gathered_or_global_subqueries() {
     ");
 }
 
+/// `BETWEEN` writes its left operand once, so the subquery runs once on its bucket.
 #[test]
-fn select_without_scan_keeps_motions_for_subquery_used_twice() {
+fn select_without_scan_needs_no_motion_for_subquery_in_between() {
     insta::assert_snapshot!(explain(
         "SELECT (SELECT b FROM t5 WHERE a = 1) BETWEEN 1 AND 2"
     ), @r"
-    projection ((ROW($0) >= 1::int and ROW($0) <= 2::int) -> col_1)
+    projection (ROW($0) between 1::int and 2::int -> col_1)
     subquery $0:
-      motion [policy: full, program: ReshardIfNeeded]
-        scan
-          projection (t5.b::int -> b)
-            selection (t5.a::int = 1::int)
-              scan t5
+      scan
+        projection (t5.b::int -> b)
+          selection (t5.a::int = 1::int)
+            scan t5
     ");
 }
 

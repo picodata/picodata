@@ -6,7 +6,7 @@ use crate::ir::value::Value;
 use crate::test_helpers::get_motion_id;
 use crate::test_helpers::vcolumn_integer_user_non_null;
 use crate::test_helpers::ExecutingQueryExt;
-use insta::assert_yaml_snapshot;
+use insta::assert_snapshot;
 
 #[test]
 fn between1_test() {
@@ -42,10 +42,23 @@ fn between1_test() {
     // Validate the result.
     let info = port.decode();
     assert_eq!(1, info.len());
-    assert_yaml_snapshot!(info, @r#"
-    - All:
-        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE \"t\".\"identification_number\" >= $1::int and \"t\".\"identification_number\" <= (SELECT \"COL_1\" FROM \"_tmp_0_0136\")"
-        - - Integer: 1
+    assert_snapshot!(sent_sql(&info), @r#"
+    all:
+    SELECT
+      "t"."identification_number"
+    FROM
+      "hash_testing" as "t"
+    WHERE
+      (
+        "t"."identification_number" >= $1::int
+        and "t"."identification_number" <= (
+          SELECT
+            "COL_1"
+          FROM
+            "_tmp_0_0136"
+        )
+      )
+    - Integer(1)
     "#);
 }
 
@@ -86,10 +99,20 @@ fn between2_test() {
     // Validate the result.
     let info = port.decode();
     assert_eq!(1, info.len());
-    assert_yaml_snapshot!(info, @r#"
-    - All:
-        - "SELECT \"t\".\"identification_number\" FROM \"hash_testing\" as \"t\" WHERE (SELECT \"COL_1\" FROM \"_tmp_0_0136\") >= $1::int and (SELECT \"COL_1\" FROM \"_tmp_0_0136\") <= $2::int"
-        - - Integer: 1
-          - Integer: 3
+    assert_snapshot!(sent_sql(&info), @r#"
+    all:
+    SELECT
+      "t"."identification_number"
+    FROM
+      "hash_testing" as "t"
+    WHERE
+      (
+        SELECT
+          "COL_1"
+        FROM
+          "_tmp_0_0136"
+      ) BETWEEN $1::int AND $2::int
+    - Integer(1)
+    - Integer(3)
     "#);
 }

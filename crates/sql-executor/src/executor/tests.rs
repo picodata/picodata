@@ -16,6 +16,7 @@ use crate::test_helpers::vcolumn_integer_user_non_null;
 use crate::test_helpers::ExecutingQueryExt;
 use crate::utils::MutexLike;
 use insta::assert_snapshot;
+use sql_explain::explain::utils::format_query;
 use sql_frontend::frontend::sql::transform_into_plan;
 use std::rc::Rc;
 
@@ -711,6 +712,29 @@ fn get_motion_policy(plan: &Plan, motion_id: NodeId) -> &MotionPolicy {
     } else {
         panic!("Expected a motion node");
     }
+}
+
+/// The SQL that `info` sends, as `EXPLAIN (RAW)` writes it, a clause a line, each
+/// after where it goes and before its parameters.
+pub(crate) fn sent_sql(info: &[DispatchInfo]) -> String {
+    let mut text = String::new();
+    for info in info {
+        let sends = match info {
+            DispatchInfo::All(sql, params) => vec![("all".to_string(), sql, params)],
+            DispatchInfo::Any(sql, params) => vec![("any".to_string(), sql, params)],
+            DispatchInfo::Filtered(sends) => sends
+                .iter()
+                .map(|(sql, params, rs, buckets)| (format!("{rs} {buckets:?}"), sql, params))
+                .collect(),
+        };
+        for (to, sql, params) in sends {
+            text += &format!("{to}:\n{}\n", format_query(sql, &[] as &[&str], true));
+            for param in params {
+                text += &format!("- {param:?}\n");
+            }
+        }
+    }
+    text
 }
 
 #[track_caller]

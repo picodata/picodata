@@ -956,8 +956,7 @@ projection (
                             and n2.n_name::text = 'FRANCE'::text
                           )
                         )
-                        and lineitem.l_shipdate::datetime >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
-                        and lineitem.l_shipdate::datetime <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
+                        and lineitem.l_shipdate::datetime between '1995-01-01 0:00:00.0 +00:00:00'::datetime and '1996-12-31 0:00:00.0 +00:00:00'::datetime
                       )
                     )
                       join on (true::bool)
@@ -1166,11 +1165,11 @@ FROM
       "lineitem"."COL_6" * (1::int - "lineitem"."COL_7") as "volume"
     FROM
       "supplier"
-      INNER JOIN "_tmp_9907209166641463071_0136" as "lineitem" ON true::bool
-      INNER JOIN "_tmp_9907209166641463071_1136" as "orders" ON true::bool
-      INNER JOIN "_tmp_9907209166641463071_2136" as "customer" ON true::bool
-      INNER JOIN "_tmp_9907209166641463071_3136" as "n1" ON true::bool
-      INNER JOIN "_tmp_9907209166641463071_4136" as "n2" ON true::bool
+      INNER JOIN "_tmp_4654053795256124045_0136" as "lineitem" ON true::bool
+      INNER JOIN "_tmp_4654053795256124045_1136" as "orders" ON true::bool
+      INNER JOIN "_tmp_4654053795256124045_2136" as "customer" ON true::bool
+      INNER JOIN "_tmp_4654053795256124045_3136" as "n1" ON true::bool
+      INNER JOIN "_tmp_4654053795256124045_4136" as "n2" ON true::bool
     WHERE
       "supplier"."s_suppkey" = "lineitem"."COL_2"
       and "orders"."COL_0" = "lineitem"."COL_0"
@@ -1183,8 +1182,10 @@ FROM
         or "n1"."COL_2" = 'GERMANY'::text
         and "n2"."COL_2" = 'FRANCE'::text
       )
-      and "lineitem"."COL_11" >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
-      and "lineitem"."COL_11" <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
+      and (
+        "lineitem"."COL_11" >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
+        and "lineitem"."COL_11" <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
+      )
   ) as "shipping"
 GROUP BY
   "shipping"."supp_nation",
@@ -1192,21 +1193,21 @@ GROUP BY
   "shipping"."l_year"
 ''
 plan:
-    [0] SCAN TABLE _tmp_9907209166641463071_0136 AS lineitem (~917504 rows)
+    [0] SCAN TABLE _tmp_4654053795256124045_0136 AS lineitem (~917504 rows)
         [0] SEARCH TABLE supplier USING PRIMARY KEY (s_suppkey=?) (~1 row)
-            [0] SEARCH TABLE _tmp_9907209166641463071_1136 AS orders 
+            [0] SEARCH TABLE _tmp_4654053795256124045_1136 AS orders 
                  USING EPHEMERAL INDEX 
                  (COL_0=?) 
                  (~20 rows)
-                [0] SEARCH TABLE _tmp_9907209166641463071_2136 AS customer 
+                [0] SEARCH TABLE _tmp_4654053795256124045_2136 AS customer 
                      USING EPHEMERAL INDEX 
                      (COL_0=?) 
                      (~20 rows)
-                    [0] SEARCH TABLE _tmp_9907209166641463071_3136 AS n1 
+                    [0] SEARCH TABLE _tmp_4654053795256124045_3136 AS n1 
                          USING EPHEMERAL INDEX 
                          (COL_0=?) 
                          (~20 rows)
-                        [0] SEARCH TABLE _tmp_9907209166641463071_4136 AS n2 
+                        [0] SEARCH TABLE _tmp_4654053795256124045_4136 AS n2 
                              USING EPHEMERAL INDEX 
                              (COL_0=?) 
                              (~20 rows)
@@ -1338,8 +1339,7 @@ projection (o_year::text, mkt_share::double)
                         and n1.n_regionkey::int = region.r_regionkey::int
                         and region.r_name::text = 'AMERICA'::text
                         and supplier.s_nationkey::int = n2.n_nationkey::int
-                        and orders.o_orderdate::datetime >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
-                        and orders.o_orderdate::datetime <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
+                        and orders.o_orderdate::datetime between '1995-01-01 0:00:00.0 +00:00:00'::datetime and '1996-12-31 0:00:00.0 +00:00:00'::datetime
                         and part.p_type::text = 'ECONOMY ANODIZED STEEL'::text
                       )
                     )
@@ -1612,13 +1612,13 @@ FROM
       "n2"."COL_2" as "nation"
     FROM
       "part"
-      INNER JOIN "_tmp_13582969641949884233_0136" as "supplier" ON true::bool
-      INNER JOIN "_tmp_13582969641949884233_1136" as "lineitem" ON true::bool
-      INNER JOIN "_tmp_13582969641949884233_2136" as "orders" ON true::bool
-      INNER JOIN "_tmp_13582969641949884233_3136" as "customer" ON true::bool
-      INNER JOIN "_tmp_13582969641949884233_4136" as "n1" ON true::bool
-      INNER JOIN "_tmp_13582969641949884233_5136" as "n2" ON true::bool
-      INNER JOIN "_tmp_13582969641949884233_6136" as "region" ON true::bool
+      INNER JOIN "_tmp_16607353950781144698_0136" as "supplier" ON true::bool
+      INNER JOIN "_tmp_16607353950781144698_1136" as "lineitem" ON true::bool
+      INNER JOIN "_tmp_16607353950781144698_2136" as "orders" ON true::bool
+      INNER JOIN "_tmp_16607353950781144698_3136" as "customer" ON true::bool
+      INNER JOIN "_tmp_16607353950781144698_4136" as "n1" ON true::bool
+      INNER JOIN "_tmp_16607353950781144698_5136" as "n2" ON true::bool
+      INNER JOIN "_tmp_16607353950781144698_6136" as "region" ON true::bool
     WHERE
       "part"."p_partkey" = "lineitem"."COL_1"
       and "supplier"."COL_0" = "lineitem"."COL_2"
@@ -1628,37 +1628,39 @@ FROM
       and "n1"."COL_3" = "region"."COL_0"
       and "region"."COL_2" = 'AMERICA'::text
       and "supplier"."COL_4" = "n2"."COL_0"
-      and "orders"."COL_5" >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
-      and "orders"."COL_5" <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
+      and (
+        "orders"."COL_5" >= '1995-01-01 0:00:00.0 +00:00:00'::datetime
+        and "orders"."COL_5" <= '1996-12-31 0:00:00.0 +00:00:00'::datetime
+      )
       and "part"."p_type" = 'ECONOMY ANODIZED STEEL'::text
   ) as "all_nations"
 GROUP BY
   "all_nations"."o_year"
 ''
 plan:
-    [0] SCAN TABLE _tmp_13582969641949884233_1136 AS lineitem (~1048576 rows)
+    [0] SCAN TABLE _tmp_16607353950781144698_1136 AS lineitem (~1048576 rows)
         [0] SEARCH TABLE part USING PRIMARY KEY (p_partkey=?) (~1 row)
-            [0] SEARCH TABLE _tmp_13582969641949884233_0136 AS supplier 
+            [0] SEARCH TABLE _tmp_16607353950781144698_0136 AS supplier 
                  USING EPHEMERAL INDEX 
                  (COL_0=?) 
                  (~20 rows)
-                [0] SEARCH TABLE _tmp_13582969641949884233_2136 AS orders 
+                [0] SEARCH TABLE _tmp_16607353950781144698_2136 AS orders 
                      USING EPHEMERAL INDEX 
                      (COL_0=?) 
                      (~20 rows)
-                    [0] SEARCH TABLE _tmp_13582969641949884233_3136 AS customer 
+                    [0] SEARCH TABLE _tmp_16607353950781144698_3136 AS customer 
                          USING EPHEMERAL INDEX 
                          (COL_0=?) 
                          (~20 rows)
-                        [0] SEARCH TABLE _tmp_13582969641949884233_4136 AS n1 
+                        [0] SEARCH TABLE _tmp_16607353950781144698_4136 AS n1 
                              USING EPHEMERAL INDEX 
                              (COL_0=?) 
                              (~20 rows)
-                            [0] SEARCH TABLE _tmp_13582969641949884233_5136 AS n2 
+                            [0] SEARCH TABLE _tmp_16607353950781144698_5136 AS n2 
                                  USING EPHEMERAL INDEX 
                                  (COL_0=?) 
                                  (~20 rows)
-                                [0] SEARCH TABLE _tmp_13582969641949884233_6136 AS region 
+                                [0] SEARCH TABLE _tmp_16607353950781144698_6136 AS region 
                                      USING EPHEMERAL INDEX 
                                      (COL_2=? AND COL_0=?) 
                                      (~20 rows)
@@ -3507,8 +3509,7 @@ projection (sum(sum_1::double::double)::double -> revenue)
           )
           and lineitem.l_quantity::double >= 1::int
           and lineitem.l_quantity::double <= 1::int + 10::int
-          and part.p_size::int >= 1::int
-          and part.p_size::int <= 5::int
+          and part.p_size::int between 1::int and 5::int
           and lineitem.l_shipmode::text in ROW('AIR'::text, 'AIR REG'::text)
           and lineitem.l_shipinstruct::text = 'DELIVER IN PERSON'::text
         ) or (
@@ -3522,8 +3523,7 @@ projection (sum(sum_1::double::double)::double -> revenue)
           )
           and lineitem.l_quantity::double >= 10::int
           and lineitem.l_quantity::double <= 10::int + 10::int
-          and part.p_size::int >= 1::int
-          and part.p_size::int <= 10::int
+          and part.p_size::int between 1::int and 10::int
           and lineitem.l_shipmode::text in ROW('AIR'::text, 'AIR REG'::text)
           and lineitem.l_shipinstruct::text = 'DELIVER IN PERSON'::text
         ) or (
@@ -3537,8 +3537,7 @@ projection (sum(sum_1::double::double)::double -> revenue)
           )
           and lineitem.l_quantity::double >= 20::int
           and lineitem.l_quantity::double <= 20::int + 10::int
-          and part.p_size::int >= 1::int
-          and part.p_size::int <= 15::int
+          and part.p_size::int between 1::int and 15::int
           and lineitem.l_shipmode::text in ROW('AIR'::text, 'AIR REG'::text)
           and lineitem.l_shipinstruct::text = 'DELIVER IN PERSON'::text
         )
@@ -3599,15 +3598,17 @@ SELECT
   ) as "sum_1"
 FROM
   "lineitem"
-  INNER JOIN "_tmp_18030275129122682765_0136" as "part" ON true::bool
+  INNER JOIN "_tmp_4438792381005719057_0136" as "part" ON true::bool
 WHERE
   "part"."COL_0" = "lineitem"."l_partkey"
   and "part"."COL_4" = 'Brand#12'::text
   and "part"."COL_7" in ('SM CASE'::text, 'SM BOX'::text, 'SM PACK'::text, 'SM PKG'::text)
   and "lineitem"."l_quantity" >= 1::int
   and "lineitem"."l_quantity" <= 1::int + 10::int
-  and "part"."COL_6" >= 1::int
-  and "part"."COL_6" <= 5::int
+  and (
+    "part"."COL_6" >= 1::int
+    and "part"."COL_6" <= 5::int
+  )
   and "lineitem"."l_shipmode" in ('AIR'::text, 'AIR REG'::text)
   and "lineitem"."l_shipinstruct" = 'DELIVER IN PERSON'::text
   or "part"."COL_0" = "lineitem"."l_partkey"
@@ -3615,8 +3616,10 @@ WHERE
   and "part"."COL_7" in ('MED BAG'::text, 'MED BOX'::text, 'MED PKG'::text, 'MED PACK'::text)
   and "lineitem"."l_quantity" >= 10::int
   and "lineitem"."l_quantity" <= 10::int + 10::int
-  and "part"."COL_6" >= 1::int
-  and "part"."COL_6" <= 10::int
+  and (
+    "part"."COL_6" >= 1::int
+    and "part"."COL_6" <= 10::int
+  )
   and "lineitem"."l_shipmode" in ('AIR'::text, 'AIR REG'::text)
   and "lineitem"."l_shipinstruct" = 'DELIVER IN PERSON'::text
   or "part"."COL_0" = "lineitem"."l_partkey"
@@ -3624,14 +3627,16 @@ WHERE
   and "part"."COL_7" in ('LG CASE'::text, 'LG BOX'::text, 'LG PACK'::text, 'LG PKG'::text)
   and "lineitem"."l_quantity" >= 20::int
   and "lineitem"."l_quantity" <= 20::int + 10::int
-  and "part"."COL_6" >= 1::int
-  and "part"."COL_6" <= 15::int
+  and (
+    "part"."COL_6" >= 1::int
+    and "part"."COL_6" <= 15::int
+  )
   and "lineitem"."l_shipmode" in ('AIR'::text, 'AIR REG'::text)
   and "lineitem"."l_shipinstruct" = 'DELIVER IN PERSON'::text
 ''
 plan:
     [0] SCAN TABLE lineitem (~1048576 rows)
-        [0] SCAN TABLE _tmp_18030275129122682765_0136 AS part (~1048576 rows)
+        [0] SCAN TABLE _tmp_4438792381005719057_0136 AS part (~1048576 rows)
     [0] EXECUTE LIST SUBQUERY 1
     [0] EXECUTE LIST SUBQUERY 1
     [0] EXECUTE LIST SUBQUERY 1
