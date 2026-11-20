@@ -12,11 +12,9 @@
 
 use crate::errors::{Entity, SbroadError};
 use crate::ir::helpers::RepeatableState;
-use crate::ir::node::expression::{Expression, MutExpression};
+use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::Relational;
-use crate::ir::node::{
-    Alias, ArithmeticExpr, BoolExpr, Join, Node, NodeId, Reference, ReferenceTarget, Row,
-};
+use crate::ir::node::{BoolExpr, Join, Node, NodeId, Reference, ReferenceTarget, Row};
 use crate::ir::operator::Bool;
 use crate::ir::tree::traversal::BreadthFirst;
 use crate::ir::tree::traversal::EXPR_CAPACITY;
@@ -500,118 +498,28 @@ impl Plan {
         // Replace nodes' children with the merged tuples.
         for id in nodes {
             let expr = self.get_expression_node(id)?;
-            match expr {
-                Expression::Alias(Alias { child, .. }) => {
-                    let chain = chains.get(child);
-                    if let Some(chain) = chain {
-                        let new_child_id = f_to_plan(parent_id, chain, self)?;
-                        let expr_mut = self.get_mut_expression_node(id)?;
-                        if let MutExpression::Alias(Alias {
-                            child: ref mut child_id,
-                            ..
-                        }) = expr_mut
-                        {
-                            *child_id = new_child_id;
-                        } else {
-                            return Err(SbroadError::Invalid(
-                                Entity::Expression,
-                                Some(format_smolstr!("expected alias expression: {expr_mut:?}")),
-                            ));
-                        }
-                    }
+            if !matches!(
+                expr,
+                Expression::Alias(_)
+                    | Expression::Bool(_)
+                    | Expression::Arithmetic(_)
+                    | Expression::Row(_)
+                    | Expression::Between(_)
+            ) {
+                continue;
+            }
+            let mut merged = Vec::new();
+            for (pos, child) in expr.expr_children().into_iter().enumerate() {
+                if let Some(chain) = chains.get(&child) {
+                    merged.push((pos, f_to_plan(parent_id, chain, self)?));
                 }
-                Expression::Bool(BoolExpr { left, right, .. }) => {
-                    let children = [*left, *right];
-                    for (pos, child) in children.iter().enumerate() {
-                        let chain = chains.get(child);
-                        if let Some(chain) = chain {
-                            let new_child_id = f_to_plan(parent_id, chain, self)?;
-                            let expr_mut = self.get_mut_expression_node(id)?;
-                            if let MutExpression::Bool(BoolExpr {
-                                left: ref mut left_id,
-                                right: ref mut right_id,
-                                ..
-                            }) = expr_mut
-                            {
-                                if pos == 0 {
-                                    *left_id = new_child_id;
-                                } else {
-                                    *right_id = new_child_id;
-                                }
-                            } else {
-                                return Err(SbroadError::Invalid(
-                                    Entity::Expression,
-                                    Some(format_smolstr!(
-                                        "expected boolean expression: {expr_mut:?}"
-                                    )),
-                                ));
-                            }
-                        }
-                    }
+            }
+            if !merged.is_empty() {
+                let mut expr_mut = self.get_mut_expression_node(id)?;
+                let mut children = expr_mut.expr_children_mut();
+                for (pos, new_child_id) in merged {
+                    *children[pos] = new_child_id;
                 }
-                Expression::Arithmetic(ArithmeticExpr { left, right, .. }) => {
-                    let children = [*left, *right];
-                    for (pos, child) in children.iter().enumerate() {
-                        let chain = chains.get(child);
-                        if let Some(chain) = chain {
-                            let new_child_id = f_to_plan(parent_id, chain, self)?;
-                            let expr_mut = self.get_mut_expression_node(id)?;
-                            if let MutExpression::Arithmetic(ArithmeticExpr {
-                                left: ref mut left_id,
-                                right: ref mut right_id,
-                                ..
-                            }) = expr_mut
-                            {
-                                if pos == 0 {
-                                    *left_id = new_child_id;
-                                } else {
-                                    *right_id = new_child_id;
-                                }
-                            } else {
-                                return Err(SbroadError::Invalid(
-                                    Entity::Expression,
-                                    Some(format_smolstr!(
-                                        "expected Arithmetic expression: {expr_mut:?}"
-                                    )),
-                                ));
-                            }
-                        }
-                    }
-                }
-                Expression::Row(Row { list, .. }) => {
-                    let children = list.clone();
-                    for (pos, child) in children.iter().enumerate() {
-                        let chain = chains.get(child);
-                        if let Some(chain) = chain {
-                            let new_child_id = f_to_plan(parent_id, chain, self)?;
-                            let expr_mut = self.get_mut_expression_node(id)?;
-                            if let MutExpression::Row(Row { ref mut list, .. }) = expr_mut {
-                                if let Some(child_id) = list.get_mut(pos) {
-                                    *child_id = new_child_id;
-                                } else {
-                                    return Err(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
-                                        "expected a column at position {pos} in the row {expr_mut:?}"
-                                    )));
-                                }
-                            } else {
-                                return Err(SbroadError::Invalid(
-                                    Entity::Expression,
-                                    Some(format_smolstr!("expected row expression: {expr_mut:?}")),
-                                ));
-                            }
-                        }
-                    }
-                }
-                Expression::Between(_) => {
-                    for (pos, child) in expr.expr_children().into_iter().enumerate() {
-                        if let Some(chain) = chains.get(&child) {
-                            let new_child_id = f_to_plan(parent_id, chain, self)?;
-                            let mut expr_mut = self.get_mut_expression_node(id)?;
-                            *expr_mut.expr_children_mut()[pos] = new_child_id;
-                        }
-                    }
-                }
-                _ => continue,
             }
         }
 
