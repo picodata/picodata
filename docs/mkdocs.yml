@@ -498,3 +498,4 @@ hooks:
   - ./hooks/glossary_links.py
   - ./hooks/export_to_pdf.py
   - ./hooks/search_typesense.py
+  - ./hooks/llms_txt.py
