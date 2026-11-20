@@ -145,6 +145,15 @@
 
 - [Использование JOIN](join.md)
 
+## Общие опции и параметры {: #common_options }
+
+Для данной команды доступны следующие общие опции и параметры SQL:
+
+* [SQL_VDBE_OPCODE_MAX](common_options.md#vdbe)
+* [SQL_MOTION_ROW_MAX](common_options.md#vdbe)
+* [READ_PREFERENCE](common_options.md#read_preference)
+* [FORWARD](common_options.md#forward)
+
 ## Требуемые привилегии {: #required_privileges }
 
 Данная команда требует привилегии `SELECT TABLE`.

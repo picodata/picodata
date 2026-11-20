@@ -303,7 +303,7 @@ Picodata:
   запроса.
 
 Более подробно эти параметры описаны в разделах [Неблокирующие
-запросы](../reference/sql/non_block.md) и [DQL](../reference/sql/dql.md#params).
+запросы](../reference/sql/non_block.md) и [DQL](../reference/sql/dql.md#common_options).
 
 [все параметры библиотеки libpq]: https://www.postgresql.org/docs/current/libpq-connect.html
 

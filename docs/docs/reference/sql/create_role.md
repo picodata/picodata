@@ -14,6 +14,13 @@
 * **IF NOT EXISTS** — позволяет избежать ошибки в случае, если такая
   роль в кластере уже есть
 
+## Общие опции и параметры {: #common_options }
+
+Для данной команды доступны следующие общие опции и параметры SQL:
+
+* [TIMEOUT](common_options.md#timeout)
+* [WAIT APPLIED](common_options.md#wait_applied)
+
 ## Требуемые привилегии {: #required_privileges }
 
 Данная команда требует привилегии `CREATE ROLE`.

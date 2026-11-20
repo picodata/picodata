@@ -64,7 +64,7 @@ postgres://postgres:T0psecret@127.0.0.1:4327?options=forward%3Doff
 ## Взаимодействие с READ_PREFERENCE {: #read-preference }
 
 Для DQL-запросов опция `FORWARD` взаимодействует с опцией
-[`READ_PREFERENCE`](dql.md#params), которая задает стратегию чтения данных.
+[`READ_PREFERENCE`](common_options.md#read_preference), которая задает стратегию чтения данных.
 Опция `FORWARD` имеет приоритет над `READ_PREFERENCE`. С подробным описанием
 взаимодействия можно ознакомиться в таблице ниже:
 
@@ -176,7 +176,7 @@ OPTION (FORWARD = OFF);
 INSERT INTO c VALUES (1, 2);
 ```
 
-Теперь выполнение запроса с опцией `forward = off` приведет к ошибке 
+Теперь выполнение запроса с опцией `forward = off` приведет к ошибке
 
 ```
 ERROR:  invalid option: cannot satisfy "forward = off":
@@ -270,8 +270,8 @@ OPTION (FORWARD = RO_TO_RW)
 
 ## См. также {: #see-also }
 
-* [Параметры DQL](dql.md#params)
-* [Параметры DML](dml.md#params)
+* [Параметры DQL](dql.md#common_options)
+* [Параметры DML](dml.md#common_options)
 * [Фасет FORWARD команды EXPLAIN](explain_facets/forward.md)
 * [Команда EXPLAIN](explain.md)
 * [Параметризованные запросы](parametrization.md)

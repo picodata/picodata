@@ -90,6 +90,7 @@ nav:
           - reference/sql/explain_facets/buckets.md
           - reference/sql/explain_facets/forward.md
           - reference/sql/explain_facets/context.md
+      - reference/sql/common_options.md
       - reference/sql/non_block.md
       - reference/sql/object.md
       - reference/sql_types.md

@@ -40,6 +40,14 @@
 начинаться с цифры и не может содержать пробелов и специальных служебных
 символов (кроме знака подчеркивания).
 
+## Общие опции и параметры {: #common_options }
+
+Для данной команды доступны следующие общие опции и параметры SQL:
+
+* [SQL_VDBE_OPCODE_MAX](common_options.md#vdbe)
+* [SQL_MOTION_ROW_MAX](common_options.md#vdbe)
+* [FORWARD](common_options.md#forward)
+
 ## Ограничения {: #restrictions }
 
 При использовании `UPDATE` следует учитывать следующие ограничения:
