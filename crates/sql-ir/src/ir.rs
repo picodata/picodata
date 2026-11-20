@@ -2392,38 +2392,10 @@ impl Plan {
             (Expression::Constant(lhs_constant), Expression::Constant(rhs_constant)) => {
                 Ok(lhs_constant == rhs_constant)
             }
-            (
-                Expression::Like(Like {
-                    left: lhs_left,
-                    right: lhs_right,
-                    escape: lhs_escape,
-                }),
-                Expression::Like(Like {
-                    left: rhs_left,
-                    right: rhs_right,
-                    escape: rhs_escape,
-                }),
-            ) => Ok(
-                self.are_order_by_exprs_equal(*lhs_left, *rhs_left, position_mapping)?
-                    && self.are_order_by_exprs_equal(*lhs_right, *rhs_right, position_mapping)?
-                    && self.are_order_by_exprs_equal(*lhs_escape, *rhs_escape, position_mapping)?,
-            ),
-            (
-                Expression::Between(Between {
-                    left: lhs_left,
-                    low: lhs_low,
-                    high: lhs_high,
-                }),
-                Expression::Between(Between {
-                    left: rhs_left,
-                    low: rhs_low,
-                    high: rhs_high,
-                }),
-            ) => Ok(
-                self.are_order_by_exprs_equal(*lhs_left, *rhs_left, position_mapping)?
-                    && self.are_order_by_exprs_equal(*lhs_low, *rhs_low, position_mapping)?
-                    && self.are_order_by_exprs_equal(*lhs_high, *rhs_high, position_mapping)?,
-            ),
+            (lhs @ Expression::Like(_), rhs @ Expression::Like(_))
+            | (lhs @ Expression::Between(_), rhs @ Expression::Between(_)) => {
+                cmp_expr_vec(&lhs.expr_children(), &rhs.expr_children())
+            }
             (Expression::Reference(lhs_ref), Expression::Reference(rhs_ref)) => {
                 if !matches!(lhs_ref.target, ReferenceTarget::Single(_))
                     || !matches!(rhs_ref.target, ReferenceTarget::Single(_))

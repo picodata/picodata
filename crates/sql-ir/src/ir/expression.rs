@@ -17,8 +17,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use super::node::{
-    Between, Bound, BoundType, Except, GroupBy, Having, Intersect, Join, Like, Limit, Motion,
-    OrderBy, Over, Projection, ReferenceTarget, ScanCte, ScanFunction, ScanRelation, ScanSubQuery,
+    Bound, BoundType, Except, GroupBy, Having, Intersect, Join, Limit, Motion, OrderBy, Over,
+    Projection, ReferenceTarget, ScanCte, ScanFunction, ScanRelation, ScanSubQuery,
     SelectWithoutScan, Selection, Union, UnionAll, Values, Window,
 };
 use super::operator::OrderByEntity;
@@ -480,36 +480,10 @@ impl<'plan> Comparator<'plan> {
                                 && self.are_subtrees_equal(*child_left, *child_right)?);
                         }
                     }
-                    Expression::Like(Like {
-                        left: left_left,
-                        right: right_left,
-                        escape: escape_left,
-                    }) => {
-                        if let Expression::Like(Like {
-                            left: left_right,
-                            right: right_right,
-                            escape: escape_right,
-                        }) = right
-                        {
-                            return Ok(self.are_subtrees_equal(*escape_left, *escape_right)?
-                                && self.are_subtrees_equal(*left_left, *left_right)?
-                                && self.are_subtrees_equal(*right_left, *right_right)?);
-                        }
-                    }
-                    Expression::Between(Between {
-                        left: left_left,
-                        low: low_left,
-                        high: high_left,
-                    }) => {
-                        if let Expression::Between(Between {
-                            left: left_right,
-                            low: low_right,
-                            high: high_right,
-                        }) = right
-                        {
-                            return Ok(self.are_subtrees_equal(*left_left, *left_right)?
-                                && self.are_subtrees_equal(*low_left, *low_right)?
-                                && self.are_subtrees_equal(*high_left, *high_right)?);
+                    Expression::Like(_) | Expression::Between(_) => {
+                        if std::mem::discriminant(&left) == std::mem::discriminant(&right) {
+                            return self
+                                .are_lists_equal(&left.expr_children(), &right.expr_children());
                         }
                     }
                     Expression::Concat(Concat {
@@ -1389,19 +1363,10 @@ impl<'plan> Comparator<'plan> {
                 self.hash_for_child_expr(*left, depth);
                 self.hash_for_child_expr(*right, depth);
             }
-            Expression::Like(Like {
-                left,
-                right,
-                escape: escape_id,
-            }) => {
-                self.hash_for_child_expr(*left, depth);
-                self.hash_for_child_expr(*right, depth);
-                self.hash_for_child_expr(*escape_id, depth);
-            }
-            Expression::Between(Between { left, low, high }) => {
-                self.hash_for_child_expr(*left, depth);
-                self.hash_for_child_expr(*low, depth);
-                self.hash_for_child_expr(*high, depth);
+            Expression::Like(_) | Expression::Between(_) => {
+                for child in node.expr_children() {
+                    self.hash_for_child_expr(child, depth);
+                }
             }
             Expression::Trim(Trim {
                 kind,
