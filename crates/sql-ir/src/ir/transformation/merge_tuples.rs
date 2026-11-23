@@ -433,7 +433,11 @@ impl Plan {
             );
             let nodes_and = tree_and.traverse_into_vec(*id);
             let mut nodes_for_chain: Vec<NodeId> = Vec::with_capacity(nodes_and.len());
-            for and_id in nodes_and {
+            // DNF has no `OR` under `AND`, but it leaves an operand of a comparison as it is, and
+            // so it does a condition with too many disjunctions. The chain replaces the whole
+            // conjunction, so a chain without the `OR` would lose it.
+            let mut has_or = false;
+            'ands: for and_id in nodes_and {
                 let expr = self.get_expression_node(and_id)?;
                 if let Expression::Bool(BoolExpr {
                     left,
@@ -442,23 +446,22 @@ impl Plan {
                     ..
                 }) = expr
                 {
-                    let children = vec![*left, *right];
-                    let mut local_chain_nodes = Vec::with_capacity(children.len());
-                    for child_id in children {
+                    for child_id in [*left, *right] {
                         visited.insert(child_id);
                         let child_expr = self.get_expression_node(child_id)?;
                         if let Expression::Bool(BoolExpr { op: Bool::Or, .. }) = child_expr {
-                            local_chain_nodes.clear();
-                            break;
+                            has_or = true;
+                            break 'ands;
                         }
                         if let Expression::Bool(BoolExpr { op: Bool::And, .. }) = child_expr {
                             continue;
                         }
-                        local_chain_nodes.push(child_id);
+                        nodes_for_chain.push(child_id);
                     }
-
-                    nodes_for_chain.extend(local_chain_nodes);
                 }
+            }
+            if has_or {
+                continue;
             }
             let mut chain = Chain::with_capacity(nodes_for_chain.len());
             for node_id in nodes_for_chain {

@@ -46,3 +46,56 @@ WHERE (a = 1 OR a = 10)
 ORDER BY a;
 -- EXPECTED:
 1
+
+-- TEST: or-under-and-in-comparison
+-- SQL:
+SELECT a FROM t WHERE ((a = 1 OR a = 2) AND a > 0 AND a < 4) = false ORDER BY a;
+-- EXPECTED:
+3, 4
+
+-- TEST: or-groups-past-dnf-limit-under-or
+-- SQL:
+SELECT a FROM t
+WHERE ((a = 1 OR b = 10)
+    AND (a = 1 OR b = 11)
+    AND (a = 1 OR b = 12)
+    AND (a = 1 OR b = 13)
+    AND (a = 1 OR b = 14)
+    AND (a = 1 OR b = 15)
+    AND (a = 1 OR b = 16)
+    AND (a = 1 OR b = 17)
+    AND (a = 1 OR b = 18)
+    AND (a = 1 OR b = 19)
+    AND b > 0)
+  OR a = 4
+ORDER BY a;
+-- EXPECTED:
+1, 4
+
+-- TEST: join-on-or-under-and-in-comparison
+-- SQL:
+SELECT DISTINCT x.a FROM t x JOIN t y
+ON ((x.a = 1 OR x.a = 2) AND x.a > 0 AND x.a < 4) = (y.a < 9)
+ORDER BY x.a;
+-- EXPECTED:
+1, 2
+
+-- TEST: update-or-under-and-in-comparison-1
+-- SQL:
+UPDATE t SET b = 99 WHERE ((a = 1 OR a = 2) AND a > 0 AND a < 4) = (a < 9);
+
+-- TEST: update-or-under-and-in-comparison-2
+-- SQL:
+SELECT a, b FROM t ORDER BY a;
+-- EXPECTED:
+1, 99, 2, 99, 3, 2, 4, 3
+
+-- TEST: delete-or-under-and-in-comparison-1
+-- SQL:
+DELETE FROM t WHERE ((a = 1 OR a = 2) AND a > 0 AND a < 4) = (a < 9);
+
+-- TEST: delete-or-under-and-in-comparison-2
+-- SQL:
+SELECT a FROM t ORDER BY a;
+-- EXPECTED:
+3, 4
