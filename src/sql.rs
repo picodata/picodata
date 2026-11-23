@@ -11,6 +11,7 @@ use crate::catalog::pico_bucket::DEFAULT_BUCKET_ID_COLUMN_NAME;
 use crate::config::{AlterSystemParameters, DYNAMIC_CONFIG};
 use crate::metrics;
 use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
+use crate::rpc::sharding;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DdlError,
     DistributionParam, Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams,
@@ -53,7 +54,6 @@ use chrono::Utc;
 use picodata_plugin::error_code::ErrorCode;
 use rmp::decode::{read_array_len, read_bin_len, read_str_len};
 use rmp::encode::{write_bin, write_str, write_uint};
-use smallvec::SmallVec;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use sql::errors::{Entity, SbroadError, SbroadErrorInner};
 use sql::executor::engine::helpers::{
@@ -92,14 +92,17 @@ use sql::ir::value::Value;
 use sql::ir::Plan as IrPlan;
 use sql::ExecutingQueryExt;
 use sql_protocol::decode::{
-    execute_args_split, query_meta_args_split, ProtocolMessage, ProtocolMessageType, QueryMetaArgs,
+    execute_args_split, query_meta_args_split, ExecuteArgs, ProtocolMessage, ProtocolMessageType,
+    QueryMetaArgs,
 };
 use sql_protocol::dml::insert::ConflictPolicy;
 use sql_protocol::encode::write_metadata;
 use std::cmp::max;
 use std::collections::BTreeMap;
+use std::fmt::Display;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::ops::{ControlFlow, ControlFlow::Break, ControlFlow::Continue};
+use std::os::raw::c_int;
 use std::rc::Rc;
 use std::str::from_utf8_unchecked;
 use std::time::Duration;
@@ -2944,80 +2947,16 @@ fn report(msg: &str, e: Error) -> i32 {
     TarantoolErrorCode::ProcC as i32
 }
 
-struct ExecArgs {
-    timeout: Duration,
-    need_ref: bool,
-    sid: SmallVec<[u8; 36]>,
-    rid: i64,
-    data: Vec<u8>,
-}
-
-impl<'de> Decode<'de> for ExecArgs {
-    fn decode(data: &'de [u8]) -> tarantool::Result<Self> {
-        // XXX: function arguments are stored in the fiber()->gc region and can't
-        // survive a fiber yield (port_c_get_msgpack). We must materialize all the
-        // data referencing arguments' bytes into the rust memory before calling any
-        // code that can possibly yield (reference add or plan execution) to avoid
-        // heap-after-free.
-        //
-        // See also:
-        // - https://github.com/tarantool/tarantool/issues/4792#issuecomment-592893087
-        // - https://git.picodata.io/core/picodata/-/issues/2359
-        #[cfg(debug_assertions)]
-        let _guard = tarantool::fiber::NoYieldsGuard::new();
-
-        let args = execute_args_split(data).map_err(|e| {
-            TarantoolError::other(format!(
-                "Failed to decode '.proc_sql_execute' arguments, msgpack {}: {e}",
-                escape_bytes(data),
-            ))
-        })?;
-
-        // We expect session id to be a text representation of UUID.
-        let mut sid = smallvec::SmallVec::<[u8; 36]>::new();
-        sid.extend_from_slice(args.sid.as_bytes());
-        let timeout = Duration::try_from_secs_f64(args.timeout).map_err(|e| {
-            TarantoolError::other(format!(
-                "Failed to decode timeout argument, msgpack {}: {e}",
-                escape_bytes(data),
-            ))
-        })?;
-        let rid = args.rid;
-        let need_ref = args.need_ref;
-
-        Ok(ExecArgs {
-            timeout,
-            need_ref,
-            sid,
-            rid,
-            data: args.data.to_vec(),
-        })
-    }
-}
-
-unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::os::raw::c_int {
-    // Safety: safe as the original args.sid is as valid UTF-8 string.
-    let sid = unsafe { std::str::from_utf8_unchecked(args.sid.as_slice()) };
-
-    let mut pcall = || -> Result<(), Error> {
-        let package =
-            sql_protocol::decode::ProtocolMessage::decode_from_bytes(args.data.as_slice())
-                .map_err(Error::other)?;
-        let runtime = StorageRuntime::new();
-        runtime.execute_plan(package, port, args.timeout)?;
-        Ok(())
-    };
-
+fn proc_sql_execute_impl(args: &ExecuteArgs, msg: ProtocolMessage, port: &mut PicoPortC) -> c_int {
     let mut storage_ref_guard = None;
     // References are useless on replicas, so skip ref operations there.
     let is_replica = node::global()
         .map(|node| node.is_readonly())
         .unwrap_or(false);
     if !is_replica {
-        let timeout = args.timeout;
         // Wait for vshard to be configured by `proc_sharding`.
         // During node restart, `proc_sql_execute` can be called before the governor runs `proc_sharding`.
-        if !crate::rpc::sharding::wait_vshard_configured(timeout) {
+        if !sharding::wait_vshard_configured(args.timeout) {
             return report(
                 "vshard storage is not configured (timed out waiting for proc_sharding): ",
                 Error::timeout(),
@@ -3027,7 +2966,7 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
         if args.need_ref {
             // The storage owns this ref, so the router's cleanup after a
             // failed dispatch can not release it while the plan still runs.
-            match StorageRef::take(timeout, false) {
+            match StorageRef::take(args.timeout, false) {
                 Ok(storage_ref) => storage_ref_guard = Some(storage_ref),
                 Err(StorageRefError::Add(e)) => {
                     return report("Failed to add a storage reference: ", e.into())
@@ -3036,22 +2975,22 @@ unsafe fn proc_sql_execute_impl(args: ExecArgs, port: &mut PicoPortC) -> ::std::
                     return report("Failed to use a storage reference: ", e.into())
                 }
             }
-        } else if let Err(e) = reference_use(args.rid, sid) {
+        } else if let Err(e) = reference_use(args.rid, args.sid) {
             // The router took this ref on the first step of the dispatch.
             return report("Failed to use a storage reference: ", e.into());
         };
     }
 
-    let rc = pcall();
+    let rc = StorageRuntime::new().execute_plan(msg, port, args.timeout);
     if !is_replica && !args.need_ref {
         // We should always unref the storage reference before exit.
-        reference_del(args.rid, sid).expect("Failed to remove reference from the storage");
+        reference_del(args.rid, args.sid).expect("Failed to remove reference from the storage");
     }
     drop(storage_ref_guard);
 
     match rc {
         Ok(()) => 0,
-        Err(e) => return report("Failed to execute '.proc_sql_execute': ", e),
+        Err(e) => report("Failed to execute '.proc_sql_execute': ", e.into()),
     }
 }
 
@@ -3082,16 +3021,31 @@ pub unsafe extern "C" fn proc_sql_execute(
     mut ctx: FunctionCtx,
     func_args: FunctionArgs,
 ) -> ::std::os::raw::c_int {
-    // All arguments should be copied into the rust memory to
-    // survive possible fiber switch.
-    let args = match func_args.decode::<ExecArgs>() {
-        Ok(args) => args,
-        Err(e) => return report("", Error::from(e)),
+    // The arguments are in the fiber region and do not survive a yield
+    // (the wait for a storage reference, the plan execution). Copy them
+    // before any code that can yield. See
+    // https://git.picodata.io/core/picodata/-/issues/2359
+    let bytes = match func_args.decode::<RawByteBuf>() {
+        Ok(bytes) => bytes.0,
+        Err(e) => return report("", e.into()),
     };
 
-    let msg = match ProtocolMessage::decode_from_bytes(args.data.as_slice()) {
+    let decode_error = |e: &dyn Display| {
+        let e = TarantoolError::other(format!(
+            "Failed to decode '.proc_sql_execute' arguments, msgpack {}: {e}",
+            escape_bytes(&bytes),
+        ));
+        report("", e.into())
+    };
+
+    let args = match execute_args_split(&bytes) {
+        Ok(args) => args,
+        Err(e) => return decode_error(&e),
+    };
+
+    let msg = match ProtocolMessage::decode_from_bytes(args.data) {
         Ok(msg) => msg,
-        Err(e) => return report("", Error::other(e)),
+        Err(e) => return decode_error(&e),
     };
 
     let request_id = match runtime_owner_key(msg.request_id) {
@@ -3121,7 +3075,7 @@ pub unsafe extern "C" fn proc_sql_execute(
             }
         }
         let start = Instant::now_fiber();
-        let rc = proc_sql_execute_impl(args, &mut port);
+        let rc = proc_sql_execute_impl(&args, msg, &mut port);
         let duration = Instant::now_fiber().duration_since(start);
 
         let result = if rc == 0 { "ok" } else { "err" };

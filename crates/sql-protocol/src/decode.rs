@@ -14,6 +14,7 @@ use rmp::Marker;
 use std::fmt::Display;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::str::from_utf8;
+use std::time::Duration;
 
 #[derive(Default)]
 pub struct QueryMetaArgs<'bytes> {
@@ -23,7 +24,7 @@ pub struct QueryMetaArgs<'bytes> {
 }
 
 pub struct ExecuteArgs<'bytes> {
-    pub timeout: f64,
+    pub timeout: Duration,
     pub need_ref: bool,
     pub rid: i64,
     pub sid: &'bytes str,
@@ -172,7 +173,9 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
             "Expected an array of 5 elements, got: {elems}"
         )));
     }
-    let timeout = read_timeout(&mut stream).map_err(decode_error("vshard storage timeout"))?;
+    let timeout = read_timeout(&mut stream)
+        .and_then(|secs| Duration::try_from_secs_f64(secs).map_err(IoError::other))
+        .map_err(decode_error("vshard storage timeout"))?;
     let rid = read_int(&mut stream).map_err(decode_error("vshard storage reference ID"))?;
     let sid = read_str(&mut stream).map_err(decode_error("vshard storage session ID"))?;
     let need_ref = read_bool(&mut stream).map_err(decode_error("need_ref flag"))?;
