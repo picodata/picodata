@@ -256,28 +256,49 @@ fn key_buckets_share_equal_values_of_one_type() {
     assert_eq!(keys.len(), resolver.0.get());
 }
 
-/// The conjunction that reuses its operands gives what the one by reference
-/// does, on every pair of kinds of buckets.
-#[test]
-fn conjunct_owned_is_conjunct() {
+/// Buckets of every kind, for the operations to be compared on every pair.
+fn kinds() -> Vec<super::Buckets> {
     use super::{BucketSet, Buckets};
     let exact = |ids: &[u64]| Buckets::new_filtered(ids.iter().copied().collect());
-    let all = [
+    vec![
         Buckets::All,
         Buckets::Any,
         exact(&[]),
         exact(&[1]),
         exact(&[1, 2]),
         exact(&[2, 3, 4]),
+        Buckets::Filtered(BucketSet::EstimatedCount { lower: 0, upper: 0 }),
         Buckets::Filtered(BucketSet::EstimatedCount { lower: 0, upper: 1 }),
         Buckets::Filtered(BucketSet::EstimatedCount { lower: 2, upper: 5 }),
-    ];
+    ]
+}
+
+/// The conjunction that reuses its operands gives what the one by reference
+/// does, on every pair of kinds of buckets.
+#[test]
+fn conjunct_owned_is_conjunct() {
+    let all = kinds();
     for a in &all {
         for b in &all {
             assert_eq!(
                 a.clone().conjunct_owned(b.clone()),
                 a.conjunct(b),
                 "{a} and {b}"
+            );
+        }
+    }
+}
+
+/// The same for the disjunction.
+#[test]
+fn disjunct_owned_is_disjunct() {
+    let all = kinds();
+    for a in &all {
+        for b in &all {
+            assert_eq!(
+                a.clone().disjunct_owned(b.clone()),
+                a.disjunct(b),
+                "{a} or {b}"
             );
         }
     }

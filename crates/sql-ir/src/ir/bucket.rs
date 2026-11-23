@@ -220,6 +220,25 @@ impl Buckets {
         }
     }
 
+    /// [`Buckets::disjunct`] that adds to a set of the operands instead of
+    /// building a new one: the larger set takes in the other.
+    #[must_use]
+    pub fn disjunct_owned(self, buckets: Buckets) -> Buckets {
+        match (self, buckets) {
+            (Buckets::Filtered(BucketSet::Exact(a)), Buckets::Filtered(BucketSet::Exact(b))) => {
+                let (mut large, small) = if a.len() >= b.len() { (a, b) } else { (b, a) };
+                large.extend(small);
+                Buckets::new_filtered(large)
+            }
+            (Buckets::Any, Buckets::Filtered(b)) | (Buckets::Filtered(b), Buckets::Any)
+                if !b.is_empty() =>
+            {
+                Buckets::Filtered(b)
+            }
+            (a, b) => a.disjunct(&b),
+        }
+    }
+
     /// Disjunction of two sets of buckets.
     pub fn disjunct(&self, buckets: &Buckets) -> Buckets {
         match (self, buckets) {
@@ -282,6 +301,10 @@ pub trait BucketAlgebra: Clone {
     fn conjunct_owned(self, other: Self) -> Self {
         self.conjunct(&other)
     }
+    /// `disjunct`, free to reuse the operands.
+    fn disjunct_owned(self, other: Self) -> Self {
+        self.disjunct(&other)
+    }
 }
 
 impl BucketAlgebra for Buckets {
@@ -311,6 +334,9 @@ impl BucketAlgebra for Buckets {
     }
     fn conjunct_owned(self, other: Self) -> Self {
         self.conjunct_owned(other)
+    }
+    fn disjunct_owned(self, other: Self) -> Self {
+        self.disjunct_owned(other)
     }
 }
 
@@ -1019,7 +1045,7 @@ impl Plan {
                 chain_buckets = chain_buckets.conjunct_owned(node_buckets);
             }
             result = Some(match result {
-                Some(result) => result.disjunct(&chain_buckets),
+                Some(result) => result.disjunct_owned(chain_buckets),
                 None => chain_buckets,
             });
         }
