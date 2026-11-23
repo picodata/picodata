@@ -638,7 +638,7 @@ table.legend {
             <td>default</td>
             <td>[picodata run --tier](cli.md#run_tier)</td>
             <td>[instance.tier](config.md#instance_tier)</td>
-            <td>PICODATA_SHREDDING</td>
+            <td>PICODATA_INSTANCE_TIER</td>
         </tr>
         <tr>
             <td><span class="cluster">tls-auth</span></td>
