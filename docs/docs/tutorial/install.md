@@ -510,9 +510,7 @@ Corepack, который сам установит необходимую вер
   потребуются права администратора ОС), после чего выполните команду
   `corepack enable`
 
-
-#### Прочие зависимости  {: #other_dependencies }
-
+<!--
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
 ??? example "RHEL 8/9 и деривативы, Fedora 41-43"
@@ -540,36 +538,24 @@ Corepack, который сам установит необходимую вер
     apt-get install -y gcc gcc-c++ cmake git patch libstdc++-devel-static libgomp-devel-static libssl-devel-static autoconf systemd-devel automake make libtool clang
     ```
 
-    <!--
-    ```shell
-    cargo build --features dynamic_build
-    ```
-
-    Зависимости:
-
-    - libcurl
-    - libgomp
-    - libldap
-    - libsasl
-    - libyaml
-    - libzstd
-    - ncurses
-    - openssl
-    - readline
-    -->
-
 ??? example "macOS"
     Сборка под macOS почти не отличается от таковой в Linux. Потребуется
     macOS 10.15 Catalina, либо более новая версия (11+).
     Установите актуальные версии [Rust и
     Cargo](https://rustup.rs), а также NodeJS и Corepack.
-
+-->
 
 ### Получение исходного кода {: #getting_sources }
 
+Получите исходный код Picodata и установите общие зависимости для сборки (для всех [поддерживаемых ОС](#available_packages)):
+
 ```shell
-git clone https://github.com/picodata/picodata.git --recursive
+git clone https://github.com/picodata/picodata.git --recursive && cd picodata
+curl https://download.picodata.io/tarantool-picodata/install_builddeps.sh | bash
 ```
+
+!!! note "Примечание"
+    Перед выполнением этих команд убедитесь, что в системе присутствуют Git и Curl.
 
 ### Сборка {: #building }
 
