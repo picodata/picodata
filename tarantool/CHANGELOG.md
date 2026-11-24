@@ -54,6 +54,12 @@
 - `index::IndexIteratorV2` struct along with `index::Index::{select_v2, select_after_v2}`
   and `space::Space::select_v2` methods
 
+### Changed
+
+- `network::client::Client` reads as many bytes as its buffer holds and splits
+  them into responses. Before, it read the size and the body of each response
+  separately, with at least two syscalls per response over plain TCP.
+
 ### Added (picodata)
 
 - `space::UpdateOps` SQL-compatible `sql_add`, `sql_sub`, `sql_and`, `sql_or`

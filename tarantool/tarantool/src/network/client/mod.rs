@@ -445,7 +445,13 @@ async fn receiver(
     client_cell: Rc<NoYieldsRefCell<ClientInner>>,
     mut reader: impl AsyncReadExt + Unpin,
 ) {
+    // `buf[start..end]` holds the received bytes that are not processed yet.
+    // A read takes as much as the free part of the buffer holds, so one syscall
+    // usually brings several responses, where reading by the size hint took at
+    // least two syscalls for each.
     let mut buf = vec![0_u8; 4096];
+    let mut start = 0;
+    let mut end = 0;
     loop {
         let client = client_cell.borrow();
         if client.state.is_closed() || fiber::is_cancelled() {
@@ -453,22 +459,36 @@ async fn receiver(
         }
 
         let size = client.protocol.read_size_hint();
-        if buf.len() < size {
-            buf.resize(size, 0);
-        }
-        let buf_slice = &mut buf[0..size];
 
         // Reference must be dropped before yielding.
         drop(client);
 
-        let res = reader.read_exact(buf_slice).await;
+        if end - start < size {
+            // Move the incomplete message to the front, so that the message
+            // fits once the buffer is at least `size` bytes long.
+            if start > 0 {
+                buf.copy_within(start..end, 0);
+                end -= start;
+                start = 0;
+            }
+            if buf.len() < size {
+                buf.resize(size, 0);
+            }
+            let res = match reader.read(&mut buf[end..]).await {
+                // The peer has closed the connection.
+                Ok(0) => Err(std::io::ErrorKind::UnexpectedEof.into()),
+                res => res,
+            };
+            let mut client = client_cell.borrow_mut();
+            end += handle_result!(client, res);
+            continue;
+        }
 
         let mut client = client_cell.borrow_mut();
-        handle_result!(client, res);
+        let message = &buf[start..start + size];
+        start += size;
 
-        let result = client
-            .protocol
-            .process_incoming(&mut Cursor::new(buf_slice));
+        let result = client.protocol.process_incoming(&mut Cursor::new(message));
         let result = handle_result!(client, result);
         if let Some(sync) = result {
             let subscription = client.awaiting_response.remove(&sync);
@@ -836,6 +856,106 @@ mod tests {
     async fn tls_concurrent_messages_one_fiber() {
         let client = test_tls_client().await;
         test_concurrent_messages_one_fiber(client).await;
+    }
+
+    /// The receiver reads as much as its buffer holds, so it must split the
+    /// bytes into responses wherever the reads end, and grow the buffer for a
+    /// response longer than the buffer.
+    #[crate::test(tarantool = "crate")]
+    async fn responses_split_at_any_byte_or_merged() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // Writes of a few bytes make a read end inside a size prefix or a body
+        // and leave the start of the next response behind; the last round
+        // writes all its responses at once.
+        let chunk_sizes = [1, 2, 3, 7, usize::MAX];
+        // Not periodic, so that a shift of its bytes shows.
+        let payload: String = (0..1000).map(|i| format!("{i:04} ")).collect();
+        let data = payload.clone();
+        // A server answering a round of 3 pings per chunk size, the merged round
+        // has a call instead of the second ping.
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_nodelay(true).unwrap();
+            let mut greeting = [b' '; 128];
+            greeting[64..108].fill(b'A'); // base64 salt
+            stream.write_all(&greeting).unwrap();
+            for chunk_size in chunk_sizes {
+                let mut out = Vec::new();
+                for i in 0..3 {
+                    let mut size = [0; 5];
+                    stream.read_exact(&mut size).unwrap();
+                    let size = rmp::decode::read_u32(&mut &size[..]).unwrap();
+                    let mut request = vec![0; size as usize];
+                    stream.read_exact(&mut request).unwrap();
+                    let mut header = &request[..];
+                    let mut sync = None;
+                    let mut request_type = None;
+                    for _ in 0..rmp::decode::read_map_len(&mut header).unwrap() {
+                        let key = rmp::decode::read_pfix(&mut header).unwrap();
+                        let value: u64 = rmp::decode::read_int(&mut header).unwrap();
+                        match key {
+                            0x00 => request_type = Some(value),
+                            0x01 => sync = Some(value),
+                            _ => {}
+                        }
+                    }
+                    // IPROTO_CALL
+                    let is_call = request_type == Some(10);
+                    assert_eq!(is_call, chunk_size == usize::MAX && i == 1);
+                    let mut response = Vec::new();
+                    rmp::encode::write_map_len(&mut response, 3).unwrap();
+                    // IPROTO_REQUEST_TYPE (OK), IPROTO_SYNC, IPROTO_SCHEMA_VERSION
+                    for (key, value) in [(0x00, 0), (0x01, sync.unwrap()), (0x05, 1)] {
+                        rmp::encode::write_pfix(&mut response, key).unwrap();
+                        rmp::encode::write_uint(&mut response, value).unwrap();
+                    }
+                    if chunk_size == usize::MAX && i == 1 {
+                        // The body is longer than the initial buffer of the
+                        // receiver (4096 bytes) and comes after a response. Only
+                        // the merged round has it: writing 5 KB in small chunks
+                        // with a pause after each one takes too long.
+                        rmp::encode::write_map_len(&mut response, 1).unwrap();
+                        rmp::encode::write_pfix(&mut response, 0x30).unwrap(); // IPROTO_DATA
+                        rmp::encode::write_array_len(&mut response, 1).unwrap();
+                        rmp::encode::write_str(&mut response, &data).unwrap();
+                    } else {
+                        rmp::encode::write_map_len(&mut response, 0).unwrap();
+                    }
+                    rmp::encode::write_u32(&mut out, response.len() as u32).unwrap();
+                    out.extend(response);
+                }
+                for chunk in out.chunks(chunk_size) {
+                    stream.write_all(chunk).unwrap();
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+        });
+
+        let client = Client::connect("127.0.0.1", port).await.unwrap();
+        let timeout = Duration::from_secs(3);
+        for chunk_size in chunk_sizes {
+            if chunk_size == usize::MAX {
+                let (ping_1, call, ping_2) = futures::join!(
+                    client.ping().timeout(timeout),
+                    client.call("f", &()).timeout(timeout),
+                    client.ping().timeout(timeout),
+                );
+                ping_1.unwrap();
+                ping_2.unwrap();
+                let (data,): (String,) = call.unwrap().decode().unwrap();
+                assert_eq!(data, payload);
+                continue;
+            }
+            let pings = (0..3).map(|_| client.ping().timeout(timeout));
+            let pings = futures::future::join_all(pings).await;
+            for res in pings {
+                res.unwrap();
+            }
+        }
+        server.join().unwrap();
     }
 
     #[crate::test(tarantool = "crate")]

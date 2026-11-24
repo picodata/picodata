@@ -210,9 +210,10 @@ impl Protocol {
     ///
     /// Should be used together with [`Protocol::read_size_hint`] e.g:
     /// 1. Call `read_size_hint` and get its value.
-    ///    It is the number of bytes a client implementation should read from transport.
-    /// 2. Read the required number of bytes from transport
-    /// 3. Call [`Protocol::process_incoming`] with these bytes.
+    ///    It is the number of bytes the next call of `process_incoming` takes.
+    /// 2. Read at least this number of bytes from transport.
+    /// 3. Call [`Protocol::process_incoming`] with exactly that many of them,
+    ///    keeping the rest for the following calls.
     ///
     /// Returns a [`SyncIndex`] if non-technical message was received.
     /// This message can be retreived by this index with [`Protocol::take_response`].
