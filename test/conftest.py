@@ -1453,6 +1453,11 @@ class Instance:
         # panic in `Instance.check_process_alive`
         env["PICODATA_INTERNAL_BACKTRACE_DUMP"] = "1"
 
+        # Tarantool starts one memtx sort thread per host CPU, and each
+        # thread leaves a 4 MiB slab that goes to core dumps. Picodata
+        # drops TT_MEMTX_SORT_THREADS, so use the legacy variable.
+        env.setdefault("OMP_NUM_THREADS", "1")
+
         passthrough_env = [
             "ASAN_OPTIONS",
             "ASAN_SYMBOLIZER_PATH",
