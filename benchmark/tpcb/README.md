@@ -46,6 +46,29 @@ uv run python init.py \
 
 This sets up the benchmark tables.
 
+Each table property is controlled by its own option:
+
+* `--engine {memtx,vinyl}`: storage engine of the tables, `memtx` by default;
+* `--global`: create the tables as global (`DISTRIBUTED GLOBALLY`) instead of the
+  default ones sharded by the primary key (`ShardedImplicitly`);
+* `--unlogged`: create the tables as unlogged (`CREATE UNLOGGED TABLE`).
+
+Some combinations are rejected by picodata, and the script refuses them before
+touching the existing tables:
+
+* global tables can use only the memtx engine;
+* unlogged tables can use only the memtx engine;
+* global tables can't be unlogged.
+
+```bash
+uv run python init.py \
+    "postgres://postgres:Passw0rd@localhost:4327?sslmode=disable" \
+    --scale 10 --engine vinyl
+```
+
+Existing `pgbench_*` tables are dropped by the script, so the same instance can
+be reinitialized with a different engine or table type.
+
 #### 4. **Run the Benchmark**
 
 Once the database is initialized, run the benchmark using `pgbench` with a custom SQL script.

@@ -16,7 +16,38 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Initialize tables for pgbench benchmarking with Picodata.")
     parser.add_argument("connection", type=str, help="Connection string for the pgproto server")
     parser.add_argument("-s", "--scale", type=int, default=1, help="Scaling factor for the benchmark (default: 1)")
-    return parser.parse_args()
+    parser.add_argument(
+        "--engine",
+        type=str.lower,
+        choices=["memtx", "vinyl"],
+        default="memtx",
+        help="Storage engine for the benchmark tables (default: memtx)",
+    )
+    parser.add_argument(
+        "--global",
+        dest="global_",
+        action="store_true",
+        help="Create the benchmark tables as global (DISTRIBUTED GLOBALLY) instead of the default tables sharded by the primary key",
+    )
+    parser.add_argument(
+        "--unlogged",
+        action="store_true",
+        help="Create the benchmark tables as unlogged (CREATE UNLOGGED TABLE)",
+    )
+    args = parser.parse_args()
+
+    # Combinations rejected by picodata. Checked here, so that an invalid one
+    # does not leave the instance without the tables dropped below.
+    if args.global_ and args.engine != "memtx":
+        parser.error("global tables can use only the memtx engine, so --global cannot be combined with --engine vinyl")
+    if args.unlogged and args.engine != "memtx":
+        parser.error(
+            "unlogged tables can use only the memtx engine, so --unlogged cannot be combined with --engine vinyl"
+        )
+    if args.global_ and args.unlogged:
+        parser.error("global tables can't be unlogged, so --global cannot be combined with --unlogged")
+
+    return args
 
 
 def main():
@@ -27,7 +58,9 @@ def main():
     conn = psycopg.connect(args.connection, autocommit=True)
 
     # Create tables
-    print("Creating tables...")
+    create = "CREATE UNLOGGED TABLE" if args.unlogged else "CREATE TABLE"
+    table_options = f"USING {args.engine} DISTRIBUTED GLOBALLY" if args.global_ else f"USING {args.engine}"
+    print(f"Creating tables: {create} ... {table_options}")
 
     # Drop existing tables if they exist
     conn.execute("DROP TABLE IF EXISTS pgbench_branches;")
@@ -37,11 +70,16 @@ def main():
 
     # Create new tables following the structure from initCreateTables*.
     # * https://github.com/postgres/postgres/blob/db22b900244d3c51918acce44cbe5bb6f6507d32/src/bin/pgbench/pgbench.c#L4809
-    conn.execute("CREATE TABLE pgbench_branches (bid int PRIMARY KEY, bbalance int, filler varchar(88));")
-    conn.execute("CREATE TABLE pgbench_tellers (tid int PRIMARY KEY, bid int, tbalance int, filler varchar(84));")
-    conn.execute("CREATE TABLE pgbench_accounts (aid int PRIMARY KEY, bid int, abalance int, filler varchar(84));")
+    conn.execute(f"{create} pgbench_branches (bid int PRIMARY KEY, bbalance int, filler varchar(88)) {table_options};")
     conn.execute(
-        "CREATE TABLE pgbench_history (tid int, bid int, aid int, delta int, mtime datetime, filler varchar(22), PRIMARY KEY(tid, bid, aid, delta));"
+        f"{create} pgbench_tellers (tid int PRIMARY KEY, bid int, tbalance int, filler varchar(84)) {table_options};"
+    )
+    conn.execute(
+        f"{create} pgbench_accounts (aid int PRIMARY KEY, bid int, abalance int, filler varchar(84)) {table_options};"
+    )
+    conn.execute(
+        f"{create} pgbench_history (tid int, bid int, aid int, delta int, mtime datetime, filler varchar(22), "
+        f"PRIMARY KEY(tid, bid, aid, delta)) {table_options};"
     )
 
     # Set scale and table sizes
