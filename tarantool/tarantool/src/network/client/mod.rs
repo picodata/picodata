@@ -446,10 +446,10 @@ async fn receiver(
     mut reader: impl AsyncReadExt + Unpin,
 ) {
     // `buf[start..end]` holds the received bytes that are not processed yet.
-    // A read takes as much as the free part of the buffer holds, so one syscall
+    // A read takes as much as the free part of the buffer holds, so one read
     // usually brings several responses, where reading by the size hint took at
-    // least two syscalls for each.
-    let mut buf = vec![0_u8; 4096];
+    // least two for each. Over plain TCP each read is a syscall.
+    let mut buf = Vec::new();
     let mut start = 0;
     let mut end = 0;
     loop {
@@ -471,8 +471,12 @@ async fn receiver(
                 end -= start;
                 start = 0;
             }
-            if buf.len() < size {
-                buf.resize(size, 0);
+            // Room past the message lets a read bring the start of the next one.
+            // Without it each message about as long as the buffer would take two
+            // reads and a move of its body.
+            let len = size + 4096;
+            if buf.len() < len {
+                buf.resize(len, 0);
             }
             let res = match reader.read(&mut buf[end..]).await {
                 // The peer has closed the connection.
@@ -913,10 +917,11 @@ mod tests {
                         rmp::encode::write_uint(&mut response, value).unwrap();
                     }
                     if chunk_size == usize::MAX && i == 1 {
-                        // The body is longer than the initial buffer of the
-                        // receiver (4096 bytes) and comes after a response. Only
-                        // the merged round has it: writing 5 KB in small chunks
-                        // with a pause after each one takes too long.
+                        // The body is longer than the buffer of the receiver
+                        // (4 KB past the longest response so far) and comes after
+                        // a response. Only the merged round has it: writing 5 KB
+                        // in small chunks with a pause after each one takes too
+                        // long.
                         rmp::encode::write_map_len(&mut response, 1).unwrap();
                         rmp::encode::write_pfix(&mut response, 0x30).unwrap(); // IPROTO_DATA
                         rmp::encode::write_array_len(&mut response, 1).unwrap();
