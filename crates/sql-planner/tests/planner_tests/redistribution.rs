@@ -1808,3 +1808,207 @@ fn collapsed_alternatives_keep_aggregate_single_node() {
     let plan = sql_to_optimized_ir(&query, vec![]);
     assert_eq!(Slices::empty(), *plan.slices());
 }
+
+/// The inner child is moved (Full), so a subquery compared with its column
+/// in ON must be copied everywhere too, though it is co-sharded with it.
+#[test]
+fn join_on_sq_reads_moved_inner() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    JOIN t5 AS t2 ON t1.b = t2.b AND t2.a IN (SELECT a FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      join on ((t1.b::int = t2.b::int and t2.a::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t3.a::int -> a)
+            scan t5 -> t3
+    "#);
+}
+
+/// Same with a subquery that would be resharded by the inner column.
+#[test]
+fn join_on_segment_sq_reads_moved_inner() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    JOIN t5 AS t2 ON t1.b = t2.b AND t2.a IN (SELECT b FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      join on ((t1.b::int = t2.b::int and t2.a::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t3.b::int -> b)
+            scan t5 -> t3
+    "#);
+}
+
+/// A subquery compared with the outer column keeps its local policy.
+#[test]
+fn join_on_sq_reads_outer() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    JOIN t5 AS t2 ON t1.b = t2.b AND t1.a IN (SELECT a FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      join on ((t1.b::int = t2.b::int and t1.a::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      scan
+        projection (t3.a::int -> a)
+          scan t5 -> t3
+    "#);
+}
+
+/// The inner child is resharded by the join key, and the subquery matches it
+/// by that key, so the subquery needs no motion.
+#[test]
+fn join_on_sq_matches_new_inner_key() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    JOIN t5 AS t2 ON t1.a = t2.b AND t2.b IN (SELECT a FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      join on ((t1.a::int = t2.b::int and t2.b::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      scan
+        projection (t3.a::int -> a)
+          scan t5 -> t3
+    "#);
+}
+
+/// The inner child is resharded by the join key, and the subquery is
+/// resharded to that key too, not copied everywhere.
+#[test]
+fn join_on_sq_resharded_by_new_inner_key() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    JOIN t5 AS t2 ON t1.a = t2.b AND t2.b IN (SELECT b FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      join on ((t1.a::int = t2.b::int and t2.b::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
+        scan
+          projection (t3.b::int -> b)
+            scan t5 -> t3
+    "#);
+}
+
+/// The inner child is resharded by the join key, so its old key no longer
+/// places it, and a subquery matching the old key is copied everywhere.
+#[test]
+fn join_on_sq_matches_old_inner_key() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    JOIN t5 AS t2 ON t1.a = t2.b AND t2.a IN (SELECT a FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      join on ((t1.a::int = t2.b::int and t2.a::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: segment([ref(b)]), program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t3.a::int -> a)
+            scan t5 -> t3
+    "#);
+}
+
+/// A left join copies its inner child the same way.
+#[test]
+fn left_join_on_sq_reads_moved_inner() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    LEFT JOIN t5 AS t2 ON t1.b = t2.b AND t2.a IN (SELECT a FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      left join on ((t1.b::int = t2.b::int and t2.a::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t3.a::int -> a)
+            scan t5 -> t3
+    "#);
+}
+
+/// A moved inner child keeps the old `bucket_id` values, so a subquery
+/// compared by `bucket_id` is not on the same node either.
+#[test]
+fn join_on_sq_bucket_id_of_moved_inner() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    JOIN t5 AS t2 ON t1.b = t2.b
+     AND t2.bucket_id IN (SELECT bucket_id FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      join on ((t1.b::int = t2.b::int and t2.bucket_id::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      motion [policy: full, program: ReshardIfNeeded]
+        scan
+          projection (t3.bucket_id::int -> bucket_id)
+            scan t5 -> t3
+    "#);
+}
+
+/// The inner child is copied everywhere, so a single-node subquery needs no
+/// motion of its own: every node gets the partial aggregates and finishes it.
+#[test]
+fn join_on_single_sq_reads_moved_inner() {
+    let input = r#"explain (logical) SELECT t1.a FROM t5 AS t1
+    JOIN t5 AS t2 ON t1.b = t2.b AND t2.a IN (SELECT max(a) FROM t5 AS t3)"#;
+    let plan = sql_to_optimized_ir(input, vec![]);
+
+    insta::assert_snapshot!(explain_logical(&plan).unwrap(), @r#"
+    projection (t1.a::int -> a)
+      join on ((t1.b::int = t2.b::int and t2.a::int in ROW($0)))
+        scan t5 -> t1
+        motion [policy: full, program: ReshardIfNeeded]
+          projection (t2.bucket_id::int -> bucket_id, t2.a::int -> a, t2.b::int -> b)
+            scan t5 -> t2
+    subquery $0:
+      scan
+        projection (max(max_1::int)::int -> col_1)
+          motion [policy: full, program: ReshardIfNeeded]
+            projection (max(t3.a::int::int)::int -> max_1)
+              scan t5 -> t3
+    "#);
+}

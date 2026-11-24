@@ -1803,8 +1803,6 @@ impl Plan {
             return Ok(());
         }
 
-        let mut strategy = self.resolve_sq_conflicts(rel_id, cond_id)?;
-
         let Relational::Join(Join {
             left: outer,
             right: inner,
@@ -1814,19 +1812,30 @@ impl Plan {
             unreachable!("Relation should be Join")
         };
         let (outer, inner) = (*outer, *inner);
+        let has_global_child = matches!(
+            (self.rel_distr_ref(outer)?, self.rel_distr_ref(inner)?),
+            (Distribution::Global, _) | (_, Distribution::Global)
+        );
 
+        // Move the inner child first: the condition then refers to its Motion,
+        // so subquery policies below see where inner rows really are.
+        let mut inner_strategy = Strategy::new(rel_id);
         let facts_policy = self.motion_policy_for_inner_via_facts(rel_id, state)?;
-        strategy.upsert_child(inner, facts_policy, Program::default());
+        inner_strategy.upsert_child(inner, facts_policy, Program::default());
+        self.insert_motion_nodes(inner_strategy, state)?;
+
+        if self.get_relation_subqueries(rel_id)?.is_empty() {
+            return Ok(());
+        }
+        let mut strategy = self.resolve_sq_conflicts(rel_id, cond_id)?;
 
         // If at least one child is Global, default subquery strategies set by
         // `resolve_sq_conflicts` may be wrong for conditions with multiple
         // and-chains containing Segment subqueries — fix them up here.
-        let outer_dist = self.rel_distr_ref(outer)?;
-        let inner_dist = self.rel_distr_ref(inner)?;
-        if matches!(
-            (outer_dist, inner_dist),
-            (Distribution::Global, _) | (_, Distribution::Global)
-        ) {
+        // The children are taken before the inner Motion: an inner child it
+        // copies to every node needs no fix, as the outer child stays sharded
+        // and each joined pair is still on one node.
+        if has_global_child {
             self.correct_sq_strategy_for_global_tbl(rel_id, cond_id, &mut strategy)?;
         }
 
