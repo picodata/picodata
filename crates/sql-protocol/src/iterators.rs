@@ -25,16 +25,6 @@ impl<'a, K, V> MsgpackMapIterator<'a, K, V> {
             decode_value_f,
         }
     }
-
-    pub fn empty() -> Self {
-        Self {
-            count: 0,
-            current: 0,
-            raw_msgpack: Cursor::new(&[]),
-            decode_key_f: |_| Err(ProtocolError::DecodeError("empty map".to_string())),
-            decode_value_f: |_| Err(ProtocolError::DecodeError("empty map".to_string())),
-        }
-    }
 }
 
 impl<K, V> Iterator for MsgpackMapIterator<'_, K, V> {
