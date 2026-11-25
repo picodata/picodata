@@ -5,10 +5,20 @@
 //! `decode/*` reads a message the way the storage does and visits each row.
 //!
 //! Run: cargo bench -p sql-planner --bench protocol
+//!
+//! Count the events of one case, `<encode|decode>/<insert|dql>/<rows>`, run
+//! `n` times; `--no-run` prints the binary. Subtract a run with
+//! `PROTOCOL_COUNT=0`, which is the cost of the preparation:
+//!
+//! ```text
+//! PROTOCOL_COUNT=20000 taskset -c 3 perf stat -e instructions:u,cycles:u \
+//!     target/release/deps/protocol-<hash> encode/dql/200
+//! ```
 
+use std::env;
 use std::rc::Rc;
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{black_box, criterion_group, BenchmarkId, Criterion, Throughput};
 use smol_str::SmolStr;
 use sql_executor::executor::engine::helpers::{
     init_insert_tuple_builder, materialize_constant_values, vtable_columns,
@@ -291,4 +301,52 @@ fn bench(c: &mut Criterion) {
 }
 
 criterion_group!(benches, bench);
-criterion_main!(benches);
+
+/// `PROTOCOL_COUNT=<n> cargo bench -p sql-planner --bench protocol --
+/// <group>/<message>/<rows>` runs one case `n` times without criterion, so
+/// that `perf stat` counts the events of a fixed amount of work. A run with
+/// `n = 0` gives the cost of the preparation. Arguments that start with `-`,
+/// such as the `--bench` that cargo adds, are skipped.
+fn main() {
+    let Ok(count) = env::var("PROTOCOL_COUNT") else {
+        benches();
+        Criterion::default().configure_from_args().final_summary();
+        return;
+    };
+    let count: usize = count.parse().expect("PROTOCOL_COUNT is a number");
+    let id = env::args()
+        .skip(1)
+        .find(|arg| !arg.starts_with('-'))
+        .expect("a case: <group>/<message>/<rows>");
+    let (case, rows) = id
+        .rsplit_once('/')
+        .expect("a case: <group>/<message>/<rows>");
+    let rows: usize = rows.parse().expect("<rows> is a number");
+    match case {
+        "encode/insert" => {
+            let data = insert_data(rows);
+            for _ in 0..count {
+                black_box(encode_insert(black_box(&data)));
+            }
+        }
+        "encode/dql" => {
+            let source = dql_source(rows);
+            for _ in 0..count {
+                black_box(encode_dql(black_box(&source)));
+            }
+        }
+        "decode/insert" => {
+            let bytes = encode_insert(&insert_data(rows));
+            for _ in 0..count {
+                black_box(decode_insert(black_box(&bytes)));
+            }
+        }
+        "decode/dql" => {
+            let bytes = encode_dql(&dql_source(rows));
+            for _ in 0..count {
+                black_box(decode_dql(black_box(&bytes)));
+            }
+        }
+        _ => panic!("unknown case `{id}`"),
+    }
+}
