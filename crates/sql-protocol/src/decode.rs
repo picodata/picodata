@@ -5,7 +5,7 @@ use crate::dml::update::{UpdateIterator, UpdateSharedKeyIterator};
 use crate::dql::DQLPacketPayloadIterator;
 use crate::error::ProtocolError;
 use crate::message_type::MessageType;
-use crate::msgpack::skip_value;
+use crate::msgpack::{shift_pos, skip_value};
 use rmp::decode::{
     read_array_len, read_bool, read_f32, read_f64, read_int, read_map_len, read_pfix, read_str_len,
     RmpRead,
@@ -140,6 +140,25 @@ impl<'bytes> ProtocolMessage<'bytes> {
     }
 }
 
+/// Reads a vshard timeout. Lua sends it as an integer or as a float.
+fn read_timeout(stream: &mut Cursor<&[u8]>) -> IoResult<f64> {
+    let marker = stream.get_ref().get(stream.position() as usize);
+    match marker.map(|byte| Marker::from_u8(*byte)) {
+        Some(Marker::F64) => read_f64(stream).map_err(IoError::other),
+        Some(Marker::F32) => read_f32(stream).map(f64::from).map_err(IoError::other),
+        _ => read_int(stream).map_err(IoError::other),
+    }
+}
+
+/// Reads a string that borrows from the input.
+fn read_str<'bytes>(stream: &mut Cursor<&'bytes [u8]>) -> IoResult<&'bytes str> {
+    let len = read_str_len(stream).map_err(IoError::other)?;
+    let mp: &'bytes [u8] = stream.get_ref();
+    let start = stream.position() as usize;
+    shift_pos(stream, len as u64)?;
+    from_utf8(&mp[start..stream.position() as usize]).map_err(IoError::other)
+}
+
 pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
     let mut stream = Cursor::new(mp);
     let elems = read_array_len(&mut stream)
@@ -150,35 +169,16 @@ pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
             "Expected an array of 5 or 6 elements, got: {elems}"
         )));
     }
-    // Decode vshard storage timeout. It can be either integer or float.
-    let marker = Marker::from_u8(mp[stream.position() as usize]);
-    let timeout = match marker {
-        Marker::F64 => read_f64(&mut stream)
-            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
-        Marker::F32 => read_f32(&mut stream)
-            .map(|v| v as f64)
-            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
-        _ => read_int::<f64, _>(&mut stream)
-            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
-    };
+    let timeout = read_timeout(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?;
 
     // Decode vshard storage reference ID.
     let rid = read_int(&mut stream).map_err(|e| {
         IoError::other(format!("Failed to decode vshard storage reference ID: {e}"))
     })?;
 
-    // Decode vshard storage session ID.
-    let sid_len = read_str_len(&mut stream).map_err(|e| {
-        IoError::other(format!(
-            "Failed to decode vshard storage session ID length: {e}"
-        ))
-    })?;
-    let start = stream.position() as usize;
-    let end = start + sid_len as usize;
-    let sid_bytes = &mp[start..end];
-    let sid = from_utf8(sid_bytes)
-        .map_err(|e| IoError::other(format!("Invalid UTF-8 in vshard storage session ID: {e}")))?;
-    stream.set_position(end as u64);
+    let sid = read_str(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode vshard storage session ID: {e}")))?;
 
     let need_ref = read_bool(&mut stream).map_err(|e| {
         IoError::other(format!(
@@ -213,25 +213,11 @@ pub fn query_meta_args_split(mp: &[u8]) -> IoResult<QueryMetaArgs<'_>> {
             "Expected an array of 3 elements, got: {elems}"
         )));
     }
-    // Decode vshard storage timeout. It can be either integer or float.
-    let marker = Marker::from_u8(mp[stream.position() as usize]);
-    let timeout = match marker {
-        Marker::F64 => read_f64(&mut stream)
-            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
-        Marker::F32 => read_f32(&mut stream)
-            .map(|v| v as f64)
-            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
-        _ => read_int::<f64, _>(&mut stream)
-            .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?,
-    };
+    let timeout = read_timeout(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?;
 
-    let len = read_str_len(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode request_id len: {e}")))?;
-    let start = stream.position() as usize;
-    let end = start + len as usize;
-    let request_id = from_utf8(&mp[start..end])
-        .map_err(|e| IoError::other(format!("Invalid UTF-8 in request_id: {e}")))?;
-    stream.set_position(end as u64);
+    let request_id = read_str(&mut stream)
+        .map_err(|e| IoError::other(format!("Failed to decode request_id: {e}")))?;
 
     let plan_id = read_int(&mut stream)
         .map_err(|e| IoError::other(format!("Failed to decode plan_id: {e}")))?;
@@ -393,5 +379,24 @@ mod tests {
         let slice2 = iter.next().unwrap().unwrap();
         assert_eq!(slice2, b"\x92\x02\xa3two");
         assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_execute_args_split_truncated() {
+        // [1.5, 7, "sid", true, ["rid", 0, nil]]
+        let buf = b"\x95\xcb\x3f\xf8\x00\x00\x00\x00\x00\x00\x07\xa3sid\xc3\x93\xa3rid\x00\xc0";
+        // The message is the last 7 bytes. The split does not examine it.
+        for len in 0..buf.len() - 7 {
+            assert!(execute_args_split(&buf[..len]).is_err(), "{len}");
+        }
+    }
+
+    #[test]
+    fn test_query_meta_args_split_truncated() {
+        // [3, "rid", 42]
+        let buf = b"\x93\x03\xa3rid\x2a";
+        for len in 0..buf.len() {
+            assert!(query_meta_args_split(&buf[..len]).is_err(), "{len}");
+        }
     }
 }
