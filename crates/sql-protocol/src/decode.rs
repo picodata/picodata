@@ -11,6 +11,7 @@ use rmp::decode::{
     RmpRead,
 };
 use rmp::Marker;
+use std::fmt::Display;
 use std::io::{Cursor, Error as IoError, Result as IoResult};
 use std::str::from_utf8;
 
@@ -140,6 +141,10 @@ impl<'bytes> ProtocolMessage<'bytes> {
     }
 }
 
+fn decode_error<E: Display>(what: &'static str) -> impl FnOnce(E) -> IoError {
+    move |e| IoError::other(format!("Failed to decode {what}: {e}"))
+}
+
 /// Reads a vshard timeout. Lua sends it as an integer or as a float.
 fn read_timeout(stream: &mut Cursor<&[u8]>) -> IoResult<f64> {
     let marker = stream.get_ref().get(stream.position() as usize);
@@ -161,66 +166,39 @@ fn read_str<'bytes>(stream: &mut Cursor<&'bytes [u8]>) -> IoResult<&'bytes str> 
 
 pub fn execute_args_split(mp: &[u8]) -> IoResult<ExecuteArgs<'_>> {
     let mut stream = Cursor::new(mp);
-    let elems = read_array_len(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode arguments array length: {e}")))?
-        as usize;
-    if elems != 5 && elems != 6 {
+    let elems = read_array_len(&mut stream).map_err(decode_error("arguments array length"))?;
+    if elems != 5 {
         return Err(IoError::other(format!(
-            "Expected an array of 5 or 6 elements, got: {elems}"
+            "Expected an array of 5 elements, got: {elems}"
         )));
     }
-    let timeout = read_timeout(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?;
+    let timeout = read_timeout(&mut stream).map_err(decode_error("vshard storage timeout"))?;
+    let rid = read_int(&mut stream).map_err(decode_error("vshard storage reference ID"))?;
+    let sid = read_str(&mut stream).map_err(decode_error("vshard storage session ID"))?;
+    let need_ref = read_bool(&mut stream).map_err(decode_error("need_ref flag"))?;
+    // `ProtocolMessage::decode_from_bytes` checks the message.
+    let data = &mp[stream.position() as usize..];
 
-    // Decode vshard storage reference ID.
-    let rid = read_int(&mut stream).map_err(|e| {
-        IoError::other(format!("Failed to decode vshard storage reference ID: {e}"))
-    })?;
-
-    let sid = read_str(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode vshard storage session ID: {e}")))?;
-
-    let need_ref = read_bool(&mut stream).map_err(|e| {
-        IoError::other(format!(
-            "Failed to decode vshard storage read only flag: {e}"
-        ))
-    })?;
-
-    let start_pos = stream.position() as usize;
-    let array_len = read_array_len(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to unpack required from array: {e}")))?;
-    if array_len != 3 {
-        return Err(IoError::other(format!(
-            "Expected an array of 3 element in required, got: {array_len}"
-        )));
-    }
     Ok(ExecuteArgs {
         timeout,
         need_ref,
         rid,
         sid,
-        data: &mp[start_pos..],
+        data,
     })
 }
 
 pub fn query_meta_args_split(mp: &[u8]) -> IoResult<QueryMetaArgs<'_>> {
     let mut stream = Cursor::new(mp);
-    let elems = read_array_len(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode arguments array length: {e}")))?
-        as usize;
+    let elems = read_array_len(&mut stream).map_err(decode_error("arguments array length"))?;
     if elems != 3 {
         return Err(IoError::other(format!(
             "Expected an array of 3 elements, got: {elems}"
         )));
     }
-    let timeout = read_timeout(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode vshard storage timeout: {e}")))?;
-
-    let request_id = read_str(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode request_id: {e}")))?;
-
-    let plan_id = read_int(&mut stream)
-        .map_err(|e| IoError::other(format!("Failed to decode plan_id: {e}")))?;
+    let timeout = read_timeout(&mut stream).map_err(decode_error("vshard storage timeout"))?;
+    let request_id = read_str(&mut stream).map_err(decode_error("request_id"))?;
+    let plan_id = read_int(&mut stream).map_err(decode_error("plan_id"))?;
 
     Ok(QueryMetaArgs {
         timeout,
