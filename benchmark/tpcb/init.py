@@ -93,12 +93,12 @@ def main():
 
     # Populate pgbench_branches table
     print("Populating pgbench_branches...")
-    for i in tqdm(range(nbranches * scale)):
+    for i in tqdm(range(1, nbranches * scale + 1)):
         conn.execute("INSERT INTO pgbench_branches(bid, bbalance) VALUES (%s, 0)", (i,))
 
     # Populate pgbench_tellers table
     print("Populating pgbench_tellers...")
-    for tid in tqdm(range(ntellers * scale)):
+    for tid in tqdm(range(1, ntellers * scale + 1)):
         conn.execute(
             "INSERT INTO pgbench_tellers(tid, bid, tbalance) VALUES (%(tid)s::int, (%(tid)s::int - 1) / %(ntellers)s::int + 1, 0)",
             {"tid": tid, "ntellers": ntellers},
@@ -112,7 +112,7 @@ def main():
     with conn.pipeline() as pipeline:
         # batch rows so we can execute less queries
         rows = []
-        for aid in tqdm(range(naccounts * scale)):
+        for aid in tqdm(range(1, naccounts * scale + 1)):
             bid = (aid - 1) // naccounts + 1
             rows.append((aid, bid))
 
