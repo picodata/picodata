@@ -102,12 +102,21 @@ def test_pipeline_restores_after_error(postgres: Postgres):
         conn.execute("insert into test values (2)")
         # this will cause duplicate key error during the pipeline
         conn.execute("insert into test values (1)")
-        # so this shouldn't be executed
-        conn.execute("insert into test values (1487)")
         # NOTE: In contrast to postgres, the insertion of 2 will not be rolled
         # back due to the lack of proper transaction support.
+        # The server sends the error at once, and psycopg raises it from the
+        # first call that reads the results: the next execute() or sync().
+        # Always send the sync to end the failed group: after the error,
+        # sync() raises PipelineAborted.
         with pytest.raises(psycopg.InternalError, match="Duplicate key"):
-            pipeline.sync()
+            try:
+                # so this shouldn't be executed
+                conn.execute("insert into test values (1487)")
+            finally:
+                try:
+                    pipeline.sync()
+                except psycopg.errors.PipelineAborted:
+                    pass
 
         # 3rd group of messages
         conn.execute("insert into test values (3)")
