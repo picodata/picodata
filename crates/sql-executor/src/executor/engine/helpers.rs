@@ -1494,82 +1494,96 @@ pub fn materialize_values(
         }
     }
 
-    let mut vtable = if !only_constants {
-        // We need to execute VALUES as a local SQL.
-        let columns = vtable_columns(exec_plan.get_ir_plan(), values_id)?;
+    if only_constants {
+        let rows = rows.clone();
+        return materialize_constant_values(exec_plan.get_mut_ir_plan(), &rows);
+    }
 
-        let mut port = runtime.new_port();
-        // The dispatch mode is fixed, so settle the SQL shape before hashing it.
-        exec_plan.normalize_for_dispatch(values_id, &Buckets::Any)?;
-        exec_plan.set_plan_id(values_id)?;
-        runtime.dispatch(exec_plan, values_id, &Buckets::Any, &mut port)?;
+    // We need to execute VALUES as a local SQL.
+    let columns = vtable_columns(exec_plan.get_ir_plan(), values_id)?;
 
-        let mut vtable = VirtualTable::with_columns(columns);
-        let scheduler_opts = runtime.get_scheduler_options();
-        let mut ys = Scheduler::new(&scheduler_opts);
-        for mp in port.iter().skip(1) {
-            ys.maybe_yield(&scheduler_opts)
-                .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
-            vtable.write_all(mp).map_err(|e| {
-                SbroadError::FailedTo(
-                    Action::Create,
-                    Some(Entity::VirtualTable),
-                    format_smolstr!("{e}"),
-                )
-            })?;
-        }
-        vtable
-    } else {
-        let limit = exec_plan.get_ir_plan().effective_options.sql_motion_row_max;
-        let values_count = rows.len();
-        if limit > 0 && limit < values_count as i64 {
-            return Err(SbroadError::motion_row_max_exceeded(limit, values_count));
-        }
+    let mut port = runtime.new_port();
+    // The dispatch mode is fixed, so settle the SQL shape before hashing it.
+    exec_plan.normalize_for_dispatch(values_id, &Buckets::Any)?;
+    exec_plan.set_plan_id(values_id)?;
+    runtime.dispatch(exec_plan, values_id, &Buckets::Any, &mut port)?;
 
-        let first_row_id = rows.first().expect("Values node must contain rows.");
-        let columns_len = exec_plan
-            .get_ir_plan()
-            .get_expression_node(*first_row_id)?
-            .get_row_list()?
-            .len();
-
-        // Create vtable columns with default column field (that will be fixed later).
-        let mut vtable = VirtualTable::with_columns(vec![Column::default(); columns_len]);
-        // All children are constants, can materialize VALUES locally and take all constants.
-        vtable.get_mut_tuples().reserve(rows.len());
-        for row_id in rows.clone() {
-            let mut row: VTableTuple = Vec::with_capacity(columns_len);
-            for idx in 0..columns_len {
-                let plan = exec_plan.get_mut_ir_plan();
-                let column_id = plan.get_row_list(row_id)?[idx];
-                let column_node = plan.get_mut_expression_node(column_id)?;
-                let MutExpression::Constant(Constant { ref mut value, .. }) = column_node else {
-                    unreachable!("checked before that there can be only constants");
-                };
-                // Take the value avoiding cloning.
-                row.push(std::mem::replace(value, Value::Null));
-            }
-
-            vtable.add_tuple(row);
-        }
-        vtable
-    };
-
-    // This isn't cheap and should be avoided once we support type coercions.
-    // (https://git.picodata.io/core/picodata/-/issues/1812)
-    let vtable_types = vtable.get_types();
-    let unified_types = calculate_unified_types(vtable_types)?;
-    vtable.cast_values(&unified_types)?;
+    let mut vtable = VirtualTable::with_columns(columns);
+    let scheduler_opts = runtime.get_scheduler_options();
+    let mut ys = Scheduler::new(&scheduler_opts);
+    for mp in port.iter().skip(1) {
+        ys.maybe_yield(&scheduler_opts)
+            .map_err(|e| SbroadError::Other(e.to_smolstr()))?;
+        vtable.write_all(mp).map_err(|e| {
+            SbroadError::FailedTo(
+                Action::Create,
+                Some(Entity::VirtualTable),
+                format_smolstr!("{e}"),
+            )
+        })?;
+    }
+    unify_vtable_types(&mut vtable)?;
 
     // The caller unlinks the motion above VALUES, which hides this subtree from
     // execution, but the raw serialize-as-empty traversals still walk into it.
     // Only subqueries put motions there, and rows of constants have none: they
     // skip the stub, which would copy the whole shared arena.
-    if !only_constants {
-        let _ = exec_plan.get_mut_ir_plan().replace_with_stub(values_id);
-    }
+    let _ = exec_plan.get_mut_ir_plan().replace_with_stub(values_id);
 
     Ok(vtable)
+}
+
+/// Materializes the rows of VALUES on the router when they are all
+/// constants: takes the constants out of the plan without a dispatch.
+///
+/// # Errors
+/// - The row count is above `sql_motion_row_max`.
+/// - Types mismatch.
+///
+/// # Panics
+/// - `rows` is empty or has a value that is not a constant.
+pub fn materialize_constant_values(
+    plan: &mut Plan,
+    rows: &[NodeId],
+) -> Result<VirtualTable, SbroadError> {
+    let limit = plan.effective_options.sql_motion_row_max;
+    let values_count = rows.len();
+    if limit > 0 && limit < values_count as i64 {
+        return Err(SbroadError::motion_row_max_exceeded(limit, values_count));
+    }
+
+    let first_row_id = rows.first().expect("Values node must contain rows.");
+    let columns_len = plan
+        .get_expression_node(*first_row_id)?
+        .get_row_list()?
+        .len();
+
+    // Create vtable columns with default column field (that will be fixed later).
+    let mut vtable = VirtualTable::with_columns(vec![Column::default(); columns_len]);
+    vtable.get_mut_tuples().reserve(rows.len());
+    for &row_id in rows {
+        let mut row: VTableTuple = Vec::with_capacity(columns_len);
+        for idx in 0..columns_len {
+            let column_id = plan.get_row_list(row_id)?[idx];
+            let column_node = plan.get_mut_expression_node(column_id)?;
+            let MutExpression::Constant(Constant { ref mut value, .. }) = column_node else {
+                panic!("Constant expected.");
+            };
+            // Take the value avoiding cloning.
+            row.push(std::mem::replace(value, Value::Null));
+        }
+
+        vtable.add_tuple(row);
+    }
+    unify_vtable_types(&mut vtable)?;
+    Ok(vtable)
+}
+
+// This isn't cheap and should be avoided once we support type coercions.
+// (https://git.picodata.io/core/picodata/-/issues/1812)
+fn unify_vtable_types(vtable: &mut VirtualTable) -> Result<(), SbroadError> {
+    let unified_types = calculate_unified_types(vtable.get_types())?;
+    vtable.cast_values(&unified_types)
 }
 
 /// Materialize a motion subtree into a virtual table.
