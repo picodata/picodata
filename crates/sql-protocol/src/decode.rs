@@ -1,8 +1,4 @@
-use crate::dml::delete::{DeleteFilteredIterator, DeleteFullIterator};
 use crate::dml::dml_type::DMLType;
-use crate::dml::insert::{InsertIterator, InsertMaterializedIterator};
-use crate::dml::update::{UpdateIterator, UpdateSharedKeyIterator};
-use crate::dql::DQLPacketPayloadIterator;
 use crate::error::ProtocolError;
 use crate::message_type::MessageType;
 use crate::msgpack::{shift_pos, skip_value};
@@ -31,6 +27,7 @@ pub struct ExecuteArgs<'bytes> {
     pub data: &'bytes [u8],
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProtocolMessageType {
     Dql,
     Dml(DMLType),
@@ -40,22 +37,12 @@ pub enum ProtocolMessageType {
 
 /// A decoded protocol message.
 /// Consists of common data that identifies the request and message type.
-/// `bytes` contains the payload for this message.
+/// `payload` is the rest of the message; the caller decodes it with the
+/// iterator of `msg_type`.
 pub struct ProtocolMessage<'bytes> {
     pub request_id: &'bytes str,
     pub msg_type: ProtocolMessageType,
-    payload: &'bytes [u8],
-}
-
-pub enum ProtocolMessageIter<'bytes> {
-    Dql(DQLPacketPayloadIterator<'bytes>),
-    DmlInsert(InsertIterator<'bytes>),
-    DmlUpdate(UpdateSharedKeyIterator<'bytes>),
-    DmlDelete(DeleteFullIterator<'bytes>),
-    LocalDmlInsert(InsertMaterializedIterator<'bytes>),
-    LocalDmlUpdate(UpdateIterator<'bytes>),
-    LocalDmlDelete(DeleteFilteredIterator<'bytes>),
-    Block(&'bytes [u8]),
+    pub payload: &'bytes [u8],
 }
 
 impl<'bytes> ProtocolMessage<'bytes> {
@@ -109,36 +96,6 @@ impl<'bytes> ProtocolMessage<'bytes> {
             msg_type,
             payload: &mp[pos..],
         })
-    }
-
-    /// Returns an iterator over the message payload.
-    pub fn get_iter(&self) -> Result<ProtocolMessageIter<'bytes>, ProtocolError> {
-        match &self.msg_type {
-            ProtocolMessageType::Dql => {
-                DQLPacketPayloadIterator::new(self.payload).map(ProtocolMessageIter::Dql)
-            }
-            ProtocolMessageType::Dml(dml_type) => match dml_type {
-                DMLType::Insert => {
-                    InsertIterator::new(self.payload).map(ProtocolMessageIter::DmlInsert)
-                }
-                DMLType::Update => {
-                    UpdateSharedKeyIterator::new(self.payload).map(ProtocolMessageIter::DmlUpdate)
-                }
-                DMLType::Delete => {
-                    DeleteFullIterator::new(self.payload).map(ProtocolMessageIter::DmlDelete)
-                }
-            },
-            ProtocolMessageType::LocalDml(dml_type) => match dml_type {
-                DMLType::Insert => InsertMaterializedIterator::new(self.payload)
-                    .map(ProtocolMessageIter::LocalDmlInsert),
-                DMLType::Update => {
-                    UpdateIterator::new(self.payload).map(ProtocolMessageIter::LocalDmlUpdate)
-                }
-                DMLType::Delete => DeleteFilteredIterator::new(self.payload)
-                    .map(ProtocolMessageIter::LocalDmlDelete),
-            },
-            ProtocolMessageType::Block => Ok(ProtocolMessageIter::Block(self.payload)),
-        }
     }
 }
 

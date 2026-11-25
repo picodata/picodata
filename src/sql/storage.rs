@@ -40,7 +40,8 @@ use sql::explain::executor::MotionInfo;
 use sql::ir::node::NodeId;
 use sql::ir::tree::Snapshot;
 use sql::ir::value::Value;
-use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter, ProtocolMessageType};
+use sql_protocol::decode::{ProtocolMessage, ProtocolMessageType};
+use sql_protocol::dql::DQLPacketPayloadIterator;
 use sql_protocol::dql_encoder::ColumnType;
 use sql_protocol::error::ProtocolError;
 use sql_protocol::iterators::TupleIterator;
@@ -889,19 +890,14 @@ impl StorageRuntime {
     ) -> Result<(), SbroadError> {
         match package.msg_type {
             ProtocolMessageType::Dql => {
-                let ProtocolMessageIter::Dql(info) = package.get_iter()? else {
-                    unreachable!("should be dql iterator")
-                };
+                let info = DQLPacketPayloadIterator::new(package.payload)?;
                 dql_execute(self, package.request_id, info, port, timeout)?;
             }
             ProtocolMessageType::Dml(_) | ProtocolMessageType::LocalDml(_) => {
                 dml_execute(self, &package, port, timeout)?;
             }
             ProtocolMessageType::Block => {
-                let ProtocolMessageIter::Block(bytes) = package.get_iter()? else {
-                    unreachable!("must be block")
-                };
-                let block: BlockExecData = rmp_serde::from_slice(bytes).map_err(|e| {
+                let block: BlockExecData = rmp_serde::from_slice(package.payload).map_err(|e| {
                     SbroadError::Other(format_smolstr!(
                         "failed to parse block message payload: {e}"
                     ))

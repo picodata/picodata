@@ -36,9 +36,10 @@ use sql_ir::ir::node::{Insert, Values};
 use sql_ir::ir::relation::{Column, ColumnRole, SpaceEngine, Table};
 use sql_ir::ir::types::{DerivedType, UnrestrictedType};
 use sql_ir::ir::value::{try_parse_datetime, Value};
-use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter};
-use sql_protocol::dml::insert::{write_insert_packet, InsertResult};
-use sql_protocol::dql::{write_dql_packet, DQLResult};
+use sql_protocol::decode::{ProtocolMessage, ProtocolMessageType};
+use sql_protocol::dml::dml_type::DMLType;
+use sql_protocol::dml::insert::{write_insert_packet, InsertIterator, InsertResult};
+use sql_protocol::dql::{write_dql_packet, DQLPacketPayloadIterator, DQLResult};
 use sql_protocol::msgpack::ByteCounter;
 
 /// A router with the table of `benchmark/batched-inserts` as `t`, and a
@@ -208,9 +209,8 @@ fn encode_dql(source: &DqlProtocol) -> Vec<u8> {
 /// Read each field of an insert message and visit each row.
 fn decode_insert(bytes: &[u8]) -> usize {
     let msg = ProtocolMessage::decode_from_bytes(bytes).unwrap();
-    let ProtocolMessageIter::DmlInsert(iter) = msg.get_iter().unwrap() else {
-        panic!("not an insert");
-    };
+    assert_eq!(msg.msg_type, ProtocolMessageType::Dml(DMLType::Insert));
+    let iter = InsertIterator::new(msg.payload).unwrap();
     let mut total = msg.request_id.len();
     for field in iter {
         match field.unwrap() {
@@ -230,9 +230,8 @@ fn decode_insert(bytes: &[u8]) -> usize {
 /// Read each field of a DQL message and visit each row of each virtual table.
 fn decode_dql(bytes: &[u8]) -> usize {
     let msg = ProtocolMessage::decode_from_bytes(bytes).unwrap();
-    let ProtocolMessageIter::Dql(iter) = msg.get_iter().unwrap() else {
-        panic!("not a DQL");
-    };
+    assert_eq!(msg.msg_type, ProtocolMessageType::Dql);
+    let iter = DQLPacketPayloadIterator::new(msg.payload).unwrap();
     let mut total = msg.request_id.len();
     for field in iter {
         match field.unwrap() {

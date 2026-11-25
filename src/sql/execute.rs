@@ -41,10 +41,11 @@ use sql::ir::relation::{Column, ColumnRole};
 use sql::ir::transformation::redistribution::{MotionKey, Target};
 use sql::ir::value::{EncodedValue, MsgPackValue, Value};
 use sql::utils::MutexLike;
-use sql_protocol::decode::{ProtocolMessage, ProtocolMessageIter};
+use sql_protocol::decode::{ProtocolMessage, ProtocolMessageType};
 use sql_protocol::dml::delete::{
     DeleteFilteredIterator, DeleteFilteredResult, DeleteFullIterator, DeleteFullResult,
 };
+use sql_protocol::dml::dml_type::DMLType;
 use sql_protocol::dml::insert::{
     ConflictPolicy, InsertIterator, InsertMaterializedIterator, InsertMaterializedResult,
     InsertResult,
@@ -194,22 +195,30 @@ pub(crate) fn dml_execute<'p, R: Vshard + QueryCache>(
 where
     R::Cache: StorageCache<LockRef = TempTableLockRef>,
 {
-    let iter = msg.get_iter()?;
-
-    match iter {
-        ProtocolMessageIter::DmlInsert(iter) => tuple_insert_from_proto(runtime, iter, port)?,
-        ProtocolMessageIter::DmlUpdate(iter) => shared_update_from_proto(runtime, iter, port)?,
-        ProtocolMessageIter::DmlDelete(iter) => full_delete_from_proto(runtime, iter, port)?,
-        ProtocolMessageIter::LocalDmlInsert(iter) => {
+    let payload = msg.payload;
+    match msg.msg_type {
+        ProtocolMessageType::Dml(DMLType::Insert) => {
+            tuple_insert_from_proto(runtime, InsertIterator::new(payload)?, port)?
+        }
+        ProtocolMessageType::Dml(DMLType::Update) => {
+            shared_update_from_proto(runtime, UpdateSharedKeyIterator::new(payload)?, port)?
+        }
+        ProtocolMessageType::Dml(DMLType::Delete) => {
+            full_delete_from_proto(runtime, DeleteFullIterator::new(payload)?, port)?
+        }
+        ProtocolMessageType::LocalDml(DMLType::Insert) => {
+            let iter = InsertMaterializedIterator::new(payload)?;
             materialized_insert_from_proto(runtime, msg.request_id, iter, port, timeout)?
         }
-        ProtocolMessageIter::LocalDmlUpdate(iter) => {
+        ProtocolMessageType::LocalDml(DMLType::Update) => {
+            let iter = UpdateIterator::new(payload)?;
             materialized_update_from_proto(runtime, msg.request_id, iter, port, timeout)?
         }
-        ProtocolMessageIter::LocalDmlDelete(iter) => {
+        ProtocolMessageType::LocalDml(DMLType::Delete) => {
+            let iter = DeleteFilteredIterator::new(payload)?;
             filtered_delete_from_proto(runtime, msg.request_id, iter, port, timeout)?
         }
-        _ => {
+        ProtocolMessageType::Dql | ProtocolMessageType::Block => {
             return Err(SbroadError::Invalid(
                 Entity::Plan,
                 Some("Expected a DML plan.".to_smolstr()),

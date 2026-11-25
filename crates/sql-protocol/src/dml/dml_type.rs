@@ -1,6 +1,7 @@
 use crate::message_type::write_request_header;
 use crate::message_type::MessageType::{LocalDML, DML};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DMLType {
     Insert = 0,
