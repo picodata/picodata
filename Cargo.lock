@@ -4000,6 +4000,7 @@ dependencies = [
  "sql-frontend",
  "sql-ir",
  "sql-planner",
+ "sql-protocol",
  "tarantool",
 ]
 

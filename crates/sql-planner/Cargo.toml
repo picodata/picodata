@@ -29,6 +29,7 @@ tarantool = { workspace = true, features = ["standalone_decimal","extra_impls"] 
 # test suite in tests/ without affecting downstream builds.
 sql-planner = { path = ".", features = ["mock"] }
 criterion = { workspace = true }
+sql-protocol = { path = "../sql-protocol" }
 dhat = "0.3"
 # The real-world DQL corpus the bench runs the optimizer over
 sql-ast-new-corpus = { path = "../sql-ast-new-corpus" }
@@ -86,6 +87,11 @@ name = "build_ir_alloc"
 
 [[example]]
 name = "optimize_alloc"
+
+[[bench]]
+name = "protocol"
+harness = false
+test = false
 
 [lints]
 workspace = true
