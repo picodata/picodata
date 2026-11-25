@@ -1,5 +1,3 @@
-use rmp::encode::RmpWrite;
-use rmp::Marker;
 use smol_str::{format_smolstr, SmolStr};
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
@@ -97,14 +95,6 @@ impl Write for ByteCounter {
     fn flush(&mut self) -> Result<()> {
         Ok(())
     }
-}
-
-pub fn write_u32_array_len<W: Write>(stream: &mut W, len: u32) -> Result<()> {
-    stream.write_bytes(&[Marker::Array32.to_u8()])?;
-    let mut buf = [0u8; 4];
-    buf.copy_from_slice(&len.to_be_bytes());
-    stream.write_bytes(&buf)?;
-    Ok(())
 }
 
 pub struct OrderedMap<K, V, S = RandomState> {

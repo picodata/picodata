@@ -8,7 +8,7 @@ use rustc_hash::FxHashSet;
 use smol_str::{format_smolstr, SmolStr};
 use uuid::Uuid;
 
-use crate::errors::{Action, Entity, SbroadError};
+use crate::errors::{Entity, SbroadError};
 use crate::executor::engine::helpers::table_name;
 use crate::executor::engine::helpers::vshard::{
     disable_serialize_as_empty_for_subtree, PlanSerializeAsEmptyExt,
@@ -25,7 +25,7 @@ use crate::ir::node::{
     Alias, Motion, Node, NodeId, Projection, Reference, SubQueryReference, Update,
 };
 use crate::ir::operator::UpdateStrategy;
-use crate::ir::relation::{SpaceEngine, Table};
+use crate::ir::relation::Table;
 use crate::ir::transformation::redistribution::{MotionOpcode, MotionPolicy, Program};
 use crate::ir::tree::relation::RelationalIterator;
 use crate::ir::tree::subtree::ExecPlanSubtreeIterator;
@@ -1285,33 +1285,6 @@ impl ExecutionPlan {
 
     pub fn vtables_empty(&self) -> bool {
         self.get_vtables().is_empty()
-    }
-
-    /// Calculates an engine for the virtual tables in the plan.
-    /// The main problem is that we can't use different engines
-    /// for an SQL statement within transaction.
-    ///
-    /// # Errors
-    /// - execution plan is invalid
-    /// - multiple engines are used in the plan
-    pub fn vtable_engine(&self) -> Result<SpaceEngine, SbroadError> {
-        let mut engine: Option<SpaceEngine> = None;
-        for table in self.get_ir_plan().relations.tables.values() {
-            let table_engine = table.engine();
-            if engine.is_none() {
-                engine = Some(table_engine);
-            } else if engine != Some(table_engine) {
-                return Err(SbroadError::FailedTo(
-                    Action::Build,
-                    Some(Entity::Plan),
-                    format_smolstr!(
-                        "cannot build execution plan for DML query with multiple engines: {:?}",
-                        self.get_ir_plan().relations.tables
-                    ),
-                ));
-            }
-        }
-        Ok(engine.unwrap_or(SpaceEngine::Memtx))
     }
 
     /// # Errors

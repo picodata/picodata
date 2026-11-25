@@ -1,5 +1,4 @@
 use crate::debug;
-use crate::executor::protocol::VTablesMeta;
 use crate::ir::node::expression::Expression;
 use crate::ir::node::relational::{RelOwned, Relational};
 use crate::ir::node::{
@@ -933,55 +932,6 @@ impl ExecutionPlan {
 }
 
 impl ExecutionPlan {
-    /// Remove vtables from execution plan.
-    ///
-    /// Because vtables are transfered in required data,
-    /// no need to store them in optional data (where
-    /// execution plan is stored).
-    /// One exception currently is vtable under DML
-    /// node, such query is not cacheable (because
-    /// we execute dml using tarantool api) and this
-    /// vtable is not removed from plan.
-    ///
-    /// # Errors
-    /// - Invalid plan
-    pub fn remove_vtables(&mut self) -> Result<VTablesMeta, SbroadError> {
-        let mut reserved_motion_id = None;
-        {
-            let ir = self.get_ir_plan();
-            let top_id = ir.get_top()?;
-            let top = ir.get_relation_node(top_id)?;
-
-            if top.is_dml() {
-                let top_children = ir.children(top_id);
-
-                // DELETE without WHERE clause don't have children.
-                if !top_children.is_empty() {
-                    reserved_motion_id = Some(top_children[0]);
-                }
-            }
-        }
-
-        let vtables = self.get_mut_vtables();
-        let mut vtables_meta = VTablesMeta::with_capacity(vtables.len());
-
-        for (id, vtable) in vtables.iter() {
-            vtables_meta.insert(*id, vtable.metadata());
-        }
-
-        let reserved_entry = if let Some(id) = reserved_motion_id {
-            vtables.remove_entry(&id)
-        } else {
-            None
-        };
-        vtables.clear();
-        if let Some((key, value)) = reserved_entry {
-            vtables.insert(key, value);
-        }
-
-        Ok(vtables_meta)
-    }
-
     pub(crate) fn calculate_plan_id_with_parameter_count(
         &self,
         top_id: NodeId,
@@ -1075,18 +1025,6 @@ impl ExecutionPlan {
         C: AsRef<[NodeId]>,
     {
         render_sql(self, nodes, plan_id, table_name, constants)
-    }
-
-    /// Checks if the given query subtree modifies data or not.
-    ///
-    /// # Errors
-    /// - If the subtree top is not a relational node.
-    pub fn subtree_modifies_data(&self, top_id: NodeId) -> Result<bool, SbroadError> {
-        // Tarantool doesn't support `INSERT`, `UPDATE` and `DELETE` statements
-        // with `RETURNING` clause. That is why it is enough to check if the top
-        // node is a data modification statement or not.
-        let top = self.get_ir_plan().get_relation_node(top_id)?;
-        Ok(top.is_dml())
     }
 }
 

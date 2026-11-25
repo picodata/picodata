@@ -16,9 +16,6 @@ use tarantool::tuple::Encode;
 use crate::errors::SbroadError;
 use crate::ir::relation::{Column, ColumnRole};
 use crate::ir::types::{DerivedType, NestedType, UnrestrictedType};
-use crate::ir::value::Value;
-
-pub type ExecutorTuple = Vec<Value>;
 
 #[derive(LuaRead, Debug, PartialEq, Eq, Clone, msgpack::Encode, msgpack::Decode)]
 #[encode(as_map)]

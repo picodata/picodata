@@ -60,16 +60,6 @@ impl From<HashMap<u64, Vec<usize>, RepeatableState>> for VTableIndex {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VirtualTableMeta {
-    /// List of the columns.
-    pub columns: Vec<Column>,
-    /// Unique table name (we need to generate it ourselves).
-    name: Option<SmolStr>,
-    /// Column positions that form a primary key.
-    primary_key: Option<Vec<ColumnPosition>>,
-}
-
 /// Result tuple storage, created by the executor. All tuples
 /// have a distribution key.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -168,15 +158,6 @@ impl VirtualTable {
             name: None,
             primary_key: None,
             bucket_index: VTableIndex::new(),
-        }
-    }
-
-    #[must_use]
-    pub fn metadata(&self) -> VirtualTableMeta {
-        VirtualTableMeta {
-            columns: self.columns.clone(),
-            name: self.name.clone(),
-            primary_key: self.primary_key.clone(),
         }
     }
 

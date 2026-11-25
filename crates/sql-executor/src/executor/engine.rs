@@ -398,14 +398,6 @@ pub trait Router: QueryCache {
         tier_name: Option<&SmolStr>,
     ) -> Result<Self::VshardImplementor, SbroadError>;
 
-    /// Get vshard object name to which the coordinator belongs
-    ///
-    /// # Errors
-    /// - internal executor errors
-    fn get_current_vshard_object(&self) -> Result<Self::VshardImplementor, SbroadError> {
-        self.get_vshard_object_by_tier(self.get_current_tier_name()?.as_ref())
-    }
-
     /// Materialize values (on router).
     /// We have two scenarios of vtable materialization:
     /// 1.) In case we're working with VALUES containing **only** constants, we copy them

@@ -12,15 +12,6 @@ use ahash::AHashSet;
 use smol_str::format_smolstr;
 use std::collections::HashMap;
 
-tarantool::define_str_enum! {
-    #[derive(Default)]
-    pub enum CacheInfo {
-        #[default]
-        CacheableFirstRequest = "cacheable-1",
-        CacheableSecondRequest = "cacheable-2",
-    }
-}
-
 // Helper struct to hold information
 // needed to apply SerializeAsEmpty opcode
 // to subtree.
