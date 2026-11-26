@@ -1086,6 +1086,18 @@ DO $$ BEGIN RETURN QUERY SELECT * FROM t WHERE pk = 1 OR pk = 2; END $$;
 -- ERROR:
 transaction can only be executed on a single bucket, got \[1410, 1934\]
 
+-- TEST: block-cross-filter-contradiction
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT pk FROM (SELECT pk, a FROM t WHERE pk = 1 AND a = 1) q WHERE a = 2; END $$;
+-- ERROR:
+transaction can only be executed on a single bucket, got \[\]
+
+-- TEST: block-contradictory-join-count
+-- SQL:
+DO $$ BEGIN RETURN QUERY SELECT count(*) FROM (SELECT pk FROM t WHERE pk = 1) l JOIN (SELECT pk FROM t WHERE pk = 2) r ON l.pk = r.pk; END $$;
+-- EXPECTED:
+0
+
 -- TEST: block-global-where-false
 -- SQL:
 DO $$ BEGIN RETURN QUERY SELECT pk FROM g WHERE false; END $$;

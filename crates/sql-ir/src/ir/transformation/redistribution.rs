@@ -765,8 +765,8 @@ impl Plan {
     /// contributes to the domain root, wherever the domain enforces it, so
     /// the rows on other buckets can be skipped. A fully pinned sharding
     /// key or `bucket_id` of an input bounds those rows to one bucket.
-    /// Emptiness comes from an `AlwaysFalse` check placed here or, without
-    /// enrichment, from `facts.dead_rels()`.
+    /// Emptiness comes from `facts.is_dead()`, the same sources enrichment
+    /// places its `AlwaysFalse` checks from.
     fn facts_filter_buckets(
         &self,
         rel_id: NodeId,
@@ -775,23 +775,12 @@ impl Plan {
         cache: &mut MotionsCache,
         state: &PlanningState,
     ) -> Result<BucketProof, SbroadError> {
-        use crate::ir::transformation::equality_facts::DomainCheckKind;
         let mut buckets =
             self.default_filter_buckets::<StaticResolver>(rel_children, subqueries)?;
         let Some(facts) = state.facts.as_ref() else {
             return Ok(buckets);
         };
-        if facts
-            .domain_checks_of(rel_id)
-            .iter()
-            .any(|check| check.kind == DomainCheckKind::AlwaysFalse && check.host == rel_id)
-        {
-            cache.facts_proof.add_route(rel_id, FactsRoute::Empty);
-            return Ok(BucketProof::new_empty());
-        }
-        // Without enrichment no AlwaysFalse check is placed: an unsatisfiable
-        // condition of this node is known only to the facts.
-        if !cfg!(feature = "enrich_restrictions") && facts.dead_rels().contains(&rel_id) {
+        if facts.is_dead(rel_id) {
             cache.facts_proof.add_route(rel_id, FactsRoute::Empty);
             return Ok(BucketProof::new_empty());
         }

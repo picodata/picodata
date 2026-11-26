@@ -1368,17 +1368,15 @@ fn inner_join_with_global_side_follows_other_side() {
     assert!(plan.contains("sum(count_"), "{plan}");
 }
 
-/// Different sharding keys do not prove that both inputs use the same shard.
-/// Keep the reduce stage: if they use different shards, a local `count(*)`
-/// would emit a separate zero on each. Enrichment is disabled here because
-/// it turns `a = 1 and a = 2` into `false`.
-#[cfg(not(feature = "enrich_restrictions"))]
+/// Different sharding keys do not prove that both inputs use the same shard,
+/// but `a = 1 and a = 2` across the join proves it empty: the one-stage
+/// `count(*)` runs on any one node and emits a single zero.
 #[test]
-fn inner_join_with_differently_restricted_sides_keeps_reduce() {
+fn inner_join_with_differently_restricted_sides_is_empty() {
     let query = r#"explain (logical) SELECT count(*) FROM (SELECT "a" FROM "t5" WHERE "a" = 1) AS l
         JOIN (SELECT "a" FROM "t5" WHERE "a" = 2) AS r ON l."a" = r."a""#;
     let plan = explain_logical(&sql_to_optimized_ir(query, vec![])).unwrap();
-    assert!(plan.contains("sum(count_"), "{plan}");
+    assert!(!plan.contains("motion"), "{plan}");
 }
 
 /// A one-stage scalar aggregate must run on exactly one node, even when its

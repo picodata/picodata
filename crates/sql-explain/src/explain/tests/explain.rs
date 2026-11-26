@@ -134,7 +134,7 @@ fn union_all() {
 
 /// Table t2 is sharded by (e, f), t1 by (a, b). The join has Segment {e, f}
 /// vs Segment {a, b}: they don't equal each other, so motion is needed. We
-/// know e = f = 10 and e = b, hence by transitivity e = f = b, so the motion
+/// know e = f and e = b, hence by transitivity e = f = b, so the motion
 /// key is derived as segment([b, b]).
 ///
 /// Buckets can't be estimated after a segment motion reshards the rows,
@@ -142,13 +142,13 @@ fn union_all() {
 #[test]
 fn segment_motion_key_derived_by_transitivity() {
     let sql = r#"explain (logical, buckets) select a, count(b) from
-    (select e, f from t2 where (e, f) = (10, 10))
+    (select e, f from t2 where e = f)
     join
-    (select a, b from t1 where (a, b) = ('20', 20))
+    (select a, b from t1 where a = '20')
     on e = b
     group by a
 "#;
-    insta::assert_snapshot!(explain(sql), @"
+    insta::assert_snapshot!(explain(sql), @r"
     ──────────────────────────────────────────────────────────────────────
      # Logical plan                                                       
     ──────────────────────────────────────────────────────────────────────
@@ -161,12 +161,12 @@ fn segment_motion_key_derived_by_transitivity() {
               join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
                 scan unnamed_subquery
                   projection (t2.e::int -> e, t2.f::int -> f)
-                    selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
+                    selection (t2.e::int = t2.f::int)
                       scan t2
                 motion [policy: segment([ref(b), ref(b)]), program: ReshardIfNeeded]
                   scan unnamed_subquery_1
                     projection (t1.a::text -> a, t1.b::int -> b)
-                      selection (ROW(t1.a::text, t1.b::int) = ROW('20'::text, 20::int))
+                      selection (t1.a::text = '20'::text)
                         scan t1
 
     ──────────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ fn join_with_full_motion() {
     let sql = r#"explain (logical, buckets) select a from
     (select e, f from t2 where (e, f) = (10, 12))
     join
-    (select a, b from t1 where (a, b) = ('20', 20))
+    (select a, b from t1 where (a, b) = ('20', 10))
     on e = b
 "#;
     insta::assert_snapshot!(explain(sql), @r"
@@ -205,14 +205,82 @@ fn join_with_full_motion() {
         motion [policy: full, program: ReshardIfNeeded]
           scan unnamed_subquery_1
             projection (t1.a::text -> a, t1.b::int -> b)
-              selection (ROW(t1.a::text, t1.b::int) = ROW('20'::text, 20::int))
+              selection (ROW(t1.a::text, t1.b::int) = ROW('20'::text, 10::int))
                 scan t1
 
     ──────────────────────────────────────────────────────────────────────
      # Buckets                                                            
     ──────────────────────────────────────────────────────────────────────
 
-    buckets = [62, 6266]
+    buckets = [3590, 6266]
+    ");
+}
+
+/// A class that is pinned to different values on the two sides of a join
+/// is contradictory: the join domain is empty and reads no bucket. Without a
+/// motion that is `buckets = []`. After a segment motion the bound stays the
+/// conservative `[1-10000]`, though neither stage reads anything.
+#[test]
+fn contradictory_join_domain_is_empty() {
+    let sql = r#"explain (logical, buckets) select l.e from
+    (select e, f from t2 where (e, f) = (10, 10)) as l
+    join
+    (select e, f from t2 where (e, f) = (20, 20)) as r
+    on (l.e, l.f) = (r.e, r.f)
+"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    projection (l.e::int -> e)
+      join on (ROW(l.e::int, l.f::int) = ROW(r.e::int, r.f::int))
+        scan l
+          projection (t2.e::int -> e, t2.f::int -> f)
+            selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
+              scan t2
+        scan r
+          projection (t2.e::int -> e, t2.f::int -> f)
+            selection (ROW(t2.e::int, t2.f::int) = ROW(20::int, 20::int))
+              scan t2
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets = []
+    ");
+
+    let sql = r#"explain (logical, buckets) select a, count(b) from
+    (select e, f from t2 where (e, f) = (10, 10))
+    join
+    (select a, b from t1 where (a, b) = ('20', 20))
+    on e = b
+    group by a
+"#;
+    insta::assert_snapshot!(explain(sql), @r"
+    ──────────────────────────────────────────────────────────────────────
+     # Logical plan                                                       
+    ──────────────────────────────────────────────────────────────────────
+
+    projection (unnamed_subquery_1.a::text -> a, count(unnamed_subquery_1.b::int::int)::int -> col_1)
+      group by (unnamed_subquery_1.a::text)
+        join on (unnamed_subquery.e::int = unnamed_subquery_1.b::int)
+          scan unnamed_subquery
+            projection (t2.e::int -> e, t2.f::int -> f)
+              selection (ROW(t2.e::int, t2.f::int) = ROW(10::int, 10::int))
+                scan t2
+          motion [policy: segment([ref(b), ref(b)]), program: ReshardIfNeeded]
+            scan unnamed_subquery_1
+              projection (t1.a::text -> a, t1.b::int -> b)
+                selection (ROW(t1.a::text, t1.b::int) = ROW('20'::text, 20::int))
+                  scan t1
+
+    ──────────────────────────────────────────────────────────────────────
+     # Buckets                                                            
+    ──────────────────────────────────────────────────────────────────────
+
+    buckets <= [1-10000]
     ");
 }
 

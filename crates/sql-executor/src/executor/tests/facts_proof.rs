@@ -35,7 +35,7 @@ use crate::utils::MutexLike;
 use sql_frontend::frontend::sql::transform_into_plan;
 
 /// Queries checked as is and inside the wrappers of `wrap`.
-const BASES: [&str; 65] = [
+const BASES: [&str; 68] = [
     // bucket_id and plain keys
     "SELECT id AS a FROM test_space WHERE bucket_id = 42",
     "SELECT id AS a FROM test_space WHERE bucket_id = 0 AND id = 1",
@@ -85,6 +85,10 @@ const BASES: [&str; 65] = [
     "SELECT l.a FROM t5 l LEFT JOIN t5 r ON l.a = r.a WHERE r.a = 1",
     "SELECT l.a FROM t5 l JOIN t5 r ON l.a = r.a WHERE r.a = $1",
     "SELECT l.a FROM t5 l JOIN t5 r ON l.b = r.b WHERE l.a = 1 AND r.a = 1",
+    // conditions of one domain that conflict only together
+    "SELECT a FROM (SELECT a, b FROM t5 WHERE b = 1) q WHERE q.b = 2",
+    "SELECT l.a FROM (SELECT a FROM t5 WHERE a = 1) l JOIN (SELECT a FROM t5 WHERE a = 2) r ON l.a = r.a",
+    "SELECT l.a FROM (SELECT a FROM t5 WHERE a = $1) l JOIN (SELECT a FROM t5 WHERE a = $2) r ON l.a = r.a",
     // unions
     "SELECT a FROM t5 WHERE a = 1 UNION SELECT a FROM t5 WHERE a = 1",
     "SELECT a FROM t5 WHERE a = 1 UNION SELECT a FROM t5 WHERE a = 2",

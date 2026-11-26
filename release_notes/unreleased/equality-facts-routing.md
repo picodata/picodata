@@ -12,3 +12,9 @@
   e.g. `SELECT * FROM g JOIN (SELECT a FROM t WHERE false) s ON g.a = s.a`,
   now reads no bucket: `EXPLAIN (BUCKETS)` shows `buckets = []` for it instead
   of `buckets = any` ([!3989]).
+- Conditions of one query block that conflict only together, e.g.
+  `SELECT count(*) FROM (SELECT a FROM t WHERE a = 1) l JOIN (SELECT a FROM t WHERE a = 2) r ON l.a = r.a`
+  or `SELECT * FROM (SELECT a, b FROM t WHERE b = 1) q WHERE q.b = 2`, now
+  prove the result empty: `EXPLAIN (BUCKETS)` shows `buckets = []` or
+  `buckets = any` for them, and `count(*)` over such a result runs in one
+  stage on one node ([!4050]).

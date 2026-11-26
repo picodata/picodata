@@ -114,6 +114,8 @@
 //! - `domain -> derived column-less checks` ([`DomainCheck`]: parameter
 //!   equalities or a proven `false`, filled in by enrichment for motion
 //!   planning)
+//! - `domain -> dead` (a contradictory class or an unsatisfiable condition
+//!   proves the whole domain empty, see [`EqualityFacts::is_dead`])
 //!
 //! It does not keep provenance, derivation trees, or an explicit list of class
 //! members. The intended consumers only need fast answers to planner questions
@@ -585,6 +587,9 @@ pub struct EqualityFacts {
     /// Sorted and deduplicated. Conflicts across conditions are recorded in
     /// [`EquivalenceClass::contradictory`].
     dead_rels: Box<[NodeId]>,
+    /// Domains proven empty, indexed by [`DomainId`]: a node of
+    /// [`Self::dead_rels`] or a contradictory class empties its domain root.
+    dead_domains: Box<[bool]>,
     /// Restriction conjuncts that are plain equalities within one class, in
     /// analysis order. See [`SourceEquality`]. They describe the conditions
     /// as analyzed: enrichment clears them once it rewrites those conditions,
@@ -889,6 +894,17 @@ impl EqualityFacts {
     #[must_use]
     pub fn has_domain_checks(&self) -> bool {
         !self.domain_checks.is_empty()
+    }
+
+    /// Whether `rel` contributes no row to its domain root: the domain holds
+    /// an unsatisfiable condition or a contradictory class. Like a pin, this
+    /// holds wherever `rel` sits in the domain: a domain grows only through
+    /// operators that pass emptiness up (see [`Self::same_domain`]).
+    #[must_use]
+    pub fn is_dead(&self, rel: NodeId) -> bool {
+        self.domains
+            .get(&rel)
+            .is_some_and(|domain| self.dead_domains[domain.0])
     }
 
     /// Whether the analysis assigned `rel` a domain.
@@ -1427,6 +1443,12 @@ impl EqualityFactsBuilder {
             slot_classes.insert(rel_id, classes);
         }
 
+        let mut dead_domains = vec![false; self.domain_roots.len()];
+        for rel in &dead_rels {
+            if let Some(domain) = self.domains.get(rel) {
+                dead_domains[domain.0] = true;
+            }
+        }
         // Materialize the class objects.  Members are sorted by
         // `(arena_type, offset, pos)` for deterministic iteration
         let classes: Box<[EquivalenceClass]> = class_const
@@ -1447,6 +1469,7 @@ impl EqualityFactsBuilder {
                     // A class exists only because an atom created it, and every atom
                     // carries a domain, so both lookups are total.
                     let domain = domain.expect("class built without an atom");
+                    dead_domains[domain.0] |= contradictory;
                     let anchor = self.domain_roots[domain.0];
                     EquivalenceClass {
                         members: members.into_boxed_slice(),
@@ -1488,6 +1511,7 @@ impl EqualityFactsBuilder {
             // Domain 0 is the one `get_equality_facts` opened for its `top_id`.
             analyzed_top: self.domain_roots[0],
             dead_rels: dead_rels.into_boxed_slice(),
+            dead_domains: dead_domains.into_boxed_slice(),
             source_equalities,
             domain_checks: AHashMap::new(),
         })

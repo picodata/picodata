@@ -354,3 +354,23 @@ def test_facts_route_disjoint_from_condition_route(cluster_factory, dataset):
         assert buckets_line(explain) == buckets, explain
         for instance in cluster.instances:
             assert instance.sql(sql) == [[count]], (instance.name, sql)
+
+
+def test_contradictory_inner_join_count_is_one_zero(cluster_factory):
+    """`a = x` and `a = y` meet in one class across an INNER JOIN: the facts
+    prove the join empty, so the one-stage `count(*)` runs on one node. With
+    x and y on different replicasets, a lost row or a zero from each of them
+    breaks the exact result."""
+    cluster = cluster_factory()
+    i1 = deploy(cluster)
+    fill(i1, {"t5": DATA["t5"]})
+    local_keys = "local r = {} for _, t in box.space.t5:pairs() do r[#r + 1] = t.a end return r"
+    x, y = (min(a for a in instance.eval(local_keys) if a is not None) for instance in cluster.instances)
+    assert x != y
+    sql = (
+        f"SELECT count(*) FROM (SELECT a FROM t5 WHERE a = {x}) AS l "
+        f"JOIN (SELECT a FROM t5 WHERE a = {y}) AS r ON l.a = r.a"
+    )
+    assert not any("motion" in line for line in i1.sql("EXPLAIN " + sql))
+    for instance in cluster.instances:
+        assert instance.sql(sql) == [[0]], (instance.name, sql)

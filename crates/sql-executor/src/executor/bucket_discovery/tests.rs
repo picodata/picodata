@@ -43,6 +43,94 @@ fn prepared_left_join_over_global_join_preserves_empty_routing() {
     }
 }
 
+/// Two filters of one domain conflict only together (`b = 1` below,
+/// `q.b = 2` above): the outer filter is proven empty, so the scalar
+/// aggregate runs in one stage. A conflict only in a LEFT JOIN's `ON` keeps
+/// the preserved rows.
+#[test]
+fn conflict_across_filters_empties_outer_filter() {
+    let coordinator = RouterRuntimeMock::new();
+    for sql in [
+        "SELECT count(*) FROM (SELECT a, b FROM t5 WHERE a = 1 AND b = 1) AS q \
+         WHERE q.b = 2",
+        // Different shards: the empty join keeps one zero, on any one node.
+        "SELECT count(*) FROM (SELECT a FROM t5 WHERE a = 1) AS l \
+         JOIN (SELECT a FROM t5 WHERE a = 2) AS r ON l.a = r.a",
+    ] {
+        let mut query = ExecutingQuery::from_text_and_params(&coordinator, sql, vec![]).unwrap();
+        let plan = query.get_exec_plan().get_ir_plan();
+        assert!(
+            plan.slices().slices().is_empty(),
+            "no motion expected: {sql}"
+        );
+        let top = plan.get_top().unwrap();
+        assert_eq!(Buckets::Any, query.bucket_discovery(top).unwrap(), "{sql}");
+    }
+
+    // Each conflict pairs an ON condition with a fact of the domain: the ON
+    // facts are scoped, so they must not meet the domain's.
+    let bucket = coordinator.determine_bucket_id(&[&Value::from(1)]).unwrap();
+    for sql in [
+        "SELECT l.a FROM t5 AS l LEFT JOIN t5 AS r ON l.a = r.a AND l.b = 1 \
+         WHERE l.a = 1 AND l.b = 2",
+        "SELECT l.a FROM t5 AS l LEFT JOIN (SELECT a, b FROM t5 WHERE b = 1) AS r \
+         ON l.a = r.a AND r.b = 2 WHERE l.a = 1",
+        "SELECT l.a FROM (SELECT a, b FROM t5 WHERE b = 1) AS l LEFT JOIN t5 AS r \
+         ON l.a = r.a AND l.b = 2 WHERE l.a = 1",
+    ] {
+        assert_eq!(
+            Buckets::new_filtered([bucket].into_iter().collect()),
+            discover(sql, vec![]),
+            "{sql}"
+        );
+    }
+}
+
+/// An empty domain empties nothing outside it: a scalar aggregate still
+/// emits its row, a NULL-extended side keeps the preserved rows, a negation
+/// of an empty subquery holds and a set operation keeps its other branch.
+#[test]
+fn empty_domain_stays_inside_its_boundary() {
+    const EMPTY: &str = "SELECT a, b FROM (SELECT a, b FROM t5 WHERE b = 1) AS x WHERE x.b = 2";
+    let coordinator = RouterRuntimeMock::new();
+    let three = Buckets::new_filtered(
+        [coordinator.determine_bucket_id(&[&Value::from(3)]).unwrap()]
+            .into_iter()
+            .collect(),
+    );
+    let cases = [
+        (
+            "SELECT q.c FROM (SELECT count(*) AS c FROM \
+             (SELECT a FROM t5 WHERE a = 1) AS x WHERE x.a = 2) AS q WHERE q.c = 0"
+                .to_string(),
+            Buckets::Any,
+        ),
+        (
+            format!("SELECT l.a FROM t5 AS l LEFT JOIN ({EMPTY}) AS r ON l.a = r.a"),
+            Buckets::All,
+        ),
+        (
+            format!("SELECT a FROM t5 WHERE a = 3 AND NOT EXISTS ({EMPTY})"),
+            three.clone(),
+        ),
+        (
+            format!("SELECT a FROM t5 WHERE a = 3 AND b NOT IN (SELECT b FROM ({EMPTY}) AS e)"),
+            three.clone(),
+        ),
+        (
+            format!("SELECT a FROM t5 WHERE a = 3 UNION ALL SELECT a FROM ({EMPTY}) AS e"),
+            three.clone(),
+        ),
+        (
+            format!("SELECT a FROM t5 WHERE a = 3 EXCEPT SELECT a FROM ({EMPTY}) AS e"),
+            three,
+        ),
+    ];
+    for (sql, expected) in cases {
+        assert_eq!(expected, discover(&sql, vec![]), "{sql}");
+    }
+}
+
 #[test]
 fn global_inner_join_preserves_empty_input_but_not_scalar_aggregate() {
     for from in [
@@ -1797,13 +1885,16 @@ fn join_buckets_left_follow_driving_side_inner_take_union() {
         ),
         (
             format!(r#"{s1} join {r2} on s."a" = r."a""#),
-            // Enrichment sees `a = 1 and a = 2` and empties both sides; the
-            // facts alone leave the contradictory class unpinned.
-            if cfg!(feature = "enrich_restrictions") {
-                Buckets::new_empty()
-            } else {
-                buckets(&[1, 2])
-            },
+            // `a = 1 and a = 2` across the join: the contradictory class
+            // empties the join, with or without enrichment.
+            Buckets::new_empty(),
+        ),
+        // No common pin: the join reads the buckets of both sides.
+        (
+            r#"(select "a" from "t5" where "a" in (1, 2)) as s
+            join (select "a" from "t5" where "a" in (2, 3)) as r on s."a" = r."a""#
+                .to_string(),
+            buckets(&[1, 2, 3]),
         ),
         // Not co-located: the other side is broadcast (Any), so s's buckets remain.
         (

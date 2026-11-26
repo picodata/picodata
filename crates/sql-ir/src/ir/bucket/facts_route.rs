@@ -36,8 +36,8 @@ pub enum FactsRoute {
     Key(Vec<FactsRoutePart>),
     /// The `bucket_id` column of an input.
     BucketId(FactsRoutePart),
-    /// An unsatisfiable condition: an `AlwaysFalse` domain check placed at
-    /// the node itself or, without enrichment, a node of `facts.dead_rels()`.
+    /// An empty domain (`EqualityFacts::is_dead`): an unsatisfiable
+    /// condition or a contradictory class of the node's domain.
     Empty,
     /// Values equal for every contributing row: unequal or NULL after bind
     /// leave no row. Never narrows on its own. The hosts of one class share
