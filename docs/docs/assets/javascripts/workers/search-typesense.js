@@ -27,6 +27,9 @@
 
   const TIMEOUT_MS = 1500;
   const RETRY_MS = 60000;
+  // Память и время Typesense на разбор запроса растут быстрее его длины: абзац текста в строке
+  // поиска занимает сервер на секунды, страница — исчерпывает его память.
+  const MAX_QUERY = 200;
   // Полный список: 250 страниц и 99 разделов на страницу — наибольшее, что отдаёт Typesense.
   // В журнал запросов не попадает: тот же запрос уже записан первым обращением.
   const FULL = { per_page: 250, group_limit: 99, enable_highlight_v1: false, enable_analytics: false };
@@ -234,7 +237,7 @@
     cancelFull();
     // Typesense читает дефис в начале слова как «исключить это слово»: «--memtx-memory» не нашёл бы
     // ничего, а «picodata run --peer» — страницы, где этого флага нет.
-    const query = String(msg.data || "").replace(/(^|\s)-+/g, "$1").trim();
+    const query = String(msg.data || "").replace(/(^|\s)-+/g, "$1").trim().slice(0, MAX_QUERY);
     if (!query) {
       realPost({ type: 3, data: { items: [] } });
       return;
