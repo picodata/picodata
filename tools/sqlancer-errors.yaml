@@ -212,6 +212,13 @@ errors:
       CREATE TABLE ms (c0 INT PRIMARY KEY);
       SELECT * FROM mg1 JOIN mg2 ON (SELECT true FROM ms);
 
+  # An aggregate that is the whole HAVING condition has no parent expression to be replaced in.
+  - pattern: "as the whole HAVING condition not implemented"
+    issue: https://git.picodata.io/core/picodata/-/work_items/3367
+    repro: |
+      CREATE TABLE hv (a INT PRIMARY KEY, b BOOLEAN);
+      SELECT a FROM hv GROUP BY a HAVING max(b);
+
   # EXISTS over a VALUES list reaches the storage as "exists ( ( SELECT ... ) )", whose doubled
   # parentheses its parser rejects. The pattern is the most specific part of the message, yet it
   # also matches any other syntax error before a parenthesis in the SQL sent to the storage.

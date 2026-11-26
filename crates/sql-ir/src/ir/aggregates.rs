@@ -404,9 +404,12 @@ impl<'plan> AggrCollector<'plan> {
         let expr = self.plan.get_expression_node(current)?;
         if let Expression::ScalarFunction(ScalarFunction { name, feature, .. }) = expr {
             let is_distinct = matches!(feature, Some(FunctionFeature::Distinct));
-            let parent_expr = parent_expr.expect(
-                "Aggregate stable function under final relational node should have a parent expr",
-            );
+            let parent_expr = parent_expr.ok_or_else(|| {
+                SbroadError::NotImplemented(
+                    Entity::Aggregate,
+                    format_smolstr!("{name} as the whole HAVING condition"),
+                )
+            })?;
             if let Some(aggr) =
                 Aggregate::from_name(name, current, self.parent_rel, parent_expr, is_distinct)
             {
