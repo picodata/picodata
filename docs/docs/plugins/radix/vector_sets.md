@@ -71,16 +71,7 @@ VADD vectors VALUES 3 0.1 0.2 0.3 element EF 300
 | `vectorset.initial_capacity` | `1024` | Начальная ёмкость графа каждого векторного множества. |
 
 Для изменения параметров `vectorset.search_threads` и
-`vectorset.initial_capacity` достаточно указать новые значения для них в файле
-конфигурации плагина, например:
-
-```yaml
-vectorset:
-  search_threads: 4
-  initial_capacity: 1024
-```
-
-Также, изменить эти настройки можно через SQL:
+`vectorset.initial_capacity` достаточно указать новые значения для них через SQL. Пример:
 
 ```sql
 ALTER PLUGIN radix 1.3.0 SET radix.vectorset.search_threads = '8';
